@@ -9,6 +9,7 @@ import { SourceSetupPage } from './pages/SourceSetupPage';
 import { AssignmentSetupPage } from './pages/AssignmentSetupPage';
 import { ScenarioPage } from './pages/ScenarioPage';
 import { BackupSetupPage } from './pages/BackupSetupPage';
+import { HandoffSetupPage } from './pages/HandoffSetupPage';
 
 function AuthEntryRoute() {
   const location = useLocation();
@@ -37,6 +38,7 @@ export function App() {
         <Route path="/setup/sources" element={<SourceSetupPage />} />
         <Route path="/setup/assignments" element={<AssignmentSetupPage />} />
         <Route path="/setup/backups" element={<BackupSetupPage />} />
+        <Route path="/setup/handoffs" element={<HandoffSetupPage />} />
         <Route path="/scenario" element={<ScenarioPage />} />
         <Route path="/app" element={<ProtectedHomePage />} />
       </Route>

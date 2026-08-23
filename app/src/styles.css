@@ -34,7 +34,7 @@ h1, h2, h3 {
   font-family: var(--font-heading);
 }
 
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 
 .auth-layout {
@@ -88,8 +88,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .form-stack { display: grid; gap: 1.1rem; }
 .form-stack label { display: grid; gap: 0.5rem; color: var(--ink); font-size: 0.92rem; font-weight: 700; }
-.form-stack input, .form-stack select { width: 100%; border: 1px solid #c8d4d6; border-radius: 0.9rem; padding: 0.85rem 1rem; color: var(--ink); background: #fffefb; outline: none; transition: border-color 150ms, box-shadow 150ms; }
-.form-stack input:focus, .form-stack select:focus { border-color: var(--mist-600); box-shadow: 0 0 0 4px rgba(88, 118, 134, 0.12); }
+.form-stack input, .form-stack select, .form-stack textarea { width: 100%; border: 1px solid #c8d4d6; border-radius: 0.9rem; padding: 0.85rem 1rem; color: var(--ink); background: #fffefb; outline: none; transition: border-color 150ms, box-shadow 150ms; }
+.form-stack textarea { resize: vertical; line-height: 1.6; }
+.form-stack input:focus, .form-stack select:focus, .form-stack textarea:focus { border-color: var(--mist-600); box-shadow: 0 0 0 4px rgba(88, 118, 134, 0.12); }
 
 .primary-button, .secondary-button { display: inline-flex; justify-content: center; align-items: center; min-height: 3rem; border-radius: 0.95rem; padding: 0.75rem 1.2rem; font-weight: 750; text-decoration: none; cursor: pointer; transition: transform 150ms, opacity 150ms; }
 .primary-button { border: 0; color: #fff; background: var(--mist-700); }
@@ -172,6 +173,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .task-item { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; border: 1px solid rgba(88, 118, 134, 0.16); border-radius: 1rem; background: #fffefb; }
 .task-item h3 { margin: 0.3rem 0 0.45rem; color: var(--ink); }
 .task-item p { margin: 0.18rem 0; color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+.task-item-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
 .task-category { color: var(--mist-600); font-size: 0.73rem; font-weight: 750; letter-spacing: 0.07em; }
 .text-button { align-self: flex-start; border: 0; padding: 0.35rem; color: var(--mist-700); background: transparent; font-weight: 750; cursor: pointer; }
 .complete-task-button { width: 100%; margin-top: 1rem; }
@@ -238,6 +240,19 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .scenario-prerequisite-warning a { color: var(--mist-700); font-weight: 750; }
 .scenario-adjust-cta { justify-self: start; }
 .form-message { white-space: pre-line; }
+.handoff-grid { display: grid; grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.25fr); gap: 1.5rem; align-items: start; }
+.handoff-task-card { width: 100%; display: grid; gap: 0.38rem; border: 1px solid rgba(88, 118, 134, 0.16); border-radius: 1rem; padding: 1rem; color: var(--ink); background: #fffefb; text-align: left; cursor: pointer; }
+.handoff-task-card.active { border-color: var(--mist-600); background: var(--mist-100); box-shadow: 0 0 0 3px rgba(88, 118, 134, 0.1); }
+.handoff-task-card strong { font-family: var(--font-heading); font-size: 1.05rem; }
+.handoff-task-card small, .handoff-task-time { color: var(--muted); line-height: 1.5; }
+.handoff-readiness { display: inline-flex; width: fit-content; padding: 0.35rem 0.65rem; border-radius: 999px; color: var(--mist-700); background: var(--mist-100); font-size: 0.76rem; font-weight: 750; }
+.readiness-needs_details { color: #735c2f; background: #fff5d9; }
+.readiness-ready_to_share { color: #38644f; background: #e7f2eb; }
+.handoff-editor > h2 { margin-bottom: 0.35rem; }
+.handoff-freshness { display: grid; gap: 0.35rem; margin: 1rem 0 1.4rem; padding: 0.9rem 1rem; border-radius: 0.9rem; color: var(--mist-700); background: var(--mist-100); font-size: 0.83rem; }
+.handoff-freshness small { color: var(--muted); line-height: 1.5; }
+.handoff-form { margin-top: 1.4rem; }
+.handoff-safety-note { margin: 0; padding: 0.85rem 1rem; border-radius: 0.9rem; color: #735c2f; background: #fff5d9; font-size: 0.84rem; line-height: 1.6; }
 
 @media (max-width: 760px) {
   .auth-layout { grid-template-columns: 1fr; gap: 2rem; padding: 1.25rem; }
@@ -257,6 +272,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .delete-confirmation { align-items: stretch; flex-direction: column; }
   .scenario-summary { grid-template-columns: 1fr; }
   .scenario-result { grid-template-columns: 1fr; }
+  .handoff-grid { grid-template-columns: 1fr; }
+  .task-item-actions { align-items: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

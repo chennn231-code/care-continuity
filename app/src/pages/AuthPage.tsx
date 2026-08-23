@@ -57,10 +57,10 @@ export function AuthPage() {
     <main className="auth-layout">
       <section className="brand-panel" aria-labelledby="brand-title">
         <div className="brand-mark" aria-hidden="true">心</div>
-        <p className="eyebrow">照顧備援，從看清現在開始</p>
+        <p className="eyebrow">看得完整，才接得住</p>
         <h1 id="brand-title">備份心</h1>
         <p className="brand-copy">
-          在主要照顧者不能照顧之前，先整理哪些事情需要有人接手
+          辨識照顧流程中的關鍵環節，預先建立交接與備援機制，降低照顧中斷風險
         </p>
       </section>
 

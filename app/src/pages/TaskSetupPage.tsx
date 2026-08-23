@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { listOwnedCareReceivers, type CareReceiver } from '../lib/careReceivers';
 import {
   createCareTask,
@@ -28,6 +28,8 @@ import {
 import { listCurrentAssignments } from '../lib/currentAssignments';
 import { listBackupAssignments } from '../lib/backupAssignments';
 import { listCareSources } from '../lib/careSources';
+import { listTaskHandoffs } from '../lib/taskHandoffs';
+import { taskCategoryChangeIsBlockedByHandoff } from '../handoffs/handoffContract';
 import {
   describeTaskDependencyIssues,
   validateTaskDependencies
@@ -150,11 +152,18 @@ export function TaskSetupPage() {
     setSubmitting(true);
     try {
       if (editingTaskId) {
-        const [currents, backups, sources] = await Promise.all([
+        const existingTask = tasks.find((task) => task.task_id === editingTaskId);
+        if (!existingTask) throw new Error('Task not found');
+        const [currents, backups, sources, handoffs] = await Promise.all([
           listCurrentAssignments([editingTaskId]),
           listBackupAssignments([editingTaskId]),
-          listCareSources(receiver.care_receiver_id)
+          listCareSources(receiver.care_receiver_id),
+          listTaskHandoffs([existingTask])
         ]);
+        if (taskCategoryChangeIsBlockedByHandoff(existingTask.category, input.category, handoffs.length > 0)) {
+          setError('此照顧工作已有交接資訊\n若要變更工作類型，請先處理既有交接資訊');
+          return;
+        }
         const dependencyIssues = validateTaskDependencies(input, currents, backups);
         if (dependencyIssues.length) {
           setError(describeTaskDependencyIssues(
@@ -172,7 +181,12 @@ export function TaskSetupPage() {
       resetForm();
     } catch (saveError) {
       console.error('Unable to save care task', saveError);
-      setError(getCareTaskErrorMessage('save'));
+      const databaseMessage = typeof saveError === 'object' && saveError !== null && 'message' in saveError
+        ? String(saveError.message)
+        : '';
+      setError(databaseMessage.includes('Task category cannot change while handoff information exists')
+        ? '此照顧工作已有交接資訊\n若要變更工作類型，請先處理既有交接資訊'
+        : getCareTaskErrorMessage('save'));
     } finally {
       setSubmitting(false);
     }
@@ -369,9 +383,14 @@ export function TaskSetupPage() {
                     <p>{describeOccurrence(task.occurrence_pattern)}</p>
                     <p>{SUPPORT_MODE_LABELS[task.required_support_modes[0] ?? 'ON_SITE']}</p>
                   </div>
-                  <button className="text-button" type="button" onClick={() => editTask(task)}>
-                    修改
-                  </button>
+                  <div className="task-item-actions">
+                    <button className="text-button" type="button" onClick={() => editTask(task)}>
+                      修改
+                    </button>
+                    <Link className="text-button" to={`/setup/handoffs?task=${task.task_id}`}>
+                      整理交接資訊
+                    </Link>
+                  </div>
                 </article>
               ))}
             </div>
