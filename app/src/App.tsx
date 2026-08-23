@@ -10,6 +10,7 @@ import { AssignmentSetupPage } from './pages/AssignmentSetupPage';
 import { ScenarioPage } from './pages/ScenarioPage';
 import { BackupSetupPage } from './pages/BackupSetupPage';
 import { HandoffSetupPage } from './pages/HandoffSetupPage';
+import { HandoffPrintPage } from './pages/HandoffPrintPage';
 
 function AuthEntryRoute() {
   const location = useLocation();
@@ -39,6 +40,7 @@ export function App() {
         <Route path="/setup/assignments" element={<AssignmentSetupPage />} />
         <Route path="/setup/backups" element={<BackupSetupPage />} />
         <Route path="/setup/handoffs" element={<HandoffSetupPage />} />
+        <Route path="/handoffs/print" element={<HandoffPrintPage />} />
         <Route path="/scenario" element={<ScenarioPage />} />
         <Route path="/app" element={<ProtectedHomePage />} />
       </Route>

@@ -305,7 +305,60 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .handoff-grid { grid-template-columns: 1fr; }
   .task-item-actions { align-items: flex-start; }
   .home-handoff-reminder-heading, .home-handoff-reminder-actions { flex-direction: column; }
-  .home-handoff-reminder-actions > * { width: 100%; }
+.home-handoff-reminder-actions > * { width: 100%; }
+}
+
+.offline-handoff-controls { max-width: 48rem; }
+.offline-task-picker { display: grid; gap: 0.8rem; }
+.offline-task-option { display: grid; gap: 0.55rem; padding: 0.9rem; border: 1px solid rgba(88, 118, 134, 0.18); border-radius: 0.9rem; background: #fffefb; }
+.offline-task-option > label:first-child { display: flex; align-items: flex-start; gap: 0.7rem; }
+.offline-task-option label span { display: grid; gap: 0.3rem; }
+.offline-task-option small { color: var(--muted); line-height: 1.5; }
+.offline-task-option a { color: var(--mist-700); font-weight: 750; }
+.offline-notes-toggle { display: flex; align-items: center; gap: 0.55rem; color: var(--muted); font-size: 0.84rem; }
+.offline-handoff-preview { margin-top: 1.5rem; padding: clamp(1.5rem, 4vw, 3rem); color: #171717; background: #fff; box-shadow: var(--shadow); }
+.offline-print-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 2rem; padding: 1rem; border-radius: 0.9rem; color: var(--muted); background: var(--mist-100); }
+.offline-print-actions p { margin: 0; }
+.offline-document-header { padding-bottom: 1.5rem; border-bottom: 3px solid #171717; }
+.offline-document-header h1 { color: #171717; font-size: clamp(2rem, 6vw, 3rem); }
+.offline-document-header dl, .offline-task-summary dl { display: grid; gap: 0.65rem; }
+.offline-document-header dl div, .offline-task-summary dl div { display: grid; grid-template-columns: minmax(8rem, 0.35fr) 1fr; gap: 1rem; }
+.offline-document-header dt, .offline-task-summary dt { font-weight: 750; }
+.offline-document-header dd, .offline-task-summary dd { margin: 0; overflow-wrap: anywhere; }
+.offline-version-warning, .offline-draft-warning, .offline-medication-warning { padding: 0.8rem 1rem; border: 2px solid #171717; font-weight: 750; line-height: 1.6; }
+.offline-document-tasks { display: grid; gap: 1.5rem; margin-top: 1.5rem; }
+.offline-task-summary { break-inside: avoid; page-break-inside: avoid; padding: 1.4rem; border: 2px solid #171717; }
+.offline-task-summary header { break-after: avoid; page-break-after: avoid; }
+.offline-task-summary header > span { font-weight: 750; }
+.offline-task-summary h2 { margin: 0.25rem 0; color: #171717; font-size: 1.6rem; }
+.offline-task-summary header p, .offline-task-summary section p { line-height: 1.65; }
+.offline-task-summary section { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid #666; }
+.offline-task-summary h3 { margin: 0 0 0.4rem; color: #171717; font-size: 1.1rem; }
+.handoff-readiness-line { font-weight: 750; }
+.offline-additional-notes p { white-space: pre-wrap; }
+.offline-freshness { font-size: 0.9rem; }
+.offline-freshness small { line-height: 1.5; }
+.offline-document-footer { margin-top: 1.5rem; padding-top: 1rem; border-top: 2px solid #171717; font-size: 0.9rem; line-height: 1.6; }
+
+@media (max-width: 760px) {
+  .offline-print-actions { align-items: stretch; flex-direction: column; }
+  .offline-print-actions button { width: 100%; }
+  .offline-handoff-preview { padding: 1rem; }
+  .offline-document-header dl div, .offline-task-summary dl div { grid-template-columns: 1fr; gap: 0.2rem; }
+}
+
+@media print {
+  @page { margin: 14mm; }
+  body { color: #000; background: #fff; font-size: 14pt; }
+  .no-print { display: none !important; }
+  .offline-handoff-layout { width: auto; max-width: none; margin: 0; padding: 0; }
+  .offline-handoff-preview { margin: 0; padding: 0; box-shadow: none; }
+  .offline-document-header h1 { font-size: 24pt; }
+  .offline-task-summary { margin-bottom: 10mm; border-color: #000; }
+  .offline-task-summary h2 { font-size: 20pt; }
+  .offline-task-summary h3 { font-size: 15pt; }
+  .offline-version-warning, .offline-draft-warning, .offline-medication-warning { border-color: #000; background: #fff; }
+  a { color: #000; text-decoration: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

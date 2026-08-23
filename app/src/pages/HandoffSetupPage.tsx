@@ -216,7 +216,7 @@ export function HandoffSetupPage() {
   if (loading) return <main className="centered-page"><section className="status-card compact-card">正在載入交接資訊…</section></main>;
 
   return <main className="task-setup-layout handoff-layout">
-    <header className="task-page-header"><div><p className="eyebrow">{receiver?.display_name}的交接準備</p><h1>讓接手的人知道怎麼做</h1><p>有人願意接手，不代表已經知道每項工作怎麼完成，請整理真正需要交接的資訊</p></div><button className="secondary-button" type="button" onClick={() => navigate('/app')}>返回照顧空間</button></header>
+    <header className="task-page-header"><div><p className="eyebrow">{receiver?.display_name}的交接準備</p><h1>讓接手的人知道怎麼做</h1><p>有人願意接手，不代表已經知道每項工作怎麼完成，請整理真正需要交接的資訊</p></div><div className="form-actions"><button className="secondary-button" type="button" onClick={() => navigate('/handoffs/print')}>產生交接摘要</button><button className="secondary-button" type="button" onClick={() => navigate('/app')}>返回照顧空間</button></div></header>
     <div className="handoff-grid">
       <section className="task-list-card"><p className="eyebrow">照顧工作</p><h2>選擇要整理的工作</h2><div className="task-list">
         {tasks.map((task) => {
