@@ -193,5 +193,5 @@ care-continuity/
 - App tests：167/167
 - TypeScript typecheck：通過
 - Production build：通過
-- Vercel production deployment：Ready，來源為上述 commit
+- Vercel production deployment：Ready，且目前 production 包含上述 Offline Delivery feature baseline
 - 下一步與已知限制：[2026-08-23 project status](docs/project-status/2026-08-23-offline-delivery-deployment.md)
