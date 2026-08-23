@@ -1,196 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import {
-  type BackupAssignment,
-  type CareScenario,
-  type CareTask,
-  type CurrentAssignment,
-  evaluateScenario
-} from '../engine/coverageEngine';
-
-const SOURCE = {
-  me: 'source-me',
-  father: 'source-father',
-  sister: 'source-sister',
-  homeCare: 'source-home-care'
-};
-
-const TASK = {
-  medication: 'task-medication',
-  toileting: 'task-toileting',
-  bathing: 'task-bathing',
-  medical: 'task-medical'
-};
-
-const tasks: CareTask[] = [
-  {
-    task_id: TASK.medication,
-    occurrence_pattern: { type: 'DAILY', time_blocks: ['MORNING', 'EVENING'] },
-    required_support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.toileting,
-    occurrence_pattern: { type: 'DAILY', time_blocks: ['FLEXIBLE'] },
-    required_support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.bathing,
-    occurrence_pattern: {
-      type: 'WEEKLY',
-      weekdays: ['MON', 'WED', 'FRI'],
-      time_blocks: ['EVENING']
-    },
-    required_support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.medical,
-    occurrence_pattern: { type: 'AS_NEEDED' },
-    required_support_modes: ['ON_SITE']
-  }
-];
-
-const currents: CurrentAssignment[] = [
-  {
-    task_id: TASK.medication,
-    care_source_id: SOURCE.me,
-    participation_type: 'REGULAR',
-    time_scope: { mode: 'SAME_AS_TASK_PATTERN' },
-    support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.toileting,
-    care_source_id: SOURCE.me,
-    participation_type: 'REGULAR',
-    time_scope: { mode: 'SAME_AS_TASK_PATTERN' },
-    support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.toileting,
-    care_source_id: SOURCE.father,
-    participation_type: 'OCCASIONAL',
-    time_scope: null,
-    support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.bathing,
-    care_source_id: SOURCE.homeCare,
-    participation_type: 'REGULAR',
-    time_scope: { mode: 'SAME_AS_TASK_PATTERN' },
-    support_modes: ['ON_SITE']
-  },
-  {
-    task_id: TASK.medical,
-    care_source_id: SOURCE.me,
-    participation_type: 'REGULAR',
-    time_scope: { mode: 'SAME_AS_TASK_PATTERN' },
-    support_modes: ['ON_SITE']
-  }
-];
-
-const backups: BackupAssignment[] = [
-  {
-    task_id: TASK.medication,
-    care_source_id: SOURCE.father,
-    confirmation_status: 'CONFIRMED_WITH_LIMITS',
-    time_scope: { time_blocks: ['MORNING'] },
-    support_modes_committed: ['ON_SITE']
-  },
-  {
-    task_id: TASK.toileting,
-    care_source_id: SOURCE.father,
-    confirmation_status: 'POSSIBLE',
-    time_scope: null,
-    support_modes_committed: []
-  },
-  {
-    task_id: TASK.medical,
-    care_source_id: SOURCE.sister,
-    confirmation_status: 'CONFIRMED',
-    time_scope: null,
-    support_modes_committed: ['REMOTE_COORDINATION']
-  }
-];
-
-const baselineScenario: CareScenario = {
-  unavailable_care_source_id: SOURCE.me,
-  duration_mode: 'EXPLICIT_RANGE',
-  valid_from: '2026-08-25T00:00:00+08:00',
-  valid_until: '2026-08-27T23:59:59+08:00'
-};
-
-function findDetail(
-  result: ReturnType<typeof evaluateScenario>,
-  taskId: string,
-  date: string | null,
-  timeBlock: string
-) {
-  return result.details.find(
-    detail => detail.task_id === taskId && detail.date === date && detail.time_block === timeBlock
-  );
-}
-
-describe('Graduation Project Golden Test Suite MVP v1.0', () => {
-  it('TC-MVP-01: baseline golden fixture', () => {
-    const result = evaluateScenario(tasks, baselineScenario, currents, backups);
-
-    expect(result.summary).toEqual({
-      covered: 4,
-      needs_confirmation: 3,
-      unprepared: 3,
-      coordination_only: 1
-    });
-
-    for (const date of ['2026-08-25', '2026-08-26', '2026-08-27']) {
-      expect(findDetail(result, TASK.medication, date, 'MORNING')?.status).toBe('COVERED');
-      expect(findDetail(result, TASK.medication, date, 'EVENING')?.status).toBe('UNPREPARED');
-      expect(findDetail(result, TASK.toileting, date, 'FLEXIBLE')?.status).toBe('NEEDS_CONFIRMATION');
-    }
-
-    expect(findDetail(result, TASK.bathing, '2026-08-26', 'EVENING')?.status).toBe('COVERED');
-    expect(findDetail(result, TASK.bathing, '2026-08-25', 'EVENING')).toBeUndefined();
-    expect(findDetail(result, TASK.bathing, '2026-08-27', 'EVENING')).toBeUndefined();
-    expect(findDetail(result, TASK.medical, null, 'AS_NEEDED')?.status).toBe('COORDINATION_ONLY');
-  });
-
-  it('TC-MVP-02: confirmed-with-limits only covers the explicitly confirmed evening', () => {
-    const limitedEvening: BackupAssignment = {
-      task_id: TASK.medication,
-      care_source_id: SOURCE.father,
-      confirmation_status: 'CONFIRMED_WITH_LIMITS',
-      time_scope: { dates: ['2026-08-25'], time_blocks: ['EVENING'] },
-      support_modes_committed: ['ON_SITE']
-    };
-
-    const result = evaluateScenario(tasks, baselineScenario, currents, [...backups, limitedEvening]);
-
-    expect(findDetail(result, TASK.medication, '2026-08-25', 'EVENING')?.status).toBe('COVERED');
-    expect(findDetail(result, TASK.medication, '2026-08-26', 'EVENING')?.status).toBe('UNPREPARED');
-    expect(findDetail(result, TASK.medication, '2026-08-27', 'EVENING')?.status).toBe('UNPREPARED');
-  });
-
-  it('TC-MVP-03: unavailable filter does not remove an independent professional care source', () => {
-    const fatherUnavailable: CareScenario = {
-      ...baselineScenario,
-      unavailable_care_source_id: SOURCE.father
-    };
-
-    const result = evaluateScenario(tasks, fatherUnavailable, currents, backups);
-
-    expect(findDetail(result, TASK.bathing, '2026-08-26', 'EVENING')).toMatchObject({
-      status: 'COVERED',
-      source_id: SOURCE.homeCare,
-      reason: 'CURRENT_REGULAR_MATCH'
-    });
-  });
-
-  it('TC-MVP-04: UI action state is outside the engine input boundary', () => {
-    const before = evaluateScenario(tasks, baselineScenario, currents, backups);
-
-    // UI workflow state intentionally never enters evaluateScenario(...).
-    const uiActionStatus = 'WAITING_RESPONSE';
-    expect(uiActionStatus).toBe('WAITING_RESPONSE');
-
-    const after = evaluateScenario(tasks, baselineScenario, currents, backups);
-    expect(after).toEqual(before);
-    expect(findDetail(after, TASK.medication, '2026-08-25', 'EVENING')?.status).toBe('UNPREPARED');
-  });
+import { evaluateOccurrence, evaluateScenario, expandOccurrences, type BackupAssignment, type CareScenario, type CareTask, type CurrentAssignment, type TaskOccurrence } from '../engine/coverageEngine';
+const scenario: CareScenario = { unavailable_care_source_id: 'me', duration_mode: 'EXPLICIT_RANGE', valid_from: '2026-08-25T14:00:00+08:00', valid_until: '2026-08-26T14:00:00+08:00' };
+const daily: CareTask = { task_id: 'daily', occurrence_pattern: { type: 'DAILY', scheduled_times: ['08:00', '15:00', '22:00'] }, required_support_modes: ['ON_SITE'] };
+const occurrence: TaskOccurrence = { occurrence_type: 'SCHEDULED', task_id: 'daily', date: '2026-08-25', scheduled_time: '15:00', scheduled_at: '2026-08-25T15:00:00+08:00', weekday: 'TUE', required_support_modes: ['ON_SITE'] };
+const regular = (source: string, support: CurrentAssignment['support_modes'] = ['ON_SITE']): CurrentAssignment => ({ task_id: 'daily', care_source_id: source, participation_type: 'REGULAR', time_scope: { mode: 'SAME_AS_TASK_PATTERN' }, support_modes: support });
+const backup = (source: string, overrides: Partial<BackupAssignment> = {}): BackupAssignment => ({ task_id: 'daily', care_source_id: source, confirmation_status: 'CONFIRMED', time_scope: { mode: 'SAME_AS_TASK_PATTERN' }, support_modes_committed: ['ON_SITE'], ...overrides });
+describe('Coverage Engine exact-time golden suite', () => {
+  it('01 expands exact 08:00/15:00/22:00 occurrences', () => expect(expandOccurrences([daily], ['2026-08-25']).scheduled.map((x) => x.scheduled_at)).toEqual(['2026-08-25T08:00:00+08:00', '2026-08-25T15:00:00+08:00', '2026-08-25T22:00:00+08:00']));
+  it('02 uses a half-open 24h interval', () => expect(evaluateScenario([daily], scenario, [], []).details.map((x) => x.scheduled_at)).toEqual(['2026-08-25T15:00:00+08:00', '2026-08-25T22:00:00+08:00', '2026-08-26T08:00:00+08:00']));
+  it('03 excludes an occurrence exactly at valid_until', () => { const task: CareTask = { ...daily, occurrence_pattern: { type: 'DAILY', scheduled_times: ['14:00'] } }; expect(evaluateScenario([task], scenario, [], []).details).toHaveLength(1); expect(evaluateScenario([task], scenario, [], []).details[0].date).toBe('2026-08-25'); });
+  it('04 reports all matching REGULAR sources with stable deduplication', () => expect(evaluateOccurrence(occurrence, scenario, [regular('daughter'), regular('service'), regular('daughter')], [])).toMatchObject({ status: 'COVERED', source_id: 'daughter', source_ids: ['daughter', 'service'] }));
+  it('05 keeps covered when one overlapping source is unavailable', () => expect(evaluateOccurrence(occurrence, { ...scenario, unavailable_care_source_id: 'daughter' }, [regular('daughter'), regular('service')], [])).toMatchObject({ status: 'COVERED', source_ids: ['service'] }));
+  it('06 ignores incompatible REGULAR and retains compatible REGULAR', () => expect(evaluateOccurrence(occurrence, scenario, [regular('remote', ['REMOTE_COORDINATION']), regular('onsite')], [])).toMatchObject({ status: 'COVERED', source_ids: ['onsite'] }));
+  it('07 rejects REMOTE-only OCCASIONAL for ON_SITE task', () => expect(evaluateOccurrence(occurrence, scenario, [{ ...regular('helper', ['REMOTE_COORDINATION']), participation_type: 'OCCASIONAL' }], [])).toMatchObject({ status: 'UNPREPARED' }));
+  it('08 accepts compatible OCCASIONAL as confirmation candidate', () => expect(evaluateOccurrence(occurrence, scenario, [{ ...regular('helper'), participation_type: 'OCCASIONAL' }], [])).toMatchObject({ status: 'NEEDS_CONFIRMATION', candidate_ids: ['helper'] }));
+  it('09 respects OCCASIONAL exact-time scope', () => expect(evaluateOccurrence(occurrence, scenario, [{ ...regular('helper'), participation_type: 'OCCASIONAL', time_scope: { scheduled_times: ['08:00'] } }], [])).toMatchObject({ status: 'UNPREPARED' }));
+  it('10 respects WEEKLY weekday and time', () => { const weekly: CareTask = { task_id: 'weekly', occurrence_pattern: { type: 'WEEKLY', weekdays: ['WED'], scheduled_times: ['08:00'] }, required_support_modes: ['ON_SITE'] }; expect(expandOccurrences([weekly], ['2026-08-25', '2026-08-26']).scheduled.map((x) => x.scheduled_at)).toEqual(['2026-08-26T08:00:00+08:00']); });
+  it('11 keeps AS_NEEDED separate without scheduled_at or summary count', () => { const task: CareTask = { task_id: 'need', occurrence_pattern: { type: 'AS_NEEDED' }, required_support_modes: ['ON_SITE'] }; const result = evaluateScenario([task], scenario, [], []); expect(result.details).toEqual([]); expect(result.summary).toEqual({ covered: 0, needs_confirmation: 0, unprepared: 0, coordination_only: 0 }); expect(result.unscheduled_considerations[0]).toMatchObject({ occurrence_type: 'AS_NEEDED', date: null, status: 'UNPREPARED' }); expect(result.unscheduled_considerations[0]).not.toHaveProperty('scheduled_at'); });
+  it.each(['25:00', '08:60'])('12 rejects invalid engine time %s', (time) => { const invalid: CareTask = { ...daily, occurrence_pattern: { type: 'DAILY', scheduled_times: [time] } }; expect(() => expandOccurrences([invalid], ['2026-08-25'])).toThrow('INVALID_SCHEDULED_TIME'); });
+  it('13 expands 72 hours with exact boundaries', () => { const result = evaluateScenario([{ ...daily, occurrence_pattern: { type: 'DAILY', scheduled_times: ['15:00'] } }], { ...scenario, valid_until: '2026-08-28T14:00:00+08:00' }, [], []); expect(result.details).toHaveLength(3); });
+  it('14 expands seven days', () => { const result = evaluateScenario([{ ...daily, occurrence_pattern: { type: 'DAILY', scheduled_times: ['15:00'] } }], { ...scenario, valid_until: '2026-09-01T14:00:00+08:00' }, [], []); expect(result.details).toHaveLength(7); });
+  it('15 declares Taipei timezone and interval contract', () => expect(evaluateScenario([daily], scenario, [], [])).toMatchObject({ engine_version: '2.0-MVP', timezone: 'Asia/Taipei', interval: '[valid_from, valid_until)' }));
+  it('16 rejects invalid scenario intervals', () => expect(() => evaluateScenario([daily], { ...scenario, valid_until: scenario.valid_from }, [], [])).toThrow('INVALID_SCENARIO_INTERVAL'));
+  it('17 preserves POSSIBLE backup capability-unknown semantics', () => expect(evaluateOccurrence(occurrence, scenario, [], [{ task_id: 'daily', care_source_id: 'possible', confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] }])).toMatchObject({ status: 'NEEDS_CONFIRMATION', candidate_ids: ['possible'] }));
+  it('18 ignores an unavailable CONFIRMED backup', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('me')])).toMatchObject({ status: 'UNPREPARED' }));
+  it('19 ignores an unavailable POSSIBLE backup', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('me', { confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] })])).toMatchObject({ status: 'UNPREPARED' }));
+  it('20 keeps another confirmed backup when one is unavailable', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('me'), backup('service')])).toMatchObject({ status: 'COVERED', source_id: 'service', source_ids: ['service'] }));
+  it('21 reports all confirmed backups with stable deduplication', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('daughter'), backup('service'), backup('daughter')])).toMatchObject({ status: 'COVERED', source_id: 'daughter', source_ids: ['daughter', 'service'] }));
+  it('22 ignores a confirmed backup outside its exact-time scope', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('helper', { confirmation_status: 'CONFIRMED_WITH_LIMITS', time_scope: { scheduled_times: ['08:00'] } })])).toMatchObject({ status: 'UNPREPARED' }));
+  it('23 ignores a confirmed backup with incompatible support mode', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('helper', { support_modes_committed: ['FLEXIBLE'] })])).toMatchObject({ status: 'UNPREPARED' }));
+  it('24 keeps an available POSSIBLE backup as a confirmation candidate', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('helper', { confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] })])).toMatchObject({ status: 'NEEDS_CONFIRMATION', candidate_ids: ['helper'] }));
+  it('25 accepts the canonical empty committed modes for POSSIBLE without throwing', () => expect(() => evaluateOccurrence(occurrence, scenario, [], [backup('helper', { confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] })])).not.toThrow());
+  it('26 ignores unavailable coordination-only backup', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('me', { support_modes_committed: ['REMOTE_COORDINATION'] })])).toMatchObject({ status: 'UNPREPARED' }));
+  it('27 preserves current REGULAR priority over confirmed backup', () => expect(evaluateOccurrence(occurrence, scenario, [regular('current')], [backup('backup')])).toMatchObject({ status: 'COVERED', source_id: 'current', source_ids: ['current'], reason: 'CURRENT_REGULAR_MATCH' }));
+  it('28 preserves OCCASIONAL confirmation semantics when no confirmed backup matches', () => expect(evaluateOccurrence(occurrence, scenario, [{ ...regular('occasional'), participation_type: 'OCCASIONAL' }], [backup('remote', { support_modes_committed: ['FLEXIBLE'] })])).toMatchObject({ status: 'NEEDS_CONFIRMATION', candidate_ids: ['occasional'] }));
+  it('29 preserves COORDINATION_ONLY for an available remote confirmed backup', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('coordinator', { support_modes_committed: ['REMOTE_COORDINATION'] })])).toMatchObject({ status: 'COORDINATION_ONLY', source_id: 'coordinator', reason: 'REMOTE_COORDINATION_ONLY' }));
 });

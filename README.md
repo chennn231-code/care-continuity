@@ -155,9 +155,17 @@
 
 ## 專案狀態
 
-目前階段：**問題定義、需求梳理與研究驗證**
+截至 2026-08-23，專案已進入 **前端 MVP vertical slice 驗證階段**。
 
-目前尚未進入完整正式 App 功能開發；現階段先確立研究問題、核心流程、資訊架構、品牌與 MVP 邏輯，再逐步製作 Prototype。
+目前已完成並驗證：
+
+- Supabase canonical migration workflow、Authentication lifecycle 與 9 張核心表 RLS 安全基線
+- 被照顧者、照顧任務、照顧來源與目前分工的 React authenticated CRUD 流程
+- Exact-time Coverage Engine 與 24 小時／72 小時／7 天主要照顧者中斷模擬
+- 具體日期、時間與工作層級的 Care Gap 顯示
+- `POSSIBLE`／`CONFIRMED`／`CONFIRMED_WITH_LIMITS` 備援安排 CRUD 與 Scenario Engine 串接
+
+Scenario 結果目前維持即時計算，不使用風險分數、AI 推薦或 evaluation persistence。下一階段為受控的 Backup Assignment 遠端 RLS／Scenario E2E 驗證。
 
 ## Repository 結構
 

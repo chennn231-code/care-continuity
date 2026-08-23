@@ -1,0 +1,19 @@
+import { describe, expect, it } from 'vitest';
+import { eligibleBackupSources, normalizeBackupInput, type BackupFormValues } from '../src/backups/backupContract';
+import type { CareTaskRow } from '../src/lib/careTasks';
+
+const daily: Pick<CareTaskRow, 'occurrence_pattern' | 'required_support_modes'> = { occurrence_pattern: { type: 'DAILY', scheduled_times: ['08:00', '15:00'] }, required_support_modes: ['ON_SITE'] };
+const weekly: Pick<CareTaskRow, 'occurrence_pattern' | 'required_support_modes'> = { occurrence_pattern: { type: 'WEEKLY', weekdays: ['MON', 'WED'], scheduled_times: ['08:00', '18:00'] }, required_support_modes: ['ON_SITE'] };
+const values = (overrides: Partial<BackupFormValues> = {}): BackupFormValues => ({ careSourceId: 'helper', confirmationStatus: 'POSSIBLE', weekdays: [], scheduledTimes: [], supportModes: [], ...overrides });
+
+describe('Backup assignment contract', () => {
+  it('normalizes POSSIBLE to null scope and empty committed modes', () => expect(normalizeBackupInput(daily, values({ weekdays: ['MON'], scheduledTimes: ['08:00'], supportModes: ['ON_SITE'] }))).toEqual({ care_source_id: 'helper', confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] }));
+  it('normalizes CONFIRMED to the complete task pattern', () => expect(normalizeBackupInput(daily, values({ confirmationStatus: 'CONFIRMED', supportModes: ['ON_SITE'] }))).toEqual({ care_source_id: 'helper', confirmation_status: 'CONFIRMED', time_scope: { mode: 'SAME_AS_TASK_PATTERN' }, support_modes_committed: ['ON_SITE'] }));
+  it('requires committed support for confirmed states', () => expect(() => normalizeBackupInput(daily, values({ confirmationStatus: 'CONFIRMED' }))).toThrow('至少需要選擇一種'));
+  it('normalizes DAILY limited exact times with stable deduplication', () => expect(normalizeBackupInput(daily, values({ confirmationStatus: 'CONFIRMED_WITH_LIMITS', scheduledTimes: ['15:00', '08:00', '15:00'], supportModes: ['ON_SITE'] })).time_scope).toEqual({ scheduled_times: ['08:00', '15:00'] }));
+  it('rejects DAILY limited empty scope', () => expect(() => normalizeBackupInput(daily, values({ confirmationStatus: 'CONFIRMED_WITH_LIMITS', supportModes: ['ON_SITE'] }))).toThrow('至少需要選擇一個時間'));
+  it('normalizes WEEKLY limited subsets', () => expect(normalizeBackupInput(weekly, values({ confirmationStatus: 'CONFIRMED_WITH_LIMITS', weekdays: ['WED', 'MON', 'WED'], scheduledTimes: ['18:00'], supportModes: ['ON_SITE'] })).time_scope).toEqual({ weekdays: ['MON', 'WED'], scheduled_times: ['18:00'] }));
+  it('rejects times outside the task pattern', () => expect(() => normalizeBackupInput(daily, values({ confirmationStatus: 'CONFIRMED_WITH_LIMITS', scheduledTimes: ['22:00'], supportModes: ['ON_SITE'] }))).toThrow('不屬於這項工作'));
+  it('rejects limited scope for AS_NEEDED', () => expect(() => normalizeBackupInput({ occurrence_pattern: { type: 'AS_NEEDED' }, required_support_modes: ['ON_SITE'] }, values({ confirmationStatus: 'CONFIRMED_WITH_LIMITS', supportModes: ['ON_SITE'] }))).toThrow('非固定需求'));
+  it('excludes only the authenticated self-linked source from the picker', () => expect(eligibleBackupSources([{ id: 'self', user_id: 'user-a' }, { id: 'helper', user_id: null }, { id: 'other-account', user_id: 'user-b' }], 'user-a').map((source) => source.id)).toEqual(['helper', 'other-account']));
+});
