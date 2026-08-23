@@ -1,11 +1,15 @@
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
+import { getAuthErrorMessage } from '../auth/authErrorMessages';
 
 export function ConfirmEmailPage() {
   const { session, loading } = useAuth();
   const location = useLocation();
   const email = (location.state as { email?: string } | null)?.email;
-  const callbackError = new URLSearchParams(location.search).get('error_description');
+  const searchParams = new URLSearchParams(location.search);
+  const hashParams = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const callbackError = searchParams.get('error_description') ?? hashParams.get('error_description');
+  const callbackErrorCode = searchParams.get('error_code') ?? hashParams.get('error_code');
 
   if (!loading && session) return <Navigate to="/app" replace />;
 
@@ -18,7 +22,7 @@ export function ConfirmEmailPage() {
           {callbackError ? '確認連結無法使用' : '請查看你的 Email'}
         </h1>
         {callbackError ? (
-          <p className="form-message error" role="alert">{callbackError}</p>
+          <p className="form-message error" role="alert">{getAuthErrorMessage(callbackError, callbackErrorCode)}</p>
         ) : (
           <p>
             我們已將確認連結寄到{email ? <strong> {email}</strong> : '你的信箱'}。

@@ -98,6 +98,7 @@ export function ProtectedHomePage() {
           <div className="receiver-summary">
             <span>被照顧者</span>
             <strong>{receiver.display_name}</strong>
+            <Link className="text-button receiver-edit-link" to="/setup/receiver?edit=1">修改稱呼</Link>
           </div>
         )}
         {tasks.length === 0 ? (
@@ -141,17 +142,17 @@ export function ProtectedHomePage() {
                 ) : (
                   <p>目前照顧分工已整理完成。這不代表中斷時沒有風險或已有備援。</p>
                 )}
-                <Link className="primary-button next-step-button" to="/setup/assignments">
+                <Link className={`${unassignedTaskCount > 0 ? 'primary-button' : 'secondary-button'} next-step-button`} to="/setup/assignments">
                   {assignments.length === 0 ? '設定目前誰負責哪些工作' : '查看／修改目前分工'}
                 </Link>
                 {unassignedTaskCount === 0 && (
                   <>
-                    <Link className="primary-button next-step-button" to="/setup/backups">
+                    <Link className={`${backups.length ? 'secondary-button' : 'primary-button'} next-step-button`} to="/setup/backups">
                       {backups.length ? '查看／修改備援安排' : '建立備援安排'}
                     </Link>
-                    <Link className="primary-button next-step-button scenario-entry" to="/scenario">
-                      如果明天我不能照顧呢？
-                    </Link>
+                    {backups.length > 0 && <Link className="primary-button next-step-button scenario-entry" to="/scenario">
+                      開始中斷模擬
+                    </Link>}
                   </>
                 )}
               </>

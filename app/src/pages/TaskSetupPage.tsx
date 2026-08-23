@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listOwnedCareReceivers, type CareReceiver } from '../lib/careReceivers';
 import {
@@ -25,6 +25,13 @@ import {
   type TaskCategory,
   type Weekday
 } from '../tasks/taskContract';
+import { listCurrentAssignments } from '../lib/currentAssignments';
+import { listBackupAssignments } from '../lib/backupAssignments';
+import { listCareSources } from '../lib/careSources';
+import {
+  describeTaskDependencyIssues,
+  validateTaskDependencies
+} from '../tasks/taskDependencyValidation';
 
 interface TaskFormState {
   title: string;
@@ -69,6 +76,7 @@ export function TaskSetupPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formCardRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -134,6 +142,19 @@ export function TaskSetupPage() {
     setSubmitting(true);
     try {
       if (editingTaskId) {
+        const [currents, backups, sources] = await Promise.all([
+          listCurrentAssignments([editingTaskId]),
+          listBackupAssignments([editingTaskId]),
+          listCareSources(receiver.care_receiver_id)
+        ]);
+        const dependencyIssues = validateTaskDependencies(input, currents, backups);
+        if (dependencyIssues.length) {
+          setError(describeTaskDependencyIssues(
+            dependencyIssues,
+            new Map(sources.map((source) => [source.care_source_id, source.display_name]))
+          ));
+          return;
+        }
         const updated = await updateCareTask(receiver.care_receiver_id, editingTaskId, input);
         setTasks((current) => current.map((task) => task.task_id === updated.task_id ? updated : task));
       } else {
@@ -153,7 +174,7 @@ export function TaskSetupPage() {
     setEditingTaskId(task.task_id);
     setForm(formFromTask(task));
     setError(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.requestAnimationFrame(() => formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   if (loading) {
@@ -179,8 +200,8 @@ export function TaskSetupPage() {
         </button>
       </header>
 
-      <div className="task-setup-grid">
-        <section className="task-form-card" aria-labelledby="task-form-title">
+      <div className={`task-setup-grid${editingTaskId ? ' is-editing' : ''}`}>
+        <section className="task-form-card" aria-labelledby="task-form-title" ref={formCardRef}>
           <p className="eyebrow">{editingTaskId ? '修改照顧工作' : '新增照顧工作'}</p>
           <h2 id="task-form-title">{editingTaskId ? '調整這項工作的內容' : '先記下一件重要的事'}</h2>
 

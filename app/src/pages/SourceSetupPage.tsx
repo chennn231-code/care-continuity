@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { listOwnedCareReceivers, type CareReceiver } from '../lib/careReceivers';
@@ -40,6 +40,7 @@ export function SourceSetupPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formCardRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -133,7 +134,7 @@ export function SourceSetupPage() {
       isSelf: source.user_id === session?.user.id
     });
     setError(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.requestAnimationFrame(() => formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   if (loading) {
@@ -159,8 +160,8 @@ export function SourceSetupPage() {
         </button>
       </header>
 
-      <div className="task-setup-grid">
-        <section className="task-form-card" aria-labelledby="source-form-title">
+      <div className={`task-setup-grid${editingSourceId ? ' is-editing' : ''}`}>
+        <section className="task-form-card" aria-labelledby="source-form-title" ref={formCardRef}>
           <p className="eyebrow">{editingSourceId ? '修改照顧來源' : '新增照顧來源'}</p>
           <h2 id="source-form-title">
             {editingSourceId ? '調整來源資料' : '加入一位可能參與的人或服務'}

@@ -1,12 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
+import { getAuthErrorMessage } from '../auth/authErrorMessages';
 
 type AuthMode = 'sign-in' | 'sign-up';
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : '目前無法完成操作，請稍後再試。';
-}
 
 export function AuthPage() {
   const { session, loading, signIn, signUp } = useAuth();
@@ -45,7 +42,7 @@ export function AuthPage() {
         navigate(requestedPath ?? '/app', { replace: true });
       }
     } catch (submitError) {
-      setError(getErrorMessage(submitError));
+      setError(getAuthErrorMessage(submitError));
     } finally {
       setSubmitting(false);
     }

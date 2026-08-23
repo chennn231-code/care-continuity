@@ -15,6 +15,7 @@ import {
   ScenarioContractError,
   type ScenarioDurationHours
 } from '../scenario/scenarioContract';
+import { describeScenarioSources } from '../scenario/scenarioPresentation';
 
 export function ScenarioPage() {
   const { session } = useAuth();
@@ -52,7 +53,10 @@ export function ScenarioPage() {
   }, [navigate]);
 
   const tasksById = useMemo(() => new Map(tasks.map((task) => [task.task_id, task])), [tasks]);
+  const sourceById = useMemo(() => new Map(sources.map((source) => [source.care_source_id, source.display_name])), [sources]);
   const selfSource = sources.find((source) => source.user_id === session?.user.id);
+  const assignedTaskIds = useMemo(() => new Set(assignments.map((assignment) => assignment.task_id)), [assignments]);
+  const unassignedTaskCount = tasks.filter((task) => !assignedTaskIds.has(task.task_id)).length;
 
   const simulate = (event: FormEvent) => {
     event.preventDefault();
@@ -77,7 +81,19 @@ export function ScenarioPage() {
         <button className="secondary-button" onClick={() => navigate('/app')}>返回照顧空間</button>
       </header>
 
-      {!selfSource ? (
+      {tasks.length === 0 ? (
+        <section className="task-form-card missing-self-card">
+          <h2>尚未整理照顧工作</h2>
+          <p>先記下平常需要完成的照顧工作，模擬才不會把「沒有資料」誤解成沒有照顧空窗。</p>
+          <Link className="primary-button" to="/setup/tasks">前往照顧任務</Link>
+        </section>
+      ) : sources.length === 0 ? (
+        <section className="task-form-card missing-self-card">
+          <h2>尚未加入照顧來源</h2>
+          <p>請先加入目前參與照顧的人或服務，並標示主要照顧者本人。</p>
+          <Link className="primary-button" to="/setup/sources">前往照顧來源設定</Link>
+        </section>
+      ) : !selfSource ? (
         <section className="task-form-card missing-self-card">
           <h2>尚未設定「主要照顧者本人」</h2>
           <p>請先回到照顧來源設定，將代表你本人的來源勾選為「這是我本人」。系統不會自行猜測哪一位家人是主要照顧者。</p>
@@ -87,8 +103,13 @@ export function ScenarioPage() {
         <>
           <section className="task-form-card scenario-controls">
             <p className="self-source-line">本次 unavailable source：<strong>{selfSource.display_name}</strong></p>
+            {unassignedTaskCount > 0 && <div className="scenario-prerequisite-warning" role="alert">
+              <strong>有 {unassignedTaskCount} 項工作尚未設定目前負責者</strong>
+              <span>你仍可繼續模擬，但結果會把未記錄的現況視為沒有可確認安排。</span>
+              <Link to="/setup/assignments">先整理目前分工</Link>
+            </div>}
             <form className="form-stack task-form" onSubmit={simulate}>
-              <label>無法照顧的開始時間<input type="text" inputMode="numeric" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-5][0-9]" placeholder="2026-08-25T14:00" value={startLocal} onChange={(event) => { setStartLocal(event.target.value); setResult(null); }} required /></label>
+              <label>無法照顧的開始時間<input type="datetime-local" value={startLocal} onChange={(event) => { setStartLocal(event.target.value); setResult(null); }} required /></label>
               <fieldset><legend>模擬期間</legend><div className="choice-grid three-columns">
                 {SCENARIO_DURATIONS.map((hours) => <label className="choice-card" key={hours}><input type="radio" name="duration" checked={duration === hours} onChange={() => { setDuration(hours); setResult(null); }} />{hours === 168 ? '7 天' : `${hours} 小時`}</label>)}
               </div></fieldset>
@@ -102,19 +123,21 @@ export function ScenarioPage() {
             <div className="scenario-summary">
               <div><strong>{result.summary.covered}</strong><span>已有安排可持續</span></div>
               <div><strong>{result.summary.needs_confirmation}</strong><span>需要再確認</span></div>
-              <div><strong>{result.summary.unprepared}</strong><span>目前沒有安排</span></div>
+              <div><strong>{result.summary.coordination_only}</strong><span>只有遠端協調</span></div>
+              <div><strong>{result.summary.unprepared}</strong><span>尚無準備</span></div>
             </div>
             <div className="timeline-section"><h2>固定照顧時間軸</h2>
               {result.details.length === 0 ? <p className="empty-task-state">這段期間沒有固定時間的照顧工作。</p> : <div className="scenario-timeline">
                 {result.details.map((item) => <article className={`scenario-result status-${item.status.toLowerCase()}`} key={`${item.task_id}-${item.scheduled_at}`}>
                   <time dateTime={item.scheduled_at}>{item.date?.slice(5).replace('-', '/')} {item.scheduled_time}</time>
-                  <div><h3>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</h3><p>{SCENARIO_STATUS_LABELS[item.status]}</p></div>
+                  <div><h3>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</h3><p>{SCENARIO_STATUS_LABELS[item.status]}</p><small>{describeScenarioSources(item, sourceById, (sourceId) => console.warn('Scenario result references an unknown care source', { sourceId }))}</small></div>
                 </article>)}
               </div>}
             </div>
             {result.unscheduled_considerations.length > 0 && <div className="unscheduled-section"><h2>非固定需求</h2><p>這類需求沒有固定發生時間，無法用時間軸直接判定，建議另外確認應變方式。</p>
               {result.unscheduled_considerations.map((item) => <article key={item.task_id}><strong>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</strong><span>{SCENARIO_STATUS_LABELS[item.status]}</span></article>)}
             </div>}
+            <Link className="secondary-button scenario-adjust-cta" to="/setup/backups">調整備援安排</Link>
           </section>}
         </>
       )}

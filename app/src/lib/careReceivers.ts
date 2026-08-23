@@ -30,8 +30,20 @@ export async function createCareReceiver(displayName: string) {
   return data as CareReceiver;
 }
 
-export function getCareReceiverErrorMessage(action: 'load' | 'create') {
-  return action === 'create'
-    ? '目前無法建立照顧個案，請稍後再試。'
-    : '目前無法讀取照顧個案，請重新整理後再試。';
+export async function updateCareReceiver(careReceiverId: string, displayName: string) {
+  const { data, error } = await supabase
+    .from('care_receivers')
+    .update({ display_name: displayName.trim() })
+    .eq('care_receiver_id', careReceiverId)
+    .select(receiverColumns)
+    .single();
+
+  if (error) throw error;
+  return data as CareReceiver;
+}
+
+export function getCareReceiverErrorMessage(action: 'load' | 'create' | 'update') {
+  if (action === 'create') return '目前無法建立照顧個案，請稍後再試。';
+  if (action === 'update') return '目前無法修改被照顧者稱呼，請稍後再試。';
+  return '目前無法讀取照顧個案，請重新整理後再試。';
 }

@@ -132,5 +132,5 @@ export const SCENARIO_STATUS_LABELS = {
   COVERED: '已有目前照顧安排可持續',
   NEEDS_CONFIRMATION: '可能有人可協助，但需要再確認',
   UNPREPARED: '目前沒有可確認的照顧安排',
-  COORDINATION_ONLY: '目前只有遠端協調安排'
+  COORDINATION_ONLY: '目前只有遠端協調，仍需安排現場協助'
 } as const;

@@ -1,13 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   createCareReceiver,
   getCareReceiverErrorMessage,
-  listOwnedCareReceivers
+  listOwnedCareReceivers,
+  updateCareReceiver,
+  type CareReceiver
 } from '../lib/careReceivers';
 
 export function ReceiverSetupPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editing = searchParams.get('edit') === '1';
+  const [receiver, setReceiver] = useState<CareReceiver | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -19,8 +24,15 @@ export function ReceiverSetupPage() {
     void listOwnedCareReceivers()
       .then((receivers) => {
         if (!active) return;
-        if (receivers.length > 0) {
+        if (receivers.length > 0 && !editing) {
           navigate('/app', { replace: true });
+          return;
+        }
+        if (editing && receivers[0]) {
+          setReceiver(receivers[0]);
+          setDisplayName(receivers[0].display_name);
+        } else if (editing) {
+          navigate('/setup/receiver', { replace: true });
           return;
         }
         setChecking(false);
@@ -35,7 +47,7 @@ export function ReceiverSetupPage() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [editing, navigate]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -50,11 +62,12 @@ export function ReceiverSetupPage() {
 
     setSubmitting(true);
     try {
-      await createCareReceiver(normalizedDisplayName);
+      if (editing && receiver) await updateCareReceiver(receiver.care_receiver_id, normalizedDisplayName);
+      else await createCareReceiver(normalizedDisplayName);
       navigate('/app', { replace: true });
     } catch (createError) {
       console.error('Unable to create care receiver', createError);
-      setError(getCareReceiverErrorMessage('create'));
+      setError(getCareReceiverErrorMessage(editing ? 'update' : 'create'));
       setSubmitting(false);
     }
   };
@@ -71,8 +84,8 @@ export function ReceiverSetupPage() {
     <main className="setup-layout">
       <section className="setup-card" aria-labelledby="receiver-setup-title">
         <div className="brand-mark small left-aligned" aria-hidden="true">心</div>
-        <p className="eyebrow">建立照顧空間</p>
-        <h1 id="receiver-setup-title">先告訴我們，<br />你目前主要在照顧誰？</h1>
+        <p className="eyebrow">{editing ? '修改照顧個案' : '建立照顧空間'}</p>
+        <h1 id="receiver-setup-title">{editing ? '修改被照顧者稱呼' : <>先告訴我們，<br />你目前主要在照顧誰？</>}</h1>
         <p className="setup-copy">
           先用你熟悉的稱呼就好。之後整理照顧任務時，會以這個名字呈現。
         </p>
@@ -95,8 +108,9 @@ export function ReceiverSetupPage() {
           {error && <p className="form-message error" role="alert">{error}</p>}
 
           <button className="primary-button" type="submit" disabled={submitting}>
-            {submitting ? '建立中…' : '建立照顧個案'}
+            {submitting ? '儲存中…' : editing ? '儲存稱呼' : '建立照顧個案'}
           </button>
+          {editing && <button className="secondary-button" type="button" onClick={() => navigate('/app')} disabled={submitting}>取消</button>}
         </form>
       </section>
     </main>

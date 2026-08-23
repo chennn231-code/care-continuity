@@ -30,4 +30,16 @@ describe('Gate 06 scenario adapter', () => {
   it('limits CONFIRMED_WITH_LIMITS backup to matching exact times', () => { const result = runPrimaryCaregiverScenario({ ...base, assignments: [assignment('medication', 'me')], backups: [backup('medication', 'helper', { confirmation_status: 'CONFIRMED_WITH_LIMITS', time_scope: { scheduled_times: ['15:00'] } })] }); expect(result.details.map((item) => [item.scheduled_time, item.status])).toEqual([['15:00', 'COVERED'], ['22:00', 'UNPREPARED'], ['08:00', 'UNPREPARED']]); });
   it('uses canonical POSSIBLE as NEEDS_CONFIRMATION', () => { const result = runPrimaryCaregiverScenario({ ...base, assignments: [assignment('medication', 'me')], backups: [backup('medication', 'helper', { confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] })] }); expect(result.details.every((item) => item.status === 'NEEDS_CONFIRMATION')).toBe(true); });
   it('keeps no valid backup as UNPREPARED', () => { const result = runPrimaryCaregiverScenario({ ...base, assignments: [assignment('medication', 'me')], backups: [backup('medication', 'helper', { confirmation_status: 'CONFIRMED_WITH_LIMITS', time_scope: { scheduled_times: ['08:00'] } })] }); expect(result.details.some((item) => item.status === 'UNPREPARED')).toBe(true); });
+  it('accounts for every scheduled detail in the four summary statuses', () => {
+    const result = runPrimaryCaregiverScenario({
+      ...base,
+      assignments: [assignment('medication', 'me')],
+      backups: [backup('medication', 'helper', { support_modes_committed: ['REMOTE_COORDINATION'] })]
+    });
+    expect(result.details).toHaveLength(
+      result.summary.covered + result.summary.needs_confirmation +
+      result.summary.coordination_only + result.summary.unprepared
+    );
+    expect(result.summary.coordination_only).toBeGreaterThan(0);
+  });
 });
