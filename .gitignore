@@ -1,0 +1,8 @@
+app/node_modules/
+
+.env
+.env.*
+!.env.example
+
+supabase/.branches/
+supabase/.temp/
