@@ -8,9 +8,23 @@
 
 ## 目前狀態
 
-**目前階段：Phase 1 — 問題定義與研究驗證**
+**目前階段：可公開測試的 MVP vertical slice／Offline Delivery E2E 前置完成**
 
-截至 2026-08-22 已完成初步：
+截至 2026-08-23 已完成並有程式、測試、migration 或部署紀錄支持：
+
+- [x] React + Vite + TypeScript 前端與 Supabase Email/Password Auth
+- [x] Receiver → Task → Care Source → Current Assignment → Backup Assignment 主流程
+- [x] Exact-time 24h／72h／7d／自訂期間中斷模擬與具體 Care Gap
+- [x] `ONCE` 特定日期任務
+- [x] Migration 001–006；遠端目前有 10 張啟用 RLS 的核心表與 38 個 policies
+- [x] Task Handoff CRUD、資料新鮮度、首頁重新確認提醒與 Scenario Handoff Readiness
+- [x] Offline Delivery print-friendly HTML、瀏覽器列印／另存 PDF 前端流程
+- [x] Vercel production 已部署 commit `4d143b57512e1e8715ae1d67806c77f7a1770b33`
+- [x] 公開網址：<https://care-continuity-eta.vercel.app>
+- [ ] Offline Delivery 有資料的 Production E2E 與實際 OS Print Preview 人工確認
+- [ ] Pilot Retest 與正式 P01–P05 形成性可用性測試
+
+以下為早期研究與產品方向紀錄：
 
 - [x] 確立核心主題：家庭長期照顧中斷風險與照顧韌性
 - [x] 排除心理陪伴、一般健康管理等非核心方向
@@ -248,7 +262,7 @@
 ## 6.1 品牌
 
 - [x] 名稱：備份心
-- [x] 標語：為照顧，多準備一個如果
+- [x] 產品主標語：看得完整，才接得住
 - [x] 主色方向：霧藍
 - [x] 背景方向：暖奶白
 
@@ -408,20 +422,21 @@
 
 # 下一步
 
-目前**不要直接進入完整 App 開發**。
+目前不要新增 Schema、Migration、AI、風險分數、通知或 Delivery tracking。
 
-下一個工作順序：
+下一次從 **Handoff Offline Delivery Production E2E Gate** 繼續：
 
-1. 完成照顧中斷問題的文獻與政策查證
-2. 建立正式 Problem Statement
-3. 確認主要使用者
-4. 設計使用者／專業人員訪談
-5. 根據研究結果修正照顧中斷模型
-6. 再鎖定 MVP
+1. 取得 action-time confirmation 後，以 Admin API 只建立一次性 confirmed Auth identity
+2. 所有 Receiver／Task／Source／Backup／Handoff 業務資料都從 Production React UI，以 authenticated session + RLS 建立
+3. 驗證非本人、無帳號 Care Source 的多 Task 交接包
+4. 驗證 `POSSIBLE`／`CONFIRMED`／`CONFIRMED_WITH_LIMITS` 與三種 Handoff Readiness 邊界
+5. 實際人工檢查 Browser Print Preview、黑白列印、大字、分頁與長文字換行
+6. 比較 preview／print 前後資料，確認沒有任何 DB write 或狀態推定
+7. 測試完成後另行取得 cleanup 授權
 
-如果前面的研究推翻目前假設，允許修改 PROJECT.md 與本計畫，不為了維持原始想法而硬做。
+E2E 通過後再進 Pilot Retest，不把單元測試或部署成功誤寫成真實使用情境已驗證。
 
 ---
 
 **文件狀態：** Active Plan  
-**最後更新：** 2026-08-22
+**最後更新：** 2026-08-23

@@ -16,6 +16,12 @@
 - 備援安排 CREATE／READ／UPDATE／DELETE，並區分 `POSSIBLE`、`CONFIRMED` 與 `CONFIRMED_WITH_LIMITS`
 - 24 小時、72 小時與 7 天主要照顧者中斷模擬
 - Exact-time Care Gap 時間軸與非固定需求分區
+- `ONCE` 特定日期任務與自訂 Scenario interval
+- Category-specific Task Handoff CREATE／READ／UPDATE／DELETE
+- Handoff `updated_at`、`reviewed_at` 與使用者自訂確認週期
+- 首頁 Handoff review reminder
+- Scenario Handoff Readiness（與 Coverage status 分開）
+- Offline Delivery 多 Task 交接包、print-friendly HTML 與瀏覽器列印／另存 PDF
 
 Care Source 名單本身不代表已同意、有能力、有時間或已形成備援；只有符合時間與協助形式的已確認安排會形成 coverage。Scenario 仍在前端即時計算，尚未寫入 evaluation snapshot。
 
@@ -41,13 +47,25 @@ Care Source 名單本身不代表已同意、有能力、有時間或已形成�
 - `AS_NEEDED` 顯示在非固定需求區塊，不混入 scheduled timeline。
 - Scenario 只在瀏覽器記憶體即時計算，不寫入 `care_scenarios` 或 `coverage_evaluations`；`backup_assignments` 由獨立的備援設定頁面管理。
 
+## Handoff 與 Offline Delivery 邊界
+
+- `NOT_PREPARED`、`NEEDS_DETAILS`、`READY_TO_SHARE` 是交接資訊整理狀態，不是 delivery status。
+- 產生摘要、預覽、列印或另存 PDF，不代表已交付、已閱讀、已理解或已完成交接。
+- Offline Delivery 不寫入 `PRINTED`／`DELIVERED`／`READ` 等狀態，也不修改 Backup Assignment confirmation status。
+- `POSSIBLE` 即使被列印，仍只代表「可能可以協助、尚未確認」。
+- 備援來源不需要 App 帳號；print flow 排除 self-linked 主要照顧者。
+- 紙本／PDF 可能在內容更新後變舊，摘要必須顯示產生時間、最後更新、最後確認與版本提醒。
+- MEDICATION 摘要只指向正式資訊位置與必要協助；正式用藥仍以最新處方、藥袋或醫療專業指示為準。
+
 ## Supabase 安全基線
 
-- Canonical baseline 與 Migration 002–005 已同步至遠端 migration history。
+- Canonical baseline 與 Migration 002–006 已同步至遠端 migration history。
 - Migration 002：single-owner ownership 與跨個案完整性。
 - Migration 003：Auth profile provisioning 與 email lifecycle。
 - Migration 004：9 張核心表 RLS 與 34 個 policies。
 - Migration 005：Backup Assignment canonical semantics。
+- Migration 006：`task_handoffs`、freshness metadata、review RPC 與 Task/Handoff atomic integrity。
+- 遠端目前預期為 10 張 RLS tables 與 38 個 policies。
 - 遠端 A/B RLS isolation、Auth lifecycle 與完整 cascade cleanup 已通過。
 - `supabase/seed.sql` 維持 frozen，不執行。
 
@@ -73,3 +91,16 @@ npm run build
 ```
 
 開發伺服器固定使用 `http://localhost:3000`。
+
+## Production
+
+- URL：<https://care-continuity-eta.vercel.app>
+- Platform：Vercel
+- Production branch：`main`
+- Root Directory：`app`
+- Build：`npm run build`
+- Output：`dist`
+- SPA fallback：`vercel.json`
+- Production env 只允許 `VITE_SUPABASE_URL` 與 `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+目前 Production deployment 已包含 `/handoffs/print`，但有資料的 Offline Delivery E2E 與 OS Print Preview 人工確認尚未完成。

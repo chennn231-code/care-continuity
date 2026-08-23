@@ -1,6 +1,6 @@
 # 備份心
 
-> **為照顧，多準備一個如果**
+> **看得完整，才接得住**
 
 **家庭長期照顧中斷風險預警與照顧韌性支持系統**
 
@@ -34,7 +34,7 @@
 - 適度使用柔和陰影與毛玻璃質感
 - 整體視覺呈現「穩穩托住」的感覺
 - 圖標可探索「雙手交握」、「兩盞燈」等備援與承接意象，偏抽象、避免過度具象
-- 字體方向採圓角無襯線字體，兼顧親和感與專業可讀性
+- 標題採明體 Serif、內文與操作資訊採黑體 Sans-serif，兼顧資訊層級與可讀性
 
 ### 應避免
 
@@ -155,17 +155,22 @@
 
 ## 專案狀態
 
-截至 2026-08-23，專案已進入 **前端 MVP vertical slice 驗證階段**。
+截至 2026-08-23，專案已進入 **可公開測試的 MVP vertical slice／Offline Delivery E2E 階段**。
 
 目前已完成並驗證：
 
-- Supabase canonical migration workflow、Authentication lifecycle 與 9 張核心表 RLS 安全基線
+- Supabase canonical migration workflow、Authentication lifecycle 與 Migration 001–006
+- 10 張啟用 RLS 的核心表、38 個 policies，以及 `task_handoffs` owner-chain 權限
 - 被照顧者、照顧任務、照顧來源與目前分工的 React authenticated CRUD 流程
 - Exact-time Coverage Engine 與 24 小時／72 小時／7 天主要照顧者中斷模擬
 - 具體日期、時間與工作層級的 Care Gap 顯示
 - `POSSIBLE`／`CONFIRMED`／`CONFIRMED_WITH_LIMITS` 備援安排 CRUD 與 Scenario Engine 串接
+- Category-specific Task Handoff、最後更新／主要照顧者確認與首頁重新確認提醒
+- Scenario 中獨立呈現 Coverage 與 Handoff Readiness
+- Offline Delivery 多 Task 交接包、print-friendly HTML 與瀏覽器列印／另存 PDF
+- Vercel production：<https://care-continuity-eta.vercel.app>
 
-Scenario 結果目前維持即時計算，不使用風險分數、AI 推薦或 evaluation persistence。下一階段為受控的 Backup Assignment 遠端 RLS／Scenario E2E 驗證。
+Scenario 結果目前維持即時計算，不使用風險分數、AI 推薦或 evaluation persistence。Offline Delivery 的本機實作與 production deployment 已完成，但尚未用真實 fixture graph 完成 Production E2E，也尚未人工確認 OS Print Preview，因此不得宣稱 Offline Delivery Gate 已完整通過。
 
 ## Repository 結構
 
@@ -178,5 +183,15 @@ care-continuity/
 │   ├── ux/              # Persona、Journey、IA、User Flow、視覺規範
 │   └── architecture/    # 資料、權限、後台與技術架構
 ├── prototype/           # Prototype 與介面原型相關紀錄
-└── app/                 # 正式 App 程式碼（後續階段）
+├── supabase/            # Canonical schema、Migration 002–006 與 Supabase config
+└── app/                 # React + Vite MVP 與 Coverage Engine
 ```
+
+## 目前驗證基線
+
+- Offline Delivery feature baseline：`4d143b57512e1e8715ae1d67806c77f7a1770b33`
+- App tests：167/167
+- TypeScript typecheck：通過
+- Production build：通過
+- Vercel production deployment：Ready，來源為上述 commit
+- 下一步與已知限制：[2026-08-23 project status](docs/project-status/2026-08-23-offline-delivery-deployment.md)
