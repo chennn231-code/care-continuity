@@ -145,6 +145,23 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .task-count-summary span { color: var(--muted); }
 .home-task-preview { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; margin-bottom: 1rem; }
 .home-task-preview span { padding: 0.4rem 0.7rem; border-radius: 999px; color: var(--mist-700); background: var(--mist-100); font-size: 0.82rem; }
+.home-handoff-progress, .home-handoff-reminders { display: grid; gap: 0.9rem; margin: 1.25rem 0; padding: 1.1rem; border-radius: 1.1rem; text-align: left; }
+.home-handoff-progress { color: var(--mist-700); background: var(--mist-100); }
+.home-handoff-progress h2, .home-handoff-progress p, .home-handoff-reminders h2, .home-handoff-reminders h3, .home-handoff-reminders p { margin: 0; }
+.home-handoff-progress h2, .home-handoff-reminders h2 { font-size: 1.2rem; }
+.home-handoff-progress p, .home-handoff-reminders p, .home-handoff-reminders small { line-height: 1.55; }
+.home-handoff-reminders { border: 1px solid rgba(88, 118, 134, 0.2); background: #fffefb; }
+.home-handoff-reminder-heading { display: flex; justify-content: space-between; gap: 1rem; }
+.home-handoff-reminder-heading > div { display: grid; gap: 0.4rem; }
+.home-handoff-reminder-heading p, .home-handoff-reminder-card p, .home-handoff-reminder-card small, .home-handoff-confirmation-note { color: var(--muted); }
+.home-handoff-reminder-heading > strong { flex: 0 0 auto; color: var(--mist-700); }
+.home-handoff-reminder-list { display: grid; gap: 0.75rem; }
+.home-handoff-reminder-card { display: grid; gap: 0.75rem; padding: 1rem; border: 1px solid rgba(88, 118, 134, 0.14); border-radius: 1rem; background: var(--cream-50); }
+.home-handoff-reminder-card h3 { font-size: 1.08rem; }
+.home-handoff-reminder-freshness { display: grid; gap: 0.25rem; color: var(--mist-700); font-size: 0.8rem; }
+.home-handoff-reminder-actions { display: flex; gap: 0.65rem; }
+.home-handoff-reminder-actions > * { flex: 1; }
+.home-handoff-confirmation-note { display: block; }
 
 .task-setup-layout { width: min(1180px, calc(100% - 2rem)); min-height: 100vh; margin: 0 auto; padding: clamp(2rem, 5vw, 4.5rem) 0; }
 .task-page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; margin-bottom: 2rem; }
@@ -274,6 +291,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .scenario-result { grid-template-columns: 1fr; }
   .handoff-grid { grid-template-columns: 1fr; }
   .task-item-actions { align-items: flex-start; }
+  .home-handoff-reminder-heading, .home-handoff-reminder-actions { flex-direction: column; }
+  .home-handoff-reminder-actions > * { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

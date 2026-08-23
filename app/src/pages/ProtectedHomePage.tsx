@@ -10,6 +10,14 @@ import { listCareTasks, type CareTaskRow } from '../lib/careTasks';
 import { listCareSources, type CareSourceRow } from '../lib/careSources';
 import { listCurrentAssignments, type CurrentAssignmentRow } from '../lib/currentAssignments';
 import { listBackupAssignments, type BackupAssignmentRow } from '../lib/backupAssignments';
+import { markTaskHandoffReviewed } from '../lib/taskHandoffs';
+import {
+  applyReviewedAt,
+  buildHomeHandoffState,
+  loadHomeHandoffs
+} from '../handoffs/homeHandoffReminders';
+import { describeOccurrence } from '../tasks/taskContract';
+import { formatHandoffTimestamp, type TaskHandoffRecordContract } from '../handoffs/handoffContract';
 
 export function ProtectedHomePage() {
   const { session, signOut } = useAuth();
@@ -21,6 +29,11 @@ export function ProtectedHomePage() {
   const [sources, setSources] = useState<CareSourceRow[]>([]);
   const [assignments, setAssignments] = useState<CurrentAssignmentRow[]>([]);
   const [backups, setBackups] = useState<BackupAssignmentRow[]>([]);
+  const [handoffs, setHandoffs] = useState<TaskHandoffRecordContract[]>([]);
+  const [handoffLoadError, setHandoffLoadError] = useState(false);
+  const [handoffActionError, setHandoffActionError] = useState<string | null>(null);
+  const [handoffSuccess, setHandoffSuccess] = useState<string | null>(null);
+  const [reviewingHandoffId, setReviewingHandoffId] = useState<string | null>(null);
   const [loadingReceiver, setLoadingReceiver] = useState(true);
 
   useEffect(() => {
@@ -41,12 +54,14 @@ export function ProtectedHomePage() {
           setSources(ownedSources);
           if (ownedTasks.length > 0) {
             const taskIds = ownedTasks.map((task) => task.task_id);
-            const [ownedAssignments, ownedBackups] = await Promise.all([
-              listCurrentAssignments(taskIds), listBackupAssignments(taskIds)
+            const [ownedAssignments, ownedBackups, handoffResult] = await Promise.all([
+              listCurrentAssignments(taskIds), listBackupAssignments(taskIds), loadHomeHandoffs(ownedTasks)
             ]);
             if (!active) return;
             setAssignments(ownedAssignments);
             setBackups(ownedBackups);
+            setHandoffs(handoffResult.handoffs);
+            setHandoffLoadError(handoffResult.failed);
           }
         }
         setLoadingReceiver(false);
@@ -75,6 +90,23 @@ export function ProtectedHomePage() {
     }
   };
 
+  const reviewHandoff = async (handoffId: string) => {
+    if (reviewingHandoffId) return;
+    setReviewingHandoffId(handoffId);
+    setHandoffActionError(null);
+    setHandoffSuccess(null);
+    try {
+      const reviewedAt = await markTaskHandoffReviewed(handoffId);
+      setHandoffs((current) => applyReviewedAt(current, handoffId, reviewedAt));
+      setHandoffSuccess('已記錄目前內容仍適用');
+    } catch (reviewError) {
+      console.error('Unable to review task handoff from home', reviewError);
+      setHandoffActionError('目前無法確認交接資訊仍適用，請稍後再試');
+    } finally {
+      setReviewingHandoffId(null);
+    }
+  };
+
   if (loadingReceiver) {
     return (
       <main className="centered-page" aria-live="polite">
@@ -87,6 +119,7 @@ export function ProtectedHomePage() {
 
   const assignedTaskCount = new Set(assignments.map((assignment) => assignment.task_id)).size;
   const unassignedTaskCount = tasks.length - assignedTaskCount;
+  const handoffState = buildHomeHandoffState(tasks, handoffs);
 
   return (
     <main className="centered-page app-home">
@@ -117,6 +150,52 @@ export function ProtectedHomePage() {
             <div className="home-task-preview">
               {tasks.slice(0, 3).map((task) => <span key={task.task_id}>{task.title}</span>)}
             </div>
+            {!handoffLoadError && handoffState.incompleteTasks.length > 0 && (
+              <section className="home-handoff-progress" aria-labelledby="handoff-progress-title">
+                <h2 id="handoff-progress-title">交接資訊尚待整理</h2>
+                <p>還有 {handoffState.incompleteTasks.length} 項照顧工作的交接資訊尚未完成</p>
+                <Link className="secondary-button" to="/setup/handoffs">整理交接資訊</Link>
+              </section>
+            )}
+            {!handoffLoadError && handoffState.dueReminders.length > 0 && (
+              <section className="home-handoff-reminders" aria-labelledby="handoff-reminder-title">
+                <div className="home-handoff-reminder-heading">
+                  <div>
+                    <h2 id="handoff-reminder-title">需要重新確認的交接資訊</h2>
+                    <p>以下交接資訊已到你設定的確認時間，請看看目前內容是否仍適用</p>
+                  </div>
+                  <strong>{handoffState.dueReminders.length} 項</strong>
+                </div>
+                <div className="home-handoff-reminder-list">
+                  {handoffState.visibleReminders.map(({ task, handoff }) => (
+                    <article className="home-handoff-reminder-card" key={handoff.handoff_id}>
+                      <div>
+                        <h3>{task.title}</h3>
+                        <p>{describeOccurrence(task.occurrence_pattern)}</p>
+                      </div>
+                      <div className="home-handoff-reminder-freshness">
+                        <span>最後更新：{formatHandoffTimestamp(handoff.updated_at)}</span>
+                        <span>{handoff.reviewed_at
+                          ? `主要照顧者最後確認：${formatHandoffTimestamp(handoff.reviewed_at)}`
+                          : '尚未確認目前內容仍適用'}</span>
+                      </div>
+                      <small>確認時間由你自行設定，不代表資料已過期</small>
+                      <div className="home-handoff-reminder-actions">
+                        <button className="primary-button" type="button" onClick={() => void reviewHandoff(handoff.handoff_id)} disabled={reviewingHandoffId !== null}>
+                          {reviewingHandoffId === handoff.handoff_id ? '確認中…' : '內容沒變，仍適用'}
+                        </button>
+                        <Link className="secondary-button" to={`/setup/handoffs?task=${encodeURIComponent(task.task_id)}`}>我要更新</Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                {handoffState.hiddenReminderCount > 0 && <Link className="text-button" to="/setup/handoffs">查看全部交接資訊</Link>}
+                <small className="home-handoff-confirmation-note">此確認由主要照顧者記錄，不代表備援者或專業人員已確認</small>
+              </section>
+            )}
+            {handoffLoadError && <p className="form-message error" role="alert">目前無法讀取交接資訊提醒，仍可查看其他照顧內容</p>}
+            {handoffActionError && <p className="form-message error" role="alert">{handoffActionError}</p>}
+            {handoffSuccess && <p className="form-message success" role="status">{handoffSuccess}</p>}
             <Link className="secondary-button" to="/setup/tasks">查看／修改照顧任務</Link>
             {sources.length === 0 ? (
               <>
