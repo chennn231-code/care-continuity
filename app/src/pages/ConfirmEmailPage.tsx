@@ -25,8 +25,8 @@ export function ConfirmEmailPage() {
           <p className="form-message error" role="alert">{getAuthErrorMessage(callbackError, callbackErrorCode)}</p>
         ) : (
           <p>
-            我們已將確認連結寄到{email ? <strong> {email}</strong> : '你的信箱'}。
-            完成確認後即可登入。
+            我們已將確認連結寄到{email ? <strong> {email}</strong> : '你的信箱'}
+            完成確認後即可登入
           </p>
         )}
         <Link className="secondary-button" to="/auth">返回登入</Link>

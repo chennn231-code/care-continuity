@@ -86,7 +86,7 @@ export function SourceSetupPage() {
       form.isSelf &&
       hasAnotherSelfLinkedSource(sources, session.user.id, editingSourceId)
     ) {
-      setError('已經有一個「主要照顧者本人」來源，不能重複建立。');
+      setError('已經有一個「主要照顧者本人」來源，不能重複建立');
       return;
     }
 
@@ -97,7 +97,7 @@ export function SourceSetupPage() {
       setError(
         validationError instanceof SourceValidationError
           ? validationError.message
-          : '請確認照顧來源資料是否完整。'
+          : '請確認照顧來源資料是否完整'
       );
       return;
     }
@@ -152,7 +152,7 @@ export function SourceSetupPage() {
           <p className="eyebrow">{receiver?.display_name}的照顧安排</p>
           <h1>目前有哪些人或服務參與照顧？</h1>
           <p>
-            先整理可能參與照顧的人或服務。出現在這裡不代表對方已同意、有時間，或已能接手任何工作。
+            先整理可能參與照顧的人或服務出現在這裡不代表對方已同意、有時間，或已能接手任何工作
           </p>
         </div>
         <button className="secondary-button" type="button" onClick={() => navigate('/app')}>
@@ -204,7 +204,7 @@ export function SourceSetupPage() {
 
             {form.sourceType === 'PROFESSIONAL' && (
               <p className="source-boundary-note">
-                這裡只記錄服務來源。服務日期、時段與實際工作內容將在後續照顧安排中確認。
+                這裡只記錄服務來源服務日期、時段與實際工作內容將在後續照顧安排中確認
               </p>
             )}
 
@@ -220,7 +220,7 @@ export function SourceSetupPage() {
               />
               <span>
                 <strong>這是我本人</strong>
-                <small>將此來源連結為目前登入的主要操作照顧者。</small>
+                <small>將此來源連結為目前登入的主要操作照顧者</small>
               </span>
             </label>
 
@@ -246,7 +246,7 @@ export function SourceSetupPage() {
           {sources.length === 0 ? (
             <div className="empty-task-state">
               <strong>還沒有照顧來源</strong>
-              <p>先加入目前主要參與照顧的人或服務。</p>
+              <p>先加入目前主要參與照顧的人或服務</p>
             </div>
           ) : (
             <div className="task-list">
@@ -268,7 +268,7 @@ export function SourceSetupPage() {
           )}
 
           <p className="source-disclaimer">
-            名單只表示可能參與照顧，不代表已同意接手或已形成備援。
+            名單只表示可能參與照顧，不代表已同意接手或已形成備援
           </p>
           <button
             className="primary-button complete-task-button"

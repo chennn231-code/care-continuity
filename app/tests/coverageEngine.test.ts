@@ -35,4 +35,11 @@ describe('Coverage Engine exact-time golden suite', () => {
   it('27 preserves current REGULAR priority over confirmed backup', () => expect(evaluateOccurrence(occurrence, scenario, [regular('current')], [backup('backup')])).toMatchObject({ status: 'COVERED', source_id: 'current', source_ids: ['current'], reason: 'CURRENT_REGULAR_MATCH' }));
   it('28 preserves OCCASIONAL confirmation semantics when no confirmed backup matches', () => expect(evaluateOccurrence(occurrence, scenario, [{ ...regular('occasional'), participation_type: 'OCCASIONAL' }], [backup('remote', { support_modes_committed: ['FLEXIBLE'] })])).toMatchObject({ status: 'NEEDS_CONFIRMATION', candidate_ids: ['occasional'] }));
   it('29 preserves COORDINATION_ONLY for an available remote confirmed backup', () => expect(evaluateOccurrence(occurrence, scenario, [], [backup('coordinator', { support_modes_committed: ['REMOTE_COORDINATION'] })])).toMatchObject({ status: 'COORDINATION_ONLY', source_id: 'coordinator', reason: 'REMOTE_COORDINATION_ONLY' }));
+  it('30 emits one ONCE occurrence only inside the half-open interval', () => {
+    const once: CareTask = { task_id: 'visit', occurrence_pattern: { type: 'ONCE', date: '2026-08-25', scheduled_time: '14:00' }, required_support_modes: ['ON_SITE'] };
+    expect(evaluateScenario([once], scenario, [], []).details).toHaveLength(1);
+    expect(evaluateScenario([{ ...once, occurrence_pattern: { type: 'ONCE', date: '2026-08-26', scheduled_time: '14:00' } }], scenario, [], []).details).toHaveLength(0);
+    expect(evaluateScenario([{ ...once, occurrence_pattern: { type: 'ONCE', date: '2026-08-25', scheduled_time: '13:59' } }], scenario, [], []).details).toHaveLength(0);
+  });
+  it('31 rejects an invalid ONCE calendar date', () => expect(() => expandOccurrences([{ task_id: 'bad', occurrence_pattern: { type: 'ONCE', date: '2026-02-30', scheduled_time: '10:30' }, required_support_modes: ['ON_SITE'] }], ['2026-02-28'])).toThrow('INVALID_SCHEDULED_DATE'));
 });

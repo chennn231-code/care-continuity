@@ -22,4 +22,6 @@ describe('task dependency validation', () => {
   });
   it('keeps full-scope compatible dependencies valid', () => expect(validateTaskDependencies(nextTask, [current({ time_scope: { mode: 'SAME_AS_TASK_PATTERN' } })], [backup({ time_scope: { mode: 'SAME_AS_TASK_PATTERN' }, confirmation_status: 'CONFIRMED' })])).toEqual([]));
   it('keeps POSSIBLE backup valid because time and ability remain unknown', () => expect(validateTaskDependencies(nextTask, [], [backup({ confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] })])).toEqual([]));
+  it('keeps full-scope dependencies valid across ONCE conversions', () => expect(validateTaskDependencies({ occurrence_pattern: { type: 'ONCE', date: '2026-09-15', scheduled_time: '10:30' }, required_support_modes: ['ON_SITE'] }, [current({ time_scope: { mode: 'SAME_AS_TASK_PATTERN' } })], [backup({ time_scope: { mode: 'SAME_AS_TASK_PATTERN' }, confirmation_status: 'CONFIRMED' })])).toEqual([]));
+  it('blocks limited DAILY or WEEKLY dependencies when converting to ONCE', () => expect(validateTaskDependencies({ occurrence_pattern: { type: 'ONCE', date: '2026-09-15', scheduled_time: '10:30' }, required_support_modes: ['ON_SITE'] }, [current()], [backup()])).toHaveLength(2));
 });

@@ -23,7 +23,7 @@ export function AuthPage() {
     setError(null);
 
     if (mode === 'sign-up' && !displayName.trim()) {
-      setError('請輸入顯示名稱，不能只輸入空白。');
+      setError('請輸入顯示名稱，不能只輸入空白');
       return;
     }
 
@@ -60,7 +60,7 @@ export function AuthPage() {
         <p className="eyebrow">照顧備援，從看清現在開始</p>
         <h1 id="brand-title">備份心</h1>
         <p className="brand-copy">
-          在主要照顧者不能照顧之前，先整理哪些事情需要有人接手。
+          在主要照顧者不能照顧之前，先整理哪些事情需要有人接手
         </p>
       </section>
 
@@ -138,7 +138,7 @@ export function AuthPage() {
           </button>
         </form>
 
-        <p className="privacy-note">我們只使用必要資料建立你的照顧備援空間。</p>
+        <p className="privacy-note">我們只使用必要資料建立你的照顧備援空間</p>
       </section>
     </main>
   );

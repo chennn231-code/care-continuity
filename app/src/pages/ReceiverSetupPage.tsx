@@ -56,7 +56,7 @@ export function ReceiverSetupPage() {
     const normalizedDisplayName = displayName.trim();
     setError(null);
     if (!normalizedDisplayName) {
-      setError('請輸入被照顧者稱呼，不能只輸入空白。');
+      setError('請輸入被照顧者稱呼，不能只輸入空白');
       return;
     }
 
@@ -87,7 +87,7 @@ export function ReceiverSetupPage() {
         <p className="eyebrow">{editing ? '修改照顧個案' : '建立照顧空間'}</p>
         <h1 id="receiver-setup-title">{editing ? '修改被照顧者稱呼' : <>先告訴我們，<br />你目前主要在照顧誰？</>}</h1>
         <p className="setup-copy">
-          先用你熟悉的稱呼就好。之後整理照顧任務時，會以這個名字呈現。
+          先用你熟悉的稱呼就好之後整理照顧任務時，會以這個名字呈現
         </p>
 
         <form onSubmit={submit} className="form-stack receiver-form">
@@ -104,7 +104,7 @@ export function ReceiverSetupPage() {
             />
           </label>
 
-          <p className="field-hint">這一階段不需要填寫疾病、地址或其他敏感資料。</p>
+          <p className="field-hint">這一階段不需要填寫疾病、地址或其他敏感資料</p>
           {error && <p className="form-message error" role="alert">{error}</p>}
 
           <button className="primary-button" type="submit" disabled={submitting}>

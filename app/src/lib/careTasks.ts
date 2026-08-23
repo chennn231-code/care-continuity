@@ -62,6 +62,6 @@ export async function updateCareTask(
 
 export function getCareTaskErrorMessage(action: 'load' | 'save') {
   return action === 'save'
-    ? '目前無法儲存照顧工作，請稍後再試。'
-    : '目前無法讀取照顧工作，請重新整理後再試。';
+    ? '目前無法儲存照顧工作，請稍後再試'
+    : '目前無法讀取照顧工作，請重新整理後再試';
 }

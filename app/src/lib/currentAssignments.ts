@@ -73,10 +73,10 @@ export function getAssignmentErrorMessage(error: unknown, action: 'load' | 'save
     'code' in error &&
     error.code === '23505'
   ) {
-    return '這個照顧來源已經設定在此工作中，可以直接修改目前的負責方式。';
+    return '這個照顧來源已經設定在此工作中，可以直接修改目前的負責方式';
   }
-  if (action === 'delete') return '目前無法移除此分工，請稍後再試。';
+  if (action === 'delete') return '目前無法移除此分工，請稍後再試';
   return action === 'save'
-    ? '目前無法儲存照顧分工，請稍後再試。'
-    : '目前無法讀取照顧分工，請重新整理後再試。';
+    ? '目前無法儲存照顧分工，請稍後再試'
+    : '目前無法讀取照顧分工，請重新整理後再試';
 }

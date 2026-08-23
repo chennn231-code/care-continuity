@@ -143,7 +143,7 @@ export function AssignmentSetupPage() {
       assignment.assignment_id !== editingAssignmentId
     );
     if (duplicate) {
-      setError('這個照顧來源已經設定在此工作中，可以直接修改目前的負責方式。');
+      setError('這個照顧來源已經設定在此工作中，可以直接修改目前的負責方式');
       return;
     }
     let input;
@@ -151,7 +151,7 @@ export function AssignmentSetupPage() {
       input = normalizeAssignmentInput(editingTask, form);
     } catch (validationError) {
       setError(validationError instanceof AssignmentValidationError
-        ? validationError.message : '請確認分工資料是否完整。');
+        ? validationError.message : '請確認分工資料是否完整');
       return;
     }
     setSubmitting(true);
@@ -204,7 +204,7 @@ export function AssignmentSetupPage() {
         <div>
           <p className="eyebrow">{receiver?.display_name}的照顧安排</p>
           <h1>這些照顧工作，目前由誰負責？</h1>
-          <p>逐項記錄平常實際的照顧分工。這裡整理的是現況，不代表中斷時已有備援。</p>
+          <p>逐項記錄平常實際的照顧分工這裡整理的是現況，不代表中斷時已有備援</p>
         </div>
         <button className="secondary-button" type="button" onClick={() => navigate('/app')}>返回照顧空間</button>
       </header>
@@ -227,24 +227,24 @@ export function AssignmentSetupPage() {
                 {PARTICIPATION_TYPE_LABELS[type]}
               </label>)}
             </div></fieldset>
-            {form.participationType === 'OCCASIONAL' && <p className="assignment-warning">偶爾協助不代表主要照顧者中斷時，對方已確認能接手。</p>}
+            {form.participationType === 'OCCASIONAL' && <p className="assignment-warning">偶爾協助不代表主要照顧者中斷時，對方已確認能接手</p>}
 
             <fieldset><legend>負責範圍</legend><div className="choice-grid">
               <label className="choice-card horizontal"><input type="radio" name="scope" checked={form.scopeMode === 'ALL'} onChange={() => setForm((current) => ({ ...current, scopeMode: 'ALL', weekdays: [], scheduledTimes: [] }))} />全部時間</label>
-              {pattern?.type !== 'AS_NEEDED' && <label className="choice-card horizontal"><input type="radio" name="scope" checked={form.scopeMode === 'LIMITED'} onChange={() => setForm((current) => ({ ...current, scopeMode: 'LIMITED' }))} />特定範圍</label>}
+              {pattern?.type !== 'AS_NEEDED' && pattern?.type !== 'ONCE' && <label className="choice-card horizontal"><input type="radio" name="scope" checked={form.scopeMode === 'LIMITED'} onChange={() => setForm((current) => ({ ...current, scopeMode: 'LIMITED' }))} />特定範圍</label>}
             </div></fieldset>
 
             {form.scopeMode === 'LIMITED' && pattern?.type === 'WEEKLY' && <fieldset><legend>負責日期</legend><div className="weekday-grid">
               {pattern.weekdays.map((day) => <label className="compact-choice" key={day}><input type="checkbox" checked={form.weekdays.includes(day)} onChange={() => toggleWeekday(day)} />週{WEEKDAY_LABELS[day]}</label>)}
             </div></fieldset>}
-            {form.scopeMode === 'LIMITED' && pattern && pattern.type !== 'AS_NEEDED' && <fieldset><legend>負責時間</legend><div className="choice-grid three-columns">
+            {form.scopeMode === 'LIMITED' && pattern && pattern.type !== 'AS_NEEDED' && pattern.type !== 'ONCE' && <fieldset><legend>負責時間</legend><div className="choice-grid three-columns">
               {pattern.scheduled_times.map((time) => <label className="choice-card" key={time}><input type="checkbox" checked={form.scheduledTimes.includes(time)} onChange={() => toggleScheduledTime(time)} />{time}</label>)}
             </div></fieldset>}
 
             <fieldset><legend>實際協助形式</legend><div className="choice-grid three-columns">
               {SUPPORT_MODES.map((mode) => <label className="choice-card" key={mode}><input type="radio" name="support" checked={form.supportMode === mode} onChange={() => setForm((current) => ({ ...current, supportMode: mode }))} />{ASSIGNMENT_SUPPORT_MODE_LABELS[mode]}</label>)}
             </div></fieldset>
-            {regularIncompatible && <p className="form-message error">這個協助形式不符合此工作的需求，固定負責分工無法儲存。</p>}
+            {regularIncompatible && <p className="form-message error">這個協助形式不符合此工作的需求，固定負責分工無法儲存</p>}
             {error && <p className="form-message error" role="alert">{error}</p>}
             <div className="form-actions"><button className="primary-button" disabled={submitting || Boolean(regularIncompatible)}>{submitting ? '儲存中…' : '儲存分工'}</button><button className="secondary-button" type="button" onClick={closeEditor} disabled={submitting}>取消</button></div>
           </form>
@@ -269,7 +269,7 @@ export function AssignmentSetupPage() {
         <section className="delete-confirmation" role="alertdialog" aria-labelledby="delete-assignment-title">
           <div>
             <strong id="delete-assignment-title">確定移除「{pendingDelete.sourceName}」的這筆分工？</strong>
-            <p>只會刪除目前負責關係，照顧工作與照顧來源都會保留。</p>
+            <p>只會刪除目前負責關係，照顧工作與照顧來源都會保留</p>
           </div>
           <div className="form-actions">
             <button className="secondary-button" type="button" onClick={() => setPendingDelete(null)}>取消</button>

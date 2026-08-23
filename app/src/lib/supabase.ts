@@ -5,7 +5,7 @@ const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.tr
 
 if (!supabaseUrl || !supabasePublishableKey) {
   throw new Error(
-    '缺少 Supabase 前端環境變數。請設定 VITE_SUPABASE_URL 與 VITE_SUPABASE_PUBLISHABLE_KEY。'
+    '缺少 Supabase 前端環境變數請設定 VITE_SUPABASE_URL 與 VITE_SUPABASE_PUBLISHABLE_KEY'
   );
 }
 

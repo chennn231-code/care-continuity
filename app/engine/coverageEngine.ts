@@ -7,6 +7,7 @@ export type TimeScope = { mode: 'SAME_AS_TASK_PATTERN' } | { dates?: string[]; w
 export type OccurrencePattern =
   | { type: 'DAILY'; scheduled_times: string[] }
   | { type: 'WEEKLY'; weekdays: Weekday[]; scheduled_times: string[] }
+  | { type: 'ONCE'; date: string; scheduled_time: string }
   | { type: 'AS_NEEDED' };
 
 export interface CareTask { task_id: string; occurrence_pattern: OccurrencePattern; required_support_modes: SupportMode[]; }
@@ -38,6 +39,12 @@ const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 const WEEKDAYS: Weekday[] = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 export function isValidScheduledTime(value: string) { return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value); }
+export function isValidCalendarDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
 function assertScheduledTime(value: string) { if (!isValidScheduledTime(value)) throw new Error(`INVALID_SCHEDULED_TIME:${value}`); }
 export function supportModeMatches(provided: SupportMode[], required: SupportMode[]) {
   return required.includes('FLEXIBLE') ? provided.length > 0 : provided.some((mode) => required.includes(mode));
@@ -66,6 +73,18 @@ export function expandOccurrences(tasks: CareTask[], dates: string[]) {
     const pattern = task.occurrence_pattern;
     if (pattern.type === 'AS_NEEDED') {
       unscheduled.push({ occurrence_type: 'AS_NEEDED', task_id: task.task_id, date: null, required_support_modes: task.required_support_modes });
+      continue;
+    }
+    if (pattern.type === 'ONCE') {
+      if (!isValidCalendarDate(pattern.date)) throw new Error(`INVALID_SCHEDULED_DATE:${pattern.date}`);
+      assertScheduledTime(pattern.scheduled_time);
+      if (!dates.includes(pattern.date)) continue;
+      const weekday = WEEKDAYS[new Date(`${pattern.date}T00:00:00Z`).getUTCDay()];
+      scheduled.push({
+        occurrence_type: 'SCHEDULED', task_id: task.task_id, date: pattern.date,
+        scheduled_time: pattern.scheduled_time, scheduled_at: scheduledAt(pattern.date, pattern.scheduled_time),
+        weekday, required_support_modes: task.required_support_modes
+      });
       continue;
     }
     const times = [...new Set(pattern.scheduled_times)];

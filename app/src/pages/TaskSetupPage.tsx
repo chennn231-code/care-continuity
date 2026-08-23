@@ -39,6 +39,8 @@ interface TaskFormState {
   occurrenceType: OccurrenceType;
   scheduledTimes: string[];
   weekdays: Weekday[];
+  onceDate: string;
+  onceTime: string;
   supportMode: SupportMode;
 }
 
@@ -48,6 +50,8 @@ const initialForm: TaskFormState = {
   occurrenceType: 'DAILY',
   scheduledTimes: ['08:00'],
   weekdays: [],
+  onceDate: '',
+  onceTime: '10:30',
   supportMode: 'ON_SITE'
 };
 
@@ -61,8 +65,10 @@ function formFromTask(task: CareTaskRow): TaskFormState {
     title: task.title,
     category: task.category,
     occurrenceType: pattern.type,
-    scheduledTimes: pattern.type === 'AS_NEEDED' ? [] : pattern.scheduled_times,
+    scheduledTimes: pattern.type === 'DAILY' || pattern.type === 'WEEKLY' ? pattern.scheduled_times : [],
     weekdays: pattern.type === 'WEEKLY' ? pattern.weekdays : [],
+    onceDate: pattern.type === 'ONCE' ? pattern.date : '',
+    onceTime: pattern.type === 'ONCE' ? pattern.scheduled_time : '10:30',
     supportMode: task.required_support_modes[0] ?? 'ON_SITE'
   };
 }
@@ -112,7 +118,9 @@ export function TaskSetupPage() {
       ...current,
       occurrenceType,
       weekdays: occurrenceType === 'WEEKLY' ? current.weekdays : [],
-      scheduledTimes: occurrenceType === 'AS_NEEDED' ? [] : (current.scheduledTimes.length ? current.scheduledTimes : ['08:00'])
+      scheduledTimes: occurrenceType === 'DAILY' || occurrenceType === 'WEEKLY'
+        ? (current.scheduledTimes.length ? current.scheduledTimes : ['08:00'])
+        : []
     }));
   };
 
@@ -134,7 +142,7 @@ export function TaskSetupPage() {
       setError(
         validationError instanceof TaskValidationError
           ? validationError.message
-          : '請確認照顧工作資料是否完整。'
+          : '請確認照顧工作資料是否完整'
       );
       return;
     }
@@ -192,7 +200,7 @@ export function TaskSetupPage() {
           <p className="eyebrow">{receiver?.display_name}的照顧安排</p>
           <h1>平常有哪些事情需要有人協助？</h1>
           <p>
-            把每天、固定日期或視情況需要處理的照顧工作整理下來，之後才能確認主要照顧者不在時，哪些事情可能沒有人接手。
+            把每天、固定日期或視情況需要處理的照顧工作整理下來，之後才能確認主要照顧者不在時，哪些事情可能沒有人接手
           </p>
         </div>
         <button className="secondary-button" type="button" onClick={() => navigate('/app')}>
@@ -232,7 +240,7 @@ export function TaskSetupPage() {
             </label>
 
             <fieldset>
-              <legend>發生頻率</legend>
+              <legend>發生方式</legend>
               <div className="choice-grid three-columns">
                 {OCCURRENCE_TYPES.map((type) => (
                   <label className="choice-card" key={type}>
@@ -272,7 +280,7 @@ export function TaskSetupPage() {
               </fieldset>
             )}
 
-            {form.occurrenceType !== 'AS_NEEDED' && (
+            {(form.occurrenceType === 'DAILY' || form.occurrenceType === 'WEEKLY') && (
               <fieldset>
                 <legend>時間</legend>
                 <div className="scheduled-time-list">
@@ -290,7 +298,17 @@ export function TaskSetupPage() {
                   ))}
                   <button className="secondary-button" type="button" onClick={() => setForm((current) => ({ ...current, scheduledTimes: [...current.scheduledTimes, '12:00'] }))}>＋ 新增另一個時間</button>
                 </div>
-                <p className="field-hint">若不同時間由不同人負責，建議拆成不同照顧工作，分工會更清楚。</p>
+                <p className="field-hint">若不同時間由不同人負責，建議拆成不同照顧工作，分工會更清楚</p>
+              </fieldset>
+            )}
+
+            {form.occurrenceType === 'ONCE' && (
+              <fieldset>
+                <legend>特定日期與時間</legend>
+                <div className="choice-grid">
+                  <label>日期<input type="date" value={form.onceDate} onChange={(event) => setForm((current) => ({ ...current, onceDate: event.target.value }))} disabled={submitting} required /></label>
+                  <label>時間<input type="time" value={form.onceTime} onChange={(event) => setForm((current) => ({ ...current, onceTime: event.target.value }))} disabled={submitting} required /></label>
+                </div>
               </fieldset>
             )}
 
@@ -339,7 +357,7 @@ export function TaskSetupPage() {
           {tasks.length === 0 ? (
             <div className="empty-task-state">
               <strong>還沒有照顧工作</strong>
-              <p>可以先從每天最不能中斷的一件事開始。</p>
+              <p>可以先從每天最不能中斷的一件事開始</p>
             </div>
           ) : (
             <div className="task-list">

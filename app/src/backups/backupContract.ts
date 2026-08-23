@@ -30,9 +30,9 @@ export interface NormalizedBackupInput {
 }
 
 export const BACKUP_STATUS_LABELS: Record<BackupConfirmationStatus, string> = {
-  POSSIBLE: '可能可以幫忙，尚未確認',
-  CONFIRMED: '已確認可完整接手',
-  CONFIRMED_WITH_LIMITS: '已確認，但有接手限制'
+  POSSIBLE: '可能可以協助｜尚未確認',
+  CONFIRMED: '已與對方確認，可接手這項工作',
+  CONFIRMED_WITH_LIMITS: '已與對方確認，但有接手限制'
 };
 export class BackupValidationError extends Error {}
 
@@ -43,13 +43,13 @@ export function eligibleBackupSources<T extends { user_id: string | null }>(sour
 function sortedWeekdaySubset(selectedValues: Weekday[], allowedValues: readonly Weekday[]) {
   const selected = new Set(selectedValues);
   const allowed = new Set(allowedValues);
-  if ([...selected].some((value) => !allowed.has(value))) throw new BackupValidationError('備援範圍包含不屬於這項工作的日期。');
+  if ([...selected].some((value) => !allowed.has(value))) throw new BackupValidationError('備援範圍包含不屬於這項工作的日期');
   return WEEKDAYS.filter((value) => selected.has(value));
 }
 
 export function normalizeBackupInput(task: BackupTaskContract, values: BackupFormValues): NormalizedBackupInput {
-  if (!values.careSourceId) throw new BackupValidationError('請選擇備援人選或服務。');
-  if (!BACKUP_CONFIRMATION_STATUSES.includes(values.confirmationStatus)) throw new BackupValidationError('請選擇有效的確認狀態。');
+  if (!values.careSourceId) throw new BackupValidationError('請選擇備援人選或服務');
+  if (!BACKUP_CONFIRMATION_STATUSES.includes(values.confirmationStatus)) throw new BackupValidationError('請選擇有效的確認狀態');
   if (values.confirmationStatus === 'POSSIBLE') return {
     care_source_id: values.careSourceId,
     confirmation_status: 'POSSIBLE',
@@ -58,8 +58,8 @@ export function normalizeBackupInput(task: BackupTaskContract, values: BackupFor
   };
 
   const supportModes = SUPPORT_MODES.filter((mode) => new Set(values.supportModes).has(mode));
-  if (!supportModes.length) throw new BackupValidationError('已確認的備援安排至少需要選擇一種協助形式。');
-  if (values.supportModes.some((mode) => !SUPPORT_MODES.includes(mode))) throw new BackupValidationError('備援安排包含無效的協助形式。');
+  if (!supportModes.length) throw new BackupValidationError('已確認的備援安排至少需要選擇一種協助形式');
+  if (values.supportModes.some((mode) => !SUPPORT_MODES.includes(mode))) throw new BackupValidationError('備援安排包含無效的協助形式');
   if (values.confirmationStatus === 'CONFIRMED') return {
     care_source_id: values.careSourceId,
     confirmation_status: 'CONFIRMED',
@@ -68,17 +68,17 @@ export function normalizeBackupInput(task: BackupTaskContract, values: BackupFor
   };
 
   const pattern = task.occurrence_pattern;
-  if (pattern.type === 'AS_NEEDED') throw new BackupValidationError('非固定需求目前不能設定有時間限制的備援安排。');
+  if (pattern.type === 'AS_NEEDED' || pattern.type === 'ONCE') throw new BackupValidationError('非固定需求或特定日期工作不能設定有時間限制的備援安排');
   let scheduledTimes: string[];
   try { scheduledTimes = normalizeScheduledTimes(values.scheduledTimes); }
-  catch { throw new BackupValidationError('備援時間必須是有效的 24 小時制時間。'); }
-  if (scheduledTimes.some((time) => !pattern.scheduled_times.includes(time))) throw new BackupValidationError('備援範圍包含不屬於這項工作的時間。');
+  catch { throw new BackupValidationError('備援時間必須是有效的 24 小時制時間'); }
+  if (scheduledTimes.some((time) => !pattern.scheduled_times.includes(time))) throw new BackupValidationError('備援範圍包含不屬於這項工作的時間');
   if (pattern.type === 'DAILY') {
-    if (!scheduledTimes.length) throw new BackupValidationError('有條件接手每天工作時，至少需要選擇一個時間。');
+    if (!scheduledTimes.length) throw new BackupValidationError('有條件接手每天工作時，至少需要選擇一個時間');
     return { care_source_id: values.careSourceId, confirmation_status: 'CONFIRMED_WITH_LIMITS', time_scope: { scheduled_times: scheduledTimes }, support_modes_committed: supportModes };
   }
   const weekdays = sortedWeekdaySubset(values.weekdays, pattern.weekdays);
-  if (!weekdays.length && !scheduledTimes.length) throw new BackupValidationError('有條件接手每週工作時，至少需要選擇日期或時間。');
+  if (!weekdays.length && !scheduledTimes.length) throw new BackupValidationError('有條件接手每週工作時，至少需要選擇日期或時間');
   return {
     care_source_id: values.careSourceId,
     confirmation_status: 'CONFIRMED_WITH_LIMITS',

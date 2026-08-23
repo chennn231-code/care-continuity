@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildScenarioInterval, runPrimaryCaregiverScenario, ScenarioContractError } from '../src/scenario/scenarioContract';
+import { buildCustomScenarioInterval, buildScenarioInterval, describeScenarioInterval, runPrimaryCaregiverScenario, ScenarioContractError } from '../src/scenario/scenarioContract';
 import type { CareTaskRow } from '../src/lib/careTasks';
 import type { CareSourceRow } from '../src/lib/careSources';
 import type { CurrentAssignmentRow } from '../src/lib/currentAssignments';
@@ -42,4 +42,8 @@ describe('Gate 06 scenario adapter', () => {
     );
     expect(result.summary.coordination_only).toBeGreaterThan(0);
   });
+  it('validates and describes a custom Taipei interval', () => { const interval = buildCustomScenarioInterval('2026-09-03T08:00', '2026-09-06T18:00'); expect(interval).toEqual({ valid_from: '2026-09-03T08:00:00+08:00', valid_until: '2026-09-06T18:00:00+08:00' }); expect(describeScenarioInterval(interval)).toEqual({ start: '2026/09/03 08:00', end: '2026/09/06 18:00', durationHours: 82 }); });
+  it('rejects custom end before start and periods over seven days', () => { expect(() => buildCustomScenarioInterval('2026-09-03T08:00', '2026-09-03T08:00')).toThrow('晚於'); expect(() => buildCustomScenarioInterval('2026-09-03T08:00', '2026-09-10T08:01')).toThrow('最長'); });
+  it('runs an ONCE task through the adapter', () => { const result = runPrimaryCaregiverScenario({ ...base, tasks: [task('visit', { type: 'ONCE', date: '2026-08-25', scheduled_time: '15:00' })], assignments: [assignment('visit', 'me')], backups: [] }); expect(result.details).toHaveLength(1); expect(result.details[0].scheduled_at).toBe('2026-08-25T15:00:00+08:00'); });
+  it('evaluates ONCE POSSIBLE and CONFIRMED backups', () => { const onceTask = task('visit', { type: 'ONCE', date: '2026-08-25', scheduled_time: '15:00' }); const possible = runPrimaryCaregiverScenario({ ...base, tasks: [onceTask], assignments: [assignment('visit', 'me')], backups: [backup('visit', 'helper', { confirmation_status: 'POSSIBLE', time_scope: null, support_modes_committed: [] })] }); const confirmed = runPrimaryCaregiverScenario({ ...base, tasks: [onceTask], assignments: [assignment('visit', 'me')], backups: [backup('visit', 'helper')] }); expect(possible.details[0].status).toBe('NEEDS_CONFIRMATION'); expect(confirmed.details[0].status).toBe('COVERED'); });
 });

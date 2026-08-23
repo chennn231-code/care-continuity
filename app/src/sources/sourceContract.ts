@@ -30,10 +30,10 @@ export class SourceValidationError extends Error {}
 
 export function normalizeSourceInput(values: SourceFormValues, sessionUserId: string) {
   const displayName = values.displayName.trim();
-  if (!displayName) throw new SourceValidationError('請輸入照顧來源名稱。');
-  if (displayName.length > 100) throw new SourceValidationError('照顧來源名稱不可超過 100 個字。');
+  if (!displayName) throw new SourceValidationError('請輸入照顧來源名稱');
+  if (displayName.length > 100) throw new SourceValidationError('照顧來源名稱不可超過 100 個字');
   if (!SOURCE_TYPES.includes(values.sourceType)) {
-    throw new SourceValidationError('請選擇有效的來源類型。');
+    throw new SourceValidationError('請選擇有效的來源類型');
   }
 
   return {

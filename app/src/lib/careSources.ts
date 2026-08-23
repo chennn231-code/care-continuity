@@ -67,10 +67,10 @@ export function getCareSourceErrorMessage(error: unknown, action: 'load' | 'save
     'code' in error &&
     error.code === '23505'
   ) {
-    return '這個名稱已經存在，請使用另一個容易辨識的名稱。';
+    return '這個名稱已經存在，請使用另一個容易辨識的名稱';
   }
 
   return action === 'save'
-    ? '目前無法儲存照顧來源，請稍後再試。'
-    : '目前無法讀取照顧來源，請重新整理後再試。';
+    ? '目前無法儲存照顧來源，請稍後再試'
+    : '目前無法讀取照顧來源，請重新整理後再試';
 }

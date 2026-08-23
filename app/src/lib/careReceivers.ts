@@ -43,7 +43,7 @@ export async function updateCareReceiver(careReceiverId: string, displayName: st
 }
 
 export function getCareReceiverErrorMessage(action: 'load' | 'create' | 'update') {
-  if (action === 'create') return '目前無法建立照顧個案，請稍後再試。';
-  if (action === 'update') return '目前無法修改被照顧者稱呼，請稍後再試。';
-  return '目前無法讀取照顧個案，請重新整理後再試。';
+  if (action === 'create') return '目前無法建立照顧個案，請稍後再試';
+  if (action === 'update') return '目前無法修改被照顧者稱呼，請稍後再試';
+  return '目前無法讀取照顧個案，請重新整理後再試';
 }

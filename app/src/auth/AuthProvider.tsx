@@ -55,7 +55,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const signUp = useCallback(async ({ displayName, email, password }: SignUpInput) => {
     const normalizedDisplayName = displayName.trim();
-    if (!normalizedDisplayName) throw new Error('請輸入顯示名稱。');
+    if (!normalizedDisplayName) throw new Error('請輸入顯示名稱');
 
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),

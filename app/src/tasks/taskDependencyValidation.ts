@@ -11,7 +11,7 @@ export interface TaskDependencyIssue {
 
 function scopeMatchesPattern(scope: AssignmentTimeScope, pattern: OccurrencePattern) {
   if ('mode' in scope) return scope.mode === 'SAME_AS_TASK_PATTERN';
-  if (pattern.type === 'AS_NEEDED') return false;
+  if (pattern.type === 'AS_NEEDED' || pattern.type === 'ONCE') return false;
   if (scope.scheduled_times?.some((time) => !pattern.scheduled_times.includes(time))) return false;
   if (scope.weekdays) {
     if (pattern.type !== 'WEEKLY') return false;

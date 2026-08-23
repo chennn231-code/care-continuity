@@ -70,7 +70,7 @@ export function ProtectedHomePage() {
       await signOut();
       navigate('/auth', { replace: true });
     } catch (signOutError) {
-      setError(signOutError instanceof Error ? signOutError.message : '登出失敗，請稍後再試。');
+      setError(signOutError instanceof Error ? signOutError.message : '登出失敗，請稍後再試');
       setSubmitting(false);
     }
   };
@@ -103,7 +103,7 @@ export function ProtectedHomePage() {
         )}
         {tasks.length === 0 ? (
           <>
-            <p>下一步，整理每天需要完成的照顧工作。</p>
+            <p>下一步，整理每天需要完成的照顧工作</p>
             <Link className="primary-button next-step-button" to="/setup/tasks">
               整理照顧任務
             </Link>
@@ -120,7 +120,7 @@ export function ProtectedHomePage() {
             <Link className="secondary-button" to="/setup/tasks">查看／修改照顧任務</Link>
             {sources.length === 0 ? (
               <>
-                <p>你已整理需要完成的照顧工作。下一步，加入目前參與照顧的人或服務。</p>
+                <p>你已整理需要完成的照顧工作下一步，加入目前參與照顧的人或服務</p>
                 <Link className="primary-button next-step-button" to="/setup/sources">
                   加入照顧來源
                 </Link>
@@ -138,9 +138,9 @@ export function ProtectedHomePage() {
                   <span>已建立備援安排：{backups.length}</span>
                 </div>
                 {unassignedTaskCount > 0 ? (
-                  <p>還有 {unassignedTaskCount} 項照顧工作尚未設定目前負責者。</p>
+                  <p>還有 {unassignedTaskCount} 項照顧工作尚未設定目前負責者</p>
                 ) : (
-                  <p>目前照顧分工已整理完成。這不代表中斷時沒有風險或已有備援。</p>
+                  <p>目前照顧分工已整理完成這不代表中斷時沒有風險或已有備援</p>
                 )}
                 <Link className={`${unassignedTaskCount > 0 ? 'primary-button' : 'secondary-button'} next-step-button`} to="/setup/assignments">
                   {assignments.length === 0 ? '設定目前誰負責哪些工作' : '查看／修改目前分工'}
