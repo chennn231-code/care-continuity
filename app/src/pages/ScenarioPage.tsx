@@ -8,6 +8,11 @@ import { listCareTasks, type CareTaskRow } from '../lib/careTasks';
 import { listCurrentAssignments, type CurrentAssignmentRow } from '../lib/currentAssignments';
 import { listBackupAssignments, type BackupAssignmentRow } from '../lib/backupAssignments';
 import {
+  formatHandoffTimestamp,
+  HANDOFF_READINESS_LABELS,
+  type TaskHandoffRecordContract
+} from '../handoffs/handoffContract';
+import {
   defaultScenarioStart,
   buildCustomScenarioInterval,
   buildScenarioInterval,
@@ -18,7 +23,13 @@ import {
   ScenarioContractError,
   type ScenarioDurationHours
 } from '../scenario/scenarioContract';
-import { describeScenarioSources } from '../scenario/scenarioPresentation';
+import {
+  buildScenarioHandoffPresentation,
+  describeScenarioSources,
+  loadScenarioHandoffs,
+  SCENARIO_HANDOFF_CTA_LABELS,
+  summarizeScenarioHandoffs
+} from '../scenario/scenarioPresentation';
 
 export function ScenarioPage() {
   const { session } = useAuth();
@@ -28,6 +39,8 @@ export function ScenarioPage() {
   const [sources, setSources] = useState<CareSourceRow[]>([]);
   const [assignments, setAssignments] = useState<CurrentAssignmentRow[]>([]);
   const [backups, setBackups] = useState<BackupAssignmentRow[]>([]);
+  const [handoffs, setHandoffs] = useState<TaskHandoffRecordContract[]>([]);
+  const [handoffLoadFailed, setHandoffLoadFailed] = useState(false);
   const [startLocal, setStartLocal] = useState(() => defaultScenarioStart());
   const [duration, setDuration] = useState<ScenarioDurationHours>(24);
   const [customInterval, setCustomInterval] = useState(false);
@@ -46,9 +59,14 @@ export function ScenarioPage() {
         listCareSources(ownedReceiver.care_receiver_id)
       ]);
       const taskIds = ownedTasks.map((task) => task.task_id);
-      const [ownedAssignments, ownedBackups] = await Promise.all([listCurrentAssignments(taskIds), listBackupAssignments(taskIds)]);
+      const [ownedAssignments, ownedBackups, handoffResult] = await Promise.all([
+        listCurrentAssignments(taskIds),
+        listBackupAssignments(taskIds),
+        loadScenarioHandoffs(ownedTasks)
+      ]);
       if (!active) return;
-      setReceiver(ownedReceiver); setTasks(ownedTasks); setSources(ownedSources); setAssignments(ownedAssignments); setBackups(ownedBackups); setLoading(false);
+      setReceiver(ownedReceiver); setTasks(ownedTasks); setSources(ownedSources); setAssignments(ownedAssignments); setBackups(ownedBackups);
+      setHandoffs(handoffResult.handoffs); setHandoffLoadFailed(handoffResult.failed); setLoading(false);
     }).catch((loadError) => {
       console.error('Unable to load scenario data', loadError);
       if (!active) return;
@@ -59,9 +77,18 @@ export function ScenarioPage() {
 
   const tasksById = useMemo(() => new Map(tasks.map((task) => [task.task_id, task])), [tasks]);
   const sourceById = useMemo(() => new Map(sources.map((source) => [source.care_source_id, source.display_name])), [sources]);
+  const handoffByTask = useMemo(() => new Map(handoffs.map((handoff) => [handoff.task_id, handoff])), [handoffs]);
+  const handoffPresentationByTask = useMemo(() => new Map(tasks.map((task) => [
+    task.task_id,
+    buildScenarioHandoffPresentation(task, handoffByTask.get(task.task_id) ?? null)
+  ])), [tasks, handoffByTask]);
   const selfSource = sources.find((source) => source.user_id === session?.user.id);
   const assignedTaskIds = useMemo(() => new Set(assignments.map((assignment) => assignment.task_id)), [assignments]);
   const unassignedTaskCount = tasks.filter((task) => !assignedTaskIds.has(task.task_id)).length;
+  const resultTaskIds = result
+    ? [...result.details.map((item) => item.task_id), ...result.unscheduled_considerations.map((item) => item.task_id)]
+    : [];
+  const handoffSummary = summarizeScenarioHandoffs(resultTaskIds, handoffPresentationByTask);
   let intervalPreview: ReturnType<typeof buildScenarioInterval> | null = null;
   try {
     intervalPreview = customInterval
@@ -144,16 +171,27 @@ export function ScenarioPage() {
               <div><strong>{result.summary.coordination_only}</strong><span>只有遠端協調</span></div>
               <div><strong>{result.summary.unprepared}</strong><span>尚無準備</span></div>
             </div>
+            {handoffLoadFailed ? <div className="scenario-handoff-load-error" role="status">目前無法讀取交接資訊狀態，接手安排仍可正常模擬</div> : <section className="scenario-handoff-summary">
+              <h2>本次模擬涉及的交接資訊</h2>
+              <div>
+                <p><strong>{handoffSummary.NOT_PREPARED}</strong><span>尚未整理</span></p>
+                <p><strong>{handoffSummary.NEEDS_DETAILS}</strong><span>尚待補充</span></p>
+                <p><strong>{handoffSummary.READY_TO_SHARE}</strong><span>已整理，可提供接手者確認</span></p>
+              </div>
+            </section>}
             <div className="timeline-section"><h2>固定照顧時間軸</h2>
               {result.details.length === 0 ? <p className="empty-task-state">這段期間沒有固定時間的照顧工作</p> : <div className="scenario-timeline">
-                {result.details.map((item) => <article className={`scenario-result status-${item.status.toLowerCase()}`} key={`${item.task_id}-${item.scheduled_at}`}>
+                {result.details.map((item) => { const handoff = handoffPresentationByTask.get(item.task_id); return <article className={`scenario-result status-${item.status.toLowerCase()}`} key={`${item.task_id}-${item.scheduled_at}`}>
                   <time dateTime={item.scheduled_at}>{item.date?.slice(5).replace('-', '/')} {item.scheduled_time}</time>
-                  <div><h3>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</h3><p>{SCENARIO_STATUS_LABELS[item.status]}</p><small>{describeScenarioSources(item, sourceById, (sourceId) => console.warn('Scenario result references an unknown care source', { sourceId }))}</small></div>
-                </article>)}
+                  <div><h3>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</h3>
+                    <div className="scenario-result-section"><strong>接手安排</strong><p>{SCENARIO_STATUS_LABELS[item.status]}</p><small>{describeScenarioSources(item, sourceById, (sourceId) => console.warn('Scenario result references an unknown care source', { sourceId }))}</small></div>
+                    <div className="scenario-result-section"><strong>交接資訊</strong>{handoffLoadFailed || !handoff ? <p>交接資訊狀態暫時無法確認</p> : <><p>{HANDOFF_READINESS_LABELS[handoff.readiness]}</p>{handoff.updatedAt && <small>最後更新：{formatHandoffTimestamp(handoff.updatedAt)}</small>}<Link className="scenario-handoff-cta" to={`/setup/handoffs?task=${item.task_id}`}>{SCENARIO_HANDOFF_CTA_LABELS[handoff.readiness]}</Link></>}</div>
+                  </div>
+                </article>; })}
               </div>}
             </div>
             {result.unscheduled_considerations.length > 0 && <div className="unscheduled-section"><h2>非固定需求</h2><p>這類需求沒有固定發生時間，無法用時間軸直接判定，建議另外確認應變方式</p>
-              {result.unscheduled_considerations.map((item) => <article key={item.task_id}><strong>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</strong><span>{SCENARIO_STATUS_LABELS[item.status]}</span></article>)}
+              {result.unscheduled_considerations.map((item) => { const handoff = handoffPresentationByTask.get(item.task_id); return <article key={item.task_id}><div><strong>{tasksById.get(item.task_id)?.title ?? '未知照顧工作'}</strong><span>{SCENARIO_STATUS_LABELS[item.status]}</span></div><div><strong>交接資訊</strong><span>{handoffLoadFailed || !handoff ? '交接資訊狀態暫時無法確認' : HANDOFF_READINESS_LABELS[handoff.readiness]}</span>{!handoffLoadFailed && handoff && <Link to={`/setup/handoffs?task=${item.task_id}`}>{SCENARIO_HANDOFF_CTA_LABELS[handoff.readiness]}</Link>}</div></article>; })}
             </div>}
             <Link className="secondary-button scenario-adjust-cta" to="/setup/backups">調整備援安排</Link>
           </section>}
