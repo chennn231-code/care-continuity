@@ -204,7 +204,7 @@ Access event foundation 只保存授權聲明、個案狀態、邀請、Membersh
 - **必要欄位：** membership、role type、purpose、scope ceiling、template version、status、starts_at、ends_at、granted_by actor、created_at
 - **Nullable：** revoked_at/reason、superseded_by grant
 - **FK：** membership、granter actor；不 Cascade historical grant
-- **Unique intent：** 同 Membership 不可有相同 role/purpose/scope/time generation 的 active duplicate；一筆內容只保存一個 acting grant
+- **Unique intent：** 同 Membership 同時最多一筆未終止的相同 role/purpose/scope `ACTIVE` grant；重新授權必須先明確終止舊 grant，再建立新 grant；constraint 不以 `now()` 作 predicate
 - **Check intent：** grant validity 不超出 Membership；scope/purpose 必須適用 role template；ends_at > starts_at
 - **狀態 vocabulary：** `ACTIVE`、`SUSPENDED`、`REVOKED`、`EXPIRED`、`SUPERSEDED`
 - **時間：** `[starts_at, ends_at)`，database clock；effective access 以 Case+Membership+Grant 同時計算
@@ -309,10 +309,10 @@ Authorization Declaration 交易成功後，系統建立第一位 manager Member
 | 1 建立 DRAFT | actor linked；沒有同 request 已建草稿 | Case + access event | 只有 creator 可見 DRAFT | 任一失敗全 rollback；重試不可多建 | 必須，有 client operation key |
 | 2 聲明授權並啟用 | creator owns DRAFT；未有效聲明 | Declaration、第一位 Membership、manager Grant、Case ACTIVE、events | creator 成為首位有效管理者 | 防雙擊、雙 declaration、Case 啟用卻無 manager | 必須 |
 | 3 發出 Invitation | ACTIVE；單一 grant 有 `MANAGE_INVITATIONS`；scope/period 合法 | Invitation + token hash + event | recipient 尚無內容權 | 防重複 active invite、越權角色、raw token 落庫 | 必須 |
-| 4 接受 Invitation | authenticated recipient binding match；invite effective/unused | invite accepted、Membership、initial Grant、events | 依 starts_at 取得 effective access | 防雙接受、轉寄者接受、半完成 Membership | 必須，重試回同結果 |
+| 4 接受 Invitation | authenticated recipient binding match；invite effective/unused | 驗證完成後建立或重用當前 Auth 專屬 Actor、invite accepted、Membership、initial Grant、events | 依 starts_at 取得 effective access | 無效 token 不留下 Actor；防雙接受、轉寄者接受、半完成 Membership | 必須，重試安全拒絕或回同結果 |
 | 5 撤回 Invitation | invite still pending；actor有能力 | invite revoked + event | token 立即失效 | accept/revoke 競賽只能一個 terminal transition 成功 | 必須 |
 | 6 撤銷 Membership | actor有能力；不是未處理的最後 manager | Membership/Grants revoked + events | DB clock 起立即失權 | 防 stale status、管理者互刪、部分 grant 存活 | 必須 |
-| 7 轉移最後 manager | old/new memberships有效；新管理者明確接受 | 新 manager Grant active、確認仍有 manager、舊 grant 結束、events | 始終至少一名 manager | 鎖定 Case/manager set；任一失敗全 rollback | 必須 |
+| 7 轉移最後 manager | old/new memberships有效；新管理者明確接受且已有完整有效 Case Admin grant | 鎖定並重用目標既有 grant、確認仍有 manager、舊 grant 結束、events | 始終至少一名 manager且不建立重複 grant | 鎖定 Case/manager set；任一失敗全 rollback | 必須 |
 | 8 到期後失權 | now >= ends_at | 不要求先更新 stored status；access evaluation直接拒絕；可另記首次觀察到期 event | 即時拒絕 | 防無 cron 時仍 ACTIVE、舊 session 讀取 | 判定天然；event需去重 |
 | 9 放棄 DRAFT | creator；DRAFT；無 declaration/invite | hard delete draft +必要最小 event/operation record依 retention決策 | 草稿消失 | 防與 declaration transaction 競賽 | 必須 |
 | 10 刪帳前治理檢查 | actor linked | 檢查 DRAFT、last-manager責任、pending invites；完成必要處理後 detach | 不刪 Case/歷史 | 任一未解責任即拒絕刪帳；防檢查後狀態改變 | 必須 |
@@ -430,6 +430,8 @@ Migration 007 固定完整 vocabulary 供 Grant path 驗證，但只實作 Acces
 - Email canonicalization 規則必須固定；不得對所有 provider 擅自移除 plus alias 或 dots
 - 未註冊者先完成正常 Auth 註冊與 Email confirmation，再以相同 canonical Email 接受
 - 已註冊者仍需 authenticated session、Auth 已驗證 Email、normalized Email match 與有效 token
+- Invitation acceptance 是新帳號建立第一個 Actor Reference 的合法入口之一；RPC 必須先鎖定並完整驗證 invitation/token/confirmed Email，之後才以精確 `auth.uid()` 建立或重用 Actor，且不得依 Email 重連已 detach 的歷史 Actor
+- 新 Actor 的 prototype 顯示標籤不得採信 `user_metadata` 作為身分證據；無效、過期、撤回或不匹配 token 不得留下孤立 Actor
 - token 一次性、有限期、可撤回；accept/revoke/expire 是互斥 terminal result
 - 轉寄者只有 token、沒有匹配 confirmed Email，必須拒絕
 - 接受前只顯示邀請者顯示名稱、個案最小非敏感 label、邀請角色、目的、期間、未驗證聲明提示；不得顯示健康資料
@@ -610,6 +612,9 @@ v1與v2的policy path完全分離：v2 helper不得讀 `care_receivers.owner_use
 - 最後manager保護採Case-level serialization/locking responsibility；不可只靠前端
 - Role／Capability／Purpose／Scope vocabulary及Role×Capability matrix已freeze
 - Invitation採登入後confirmed Email match + normalized Email + single-use hashed opaque token
+- Invitation acceptance 可在完整驗證後原子建立目前 Auth 的第一個 Actor Reference；不依 Email 接管 detached 歷史 Actor
+- Membership 撤銷在 Case row lock 後重讀 Membership、呼叫者 grant path、database-clock validity 與 last-manager guard；任何 guard 失敗不寫入撤銷或 Event
+- 管理權轉移重用已接受且有效的目標 Case Admin grant，不建立第二筆相同 active grant；同 Membership/role/purpose/scope 的未終止 active path 由唯一性 invariant 防重
 - RLS helper從`auth.uid()`開始，使用單向base-table dependency，不接受client actor/role聲明
 - Access Event採固定kind的受控polymorphic target，不擴張七表
 - Rollback依「無資料」與「已有資料」分開，已有資料以feature-off/deny-access/forward-fix為優先

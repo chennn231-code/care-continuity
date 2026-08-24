@@ -504,11 +504,12 @@ CREATE UNIQUE INDEX uq_v2_active_grant_shape
         membership_id,
         role_type,
         purpose,
-        scope_ceiling,
-        starts_at,
-        COALESCE(ends_at, 'infinity'::timestamptz)
+        scope_ceiling
     )
     WHERE status = 'ACTIVE';
+
+COMMENT ON INDEX public.uq_v2_active_grant_shape IS
+    'At most one unterminated ACTIVE grant for one Membership-role-purpose-scope path; reauthorization must terminate the prior grant first';
 
 ALTER TABLE public.v2_invitations
     ADD CONSTRAINT v2_invitations_inviter_grant_fkey
@@ -1270,8 +1271,9 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-    actor_id_value UUID := v2_private.current_actor_id();
-    verified_email_value TEXT := v2_private.current_verified_email();
+    current_user_id UUID := auth.uid();
+    actor_id_value UUID;
+    verified_email_value TEXT;
     token_hash_value BYTEA;
     invitation_row public.v2_invitations%ROWTYPE;
     membership_id_value UUID;
@@ -1279,7 +1281,13 @@ DECLARE
     next_generation INTEGER;
     database_now TIMESTAMPTZ := clock_timestamp();
 BEGIN
-    IF actor_id_value IS NULL OR verified_email_value IS NULL THEN
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'Authentication is required';
+    END IF;
+
+    verified_email_value := v2_private.current_verified_email();
+
+    IF verified_email_value IS NULL THEN
         RAISE EXCEPTION 'A confirmed signed-in email is required';
     END IF;
 
@@ -1305,6 +1313,23 @@ BEGIN
     ) OR NOT v2_private.case_has_effective_admin(invitation_row.case_id) THEN
         RAISE EXCEPTION 'Invitation is not available';
     END IF;
+
+    -- Invitation acceptance is a legitimate first Actor-reference entry point.
+    -- It runs only after the trusted Auth Email, token, terminal state, expiry,
+    -- recipient binding and active Case governance have all been validated.
+    -- The generic label is not identity evidence and does not use user_metadata.
+    -- A detached historical Actor is never relinked by Email; only an existing
+    -- row with this exact current auth.users id may be reused.
+    INSERT INTO public.v2_actor_references (
+        auth_user_id,
+        display_name_snapshot
+    ) VALUES (
+        current_user_id,
+        'Invited member'
+    )
+    ON CONFLICT (auth_user_id) WHERE auth_user_id IS NOT NULL
+    DO UPDATE SET auth_user_id = EXCLUDED.auth_user_id
+    RETURNING actor_id INTO actor_id_value;
 
     SELECT COALESCE(MAX(membership.generation), 0) + 1
     INTO next_generation
@@ -1456,27 +1481,32 @@ SET search_path = ''
 AS $$
 DECLARE
     membership_row public.v2_case_memberships%ROWTYPE;
+    locked_case_id_value UUID;
     actor_id_value UUID := v2_private.current_actor_id();
     acting_grant_id_value UUID;
-    database_now TIMESTAMPTZ := clock_timestamp();
+    database_now TIMESTAMPTZ;
 BEGIN
-    SELECT * INTO membership_row
+    -- Discover only the Case identifier before locking. Authorization and all
+    -- mutable Membership facts are re-read after the shared Case lock.
+    SELECT membership.case_id INTO locked_case_id_value
     FROM public.v2_case_memberships AS membership
     WHERE membership.membership_id = p_membership_id;
 
-    IF NOT FOUND OR NOT v2_private.has_case_grant_path(
-        membership_row.case_id,
-        'MANAGE_MEMBERSHIPS',
-        'CASE_ADMINISTRATION',
-        NULL
-    ) THEN
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'Membership is not available';
     END IF;
 
-    SELECT case_row.case_id
+    PERFORM 1
     FROM public.v2_cases AS case_row
-    WHERE case_row.case_id = membership_row.case_id
+    WHERE case_row.case_id = locked_case_id_value
+      AND case_row.status = 'ACTIVE'
     FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Membership is not available';
+    END IF;
+
+    database_now := clock_timestamp();
 
     -- The preliminary lookup discovers the Case to lock. Re-read the target
     -- membership after acquiring that shared serialization lock so all
@@ -1484,9 +1514,18 @@ BEGIN
     SELECT * INTO membership_row
     FROM public.v2_case_memberships AS membership
     WHERE membership.membership_id = p_membership_id
-      AND membership.case_id = membership_row.case_id;
+      AND membership.case_id = locked_case_id_value;
 
     IF NOT FOUND OR membership_row.status NOT IN ('ACCEPTED', 'ACTIVE', 'SUSPENDED') THEN
+        RAISE EXCEPTION 'Membership is not available';
+    END IF;
+
+    IF actor_id_value IS NULL OR NOT v2_private.has_case_grant_path(
+        locked_case_id_value,
+        'MANAGE_MEMBERSHIPS',
+        'CASE_ADMINISTRATION',
+        NULL
+    ) THEN
         RAISE EXCEPTION 'Membership is not available';
     END IF;
 
@@ -1496,11 +1535,20 @@ BEGIN
       ON grant_row.membership_id = manager_membership.membership_id
     WHERE manager_membership.case_id = membership_row.case_id
       AND manager_membership.actor_id = actor_id_value
+      AND manager_membership.status IN ('ACCEPTED', 'ACTIVE')
+      AND manager_membership.starts_at <= database_now
+      AND (manager_membership.ends_at IS NULL OR database_now < manager_membership.ends_at)
+      AND manager_membership.revoked_at IS NULL
       AND grant_row.role_type = 'CASE_ADMIN'
+      AND grant_row.purpose = 'CASE_ADMINISTRATION'
       AND grant_row.status = 'ACTIVE'
       AND grant_row.starts_at <= database_now
       AND (grant_row.ends_at IS NULL OR database_now < grant_row.ends_at)
     LIMIT 1;
+
+    IF acting_grant_id_value IS NULL THEN
+        RAISE EXCEPTION 'Membership is not available';
+    END IF;
 
     IF EXISTS (
         SELECT 1 FROM public.v2_role_grants AS target_grant
@@ -1523,6 +1571,7 @@ BEGIN
           AND other_membership.starts_at <= database_now
           AND (other_membership.ends_at IS NULL OR database_now < other_membership.ends_at)
           AND other_grant.role_type = 'CASE_ADMIN'
+          AND other_grant.purpose = 'CASE_ADMINISTRATION'
           AND other_grant.status = 'ACTIVE'
           AND other_grant.starts_at <= database_now
           AND (other_grant.ends_at IS NULL OR database_now < other_grant.ends_at)
@@ -1564,8 +1613,8 @@ AS $$
 DECLARE
     actor_id_value UUID := v2_private.current_actor_id();
     acting_grant_id_value UUID;
-    new_grant_id_value UUID;
-    database_now TIMESTAMPTZ := clock_timestamp();
+    target_grant_id_value UUID;
+    database_now TIMESTAMPTZ;
 BEGIN
     -- SQL GATE 4: all manager mutations lock the same Case row. Concurrent
     -- attempts to remove each other serialize and re-check current facts.
@@ -1583,63 +1632,73 @@ BEGIN
         RAISE EXCEPTION 'Case administration is not available';
     END IF;
 
+    IF p_old_admin_membership_id = p_new_admin_membership_id THEN
+        RAISE EXCEPTION 'New case administrator must be different';
+    END IF;
+
+    database_now := clock_timestamp();
+
     SELECT grant_row.grant_id INTO acting_grant_id_value
     FROM public.v2_case_memberships AS membership
     JOIN public.v2_role_grants AS grant_row
       ON grant_row.membership_id = membership.membership_id
     WHERE membership.case_id = p_case_id
       AND membership.actor_id = actor_id_value
+      AND membership.status IN ('ACCEPTED', 'ACTIVE')
+      AND membership.starts_at <= database_now
+      AND (membership.ends_at IS NULL OR database_now < membership.ends_at)
+      AND membership.revoked_at IS NULL
       AND grant_row.role_type = 'CASE_ADMIN'
+      AND grant_row.purpose = 'CASE_ADMINISTRATION'
       AND grant_row.status = 'ACTIVE'
       AND grant_row.starts_at <= database_now
       AND (grant_row.ends_at IS NULL OR database_now < grant_row.ends_at)
     LIMIT 1;
 
-    IF NOT EXISTS (
-        SELECT 1
-        FROM public.v2_case_memberships AS membership
-        JOIN public.v2_actor_references AS actor
-          ON actor.actor_id = membership.actor_id
-        WHERE membership.membership_id = p_new_admin_membership_id
-          AND membership.case_id = p_case_id
-          AND membership.relationship_kind = 'CASE_ADMIN'
-          AND membership.status IN ('ACCEPTED', 'ACTIVE')
-          AND membership.accepted_at IS NOT NULL
-          AND membership.starts_at <= database_now
-          AND (membership.ends_at IS NULL OR database_now < membership.ends_at)
-          AND actor.auth_user_id IS NOT NULL
-    ) THEN
+    SELECT grant_row.grant_id INTO target_grant_id_value
+    FROM public.v2_case_memberships AS membership
+    JOIN public.v2_actor_references AS actor
+      ON actor.actor_id = membership.actor_id
+    JOIN public.v2_role_grants AS grant_row
+      ON grant_row.membership_id = membership.membership_id
+    WHERE membership.membership_id = p_new_admin_membership_id
+      AND membership.case_id = p_case_id
+      AND membership.relationship_kind = 'CASE_ADMIN'
+      AND membership.status IN ('ACCEPTED', 'ACTIVE')
+      AND membership.accepted_at IS NOT NULL
+      AND membership.starts_at <= database_now
+      AND (membership.ends_at IS NULL OR database_now < membership.ends_at)
+      AND membership.revoked_at IS NULL
+      AND actor.auth_user_id IS NOT NULL
+      AND grant_row.role_type = 'CASE_ADMIN'
+      AND grant_row.purpose = 'CASE_ADMINISTRATION'
+      AND grant_row.scope_ceiling = 'AUTHOR_ONLY'
+      AND grant_row.status = 'ACTIVE'
+      AND grant_row.starts_at <= database_now
+      AND (grant_row.ends_at IS NULL OR database_now < grant_row.ends_at)
+      AND grant_row.revoked_at IS NULL
+    LIMIT 1;
+
+    IF acting_grant_id_value IS NULL OR target_grant_id_value IS NULL THEN
         RAISE EXCEPTION 'New case administrator is not eligible';
     END IF;
 
-    INSERT INTO public.v2_role_grants (
-        membership_id,
-        role_type,
-        purpose,
-        scope_ceiling,
-        template_version,
-        starts_at,
-        granted_by_actor_id
-    ) VALUES (
-        p_new_admin_membership_id,
-        'CASE_ADMIN',
-        'CASE_ADMINISTRATION',
-        'AUTHOR_ONLY',
-        'ACCESS_FOUNDATION_V1',
-        database_now,
-        actor_id_value
-    )
-    RETURNING grant_id INTO new_grant_id_value;
-
-    -- New grant is effective before the old admin is ended, in the same locked
-    -- transaction. If any following statement fails, both changes roll back.
+    -- The accepted target administrator already owns one complete effective
+    -- grant path. Reuse it; do not create a duplicate active grant.
     UPDATE public.v2_role_grants AS old_grant
     SET status = 'SUPERSEDED',
-        superseded_by_grant_id = new_grant_id_value,
+        superseded_by_grant_id = target_grant_id_value,
         terminal_reason = 'CASE_ADMIN_TRANSFERRED'
     WHERE old_grant.membership_id = p_old_admin_membership_id
       AND old_grant.role_type = 'CASE_ADMIN'
-      AND old_grant.status = 'ACTIVE';
+      AND old_grant.purpose = 'CASE_ADMINISTRATION'
+      AND old_grant.status = 'ACTIVE'
+      AND EXISTS (
+          SELECT 1
+          FROM public.v2_case_memberships AS old_membership
+          WHERE old_membership.membership_id = old_grant.membership_id
+            AND old_membership.case_id = p_case_id
+      );
 
     IF NOT FOUND OR NOT v2_private.case_has_effective_admin(p_case_id) THEN
         RAISE EXCEPTION 'Case administrator transfer would leave the case unmanaged';
@@ -1647,12 +1706,12 @@ BEGIN
 
     PERFORM v2_private.append_access_event(
         p_case_id, actor_id_value, acting_grant_id_value,
-        'CASE_ADMIN_TRANSFERRED', 'ROLE_GRANT', new_grant_id_value,
+        'CASE_ADMIN_TRANSFERRED', 'ROLE_GRANT', target_grant_id_value,
         p_old_admin_membership_id::TEXT, p_new_admin_membership_id::TEXT,
         NULL, NULL, p_operation_key
     );
 
-    RETURN new_grant_id_value;
+    RETURN target_grant_id_value;
 END;
 $$;
 
