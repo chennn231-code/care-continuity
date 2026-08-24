@@ -7,10 +7,15 @@ import type { DemoRole } from '../types/prototype';
 
 const roles = Object.keys(DEMO_ROLE_LABELS) as DemoRole[];
 
+export function shouldShowAccountSummary(pathname: string) {
+  return !pathname.startsWith('/v2/prototype/register') || pathname.endsWith('/complete');
+}
+
 export function PrototypeShell() {
   const { state, setRole } = usePrototype();
   const location = useLocation();
   const isCaseRoute = location.pathname.includes('/cases/demo-case');
+  const showAccountSummary = shouldShowAccountSummary(location.pathname);
   const primaryIdentity = state.identities.find((identity) => identity.isPrimary);
 
   useEffect(() => {
@@ -26,7 +31,7 @@ export function PrototypeShell() {
       <a className="v2-skip-link" href="#v2-main">跳到主要內容</a>
       <header className="v2-topbar">
         <Link className="v2-brand" to="/v2/prototype"><span aria-hidden="true">W</span><strong>{V2_PRODUCT_NAME}</strong></Link>
-        <Link className="v2-account-summary" to="/v2/prototype/profile/identities"><span>主要身分</span><strong>{primaryIdentity ? IDENTITY_TYPE_LABELS[primaryIdentity.identityType] : '尚未登錄'}</strong><small>{primaryIdentity ? VERIFICATION_STATUS_LABELS[primaryIdentity.verificationStatus] : '前往體驗註冊'}</small></Link>
+        {showAccountSummary && <Link className="v2-account-summary" to="/v2/prototype/profile/identities"><span>主要身分</span><strong>{primaryIdentity ? IDENTITY_TYPE_LABELS[primaryIdentity.identityType] : '尚未登錄'}</strong><small>{primaryIdentity ? VERIFICATION_STATUS_LABELS[primaryIdentity.verificationStatus] : '前往體驗註冊'}</small></Link>}
       </header>
       <div className="v2-prototype-notice" role="note"><strong>{V2_PROTOTYPE_NOTICE}</strong><small>本 Prototype 不代表正式身分、個案關係或權限驗證</small></div>
       {isCaseRoute && <><div className="v2-case-context"><span>目前個案關係：家庭成員</span><span>身分狀態：已驗證</span><span>資料權限：依此個案的有效 grant path</span></div><details className="v2-permission-preview">

@@ -470,6 +470,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .v2-carousel-dots { display: flex; justify-content: center; gap: 0.45rem; margin: 0.4rem 0 1.4rem; }
 .v2-carousel-dots span { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--mist-300); }
 .v2-carousel-dots span.active { width: 1.5rem; border-radius: 999px; background: var(--mist-700); }
+.v2-carousel-hint { margin: -0.75rem 0 1.25rem; color: var(--muted); font-size: 0.88rem; font-weight: 700; text-align: center; }
 .v2-wide-action { width: 100%; margin-top: 0.4rem; }
 .v2-profession-groups { display: grid; gap: 1.3rem; }
 .v2-profession-groups fieldset { margin: 0; padding: 1rem; border: 1px solid rgba(88, 118, 134, 0.2); border-radius: 1.2rem; }

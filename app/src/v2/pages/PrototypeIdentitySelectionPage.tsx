@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { IDENTITY_TYPE_LABELS } from '../data/mockData';
+import { IDENTITY_CAROUSEL_HINT } from '../data/registrationCopy';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { PrimaryIdentityType } from '../types/prototype';
 
@@ -65,6 +66,7 @@ export function PrototypeIdentitySelectionPage() {
       <div className="v2-carousel-dots" aria-label="三種身分類型">
         {identityOptions.map((option) => <span className={selected === option.value ? 'active' : ''} key={option.value} aria-hidden="true" />)}
       </div>
+      <p className="v2-carousel-hint">{IDENTITY_CAROUSEL_HINT}</p>
       <p className="v2-logic-note">選擇身分只會建立自我登錄狀態，不會自動取得個案資料</p>
       <button className="primary-button v2-wide-action" type="button" disabled={!selected} onClick={continueFlow}>{selected ? actionLabels[selected] : '請先選擇主要身分'}</button>
     </section>
