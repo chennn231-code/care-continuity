@@ -1,0 +1,27 @@
+import { Link } from 'react-router-dom';
+
+export function PrototypeLandingPage() {
+  return (
+    <section className="v2-page v2-landing-page">
+      <header className="v2-page-heading">
+        <p className="eyebrow">WinWin v2 Prototype</p>
+        <h1>選擇你想體驗的流程</h1>
+        <p>所有內容都是虛構展示，不會建立帳號、連線資料庫或保存輸入內容</p>
+      </header>
+      <div className="v2-choice-grid">
+        <article className="v2-card">
+          <span className="v2-fake-label">既有展示</span>
+          <h2>照顧變化與處理事項</h2>
+          <p>查看虛構個案、照顧變化、責任指派與完成流程</p>
+          <Link className="primary-button" to="/v2/prototype/cases">體驗展示個案</Link>
+        </article>
+        <article className="v2-card">
+          <span className="v2-fake-label">新增流程</span>
+          <h2>主要身分註冊</h2>
+          <p>了解身分登錄、驗證、個案關係與權限之間的差異</p>
+          <Link className="secondary-button" to="/v2/prototype/register">體驗註冊流程</Link>
+        </article>
+      </div>
+    </section>
+  );
+}

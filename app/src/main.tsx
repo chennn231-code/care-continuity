@@ -5,12 +5,12 @@ import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
 import './styles.css';
 
+const isV2Prototype = window.location.pathname.startsWith('/v2/prototype');
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      {isV2Prototype ? <App /> : <AuthProvider><App /></AuthProvider>}
     </BrowserRouter>
   </StrictMode>
 );
