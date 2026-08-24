@@ -503,12 +503,16 @@ Case content policy 未存在於 Migration 007。Case policy不能查一個會�
 
 - `current_actor_id()`：從 `auth.uid()` 開始，只讀 Actor Reference 的 active Auth link；不接受 client actor id，也不回傳其他 actor
 - `has_case_grant_path(case, capability, purpose, scope)`：只讀 Actor Reference、Case、Membership、Role Grant 與固定 role template；驗證一條完整 path，只回 boolean
-- `is_draft_creator(case)`：只讀 Actor Reference 與 Case creator/status；不得查 Membership/Grant，確保 DRAFT 唯一路徑
+- DRAFT creator 判斷維持在 Case SELECT policy 與受控 DRAFT RPC 的窄條件內：只比較 `auth.uid()` 對應 Actor、Case creator 與 DRAFT status，不另外暴露未使用的 helper
 - `is_invitation_recipient(invitation)`：只讀目前 Auth identity 的已驗證 Email與 Invitation binding/status/time；token validation 由接受交易處理，不把 token 放進一般 RLS claim
 - `case_has_effective_manager(case, excluding_membership?)`：只讀 Case、Membership、Role Grant與Actor active link；用於 last-manager guard及衍生 `GOVERNANCE_UNAVAILABLE`
 - `can_manage_invitation/membership/grant(...)`：只讀一條 actor→membership→grant path及Case，不透過被管理表自己的RLS反查
 
-未來 helper 若需要較高權限，必須固定 search path、schema-qualify relations、最小參數與 boolean/minimal result、明確 owner/執行角色、撤銷 PUBLIC與anon direct execute，並有專門 PostgreSQL/RLS tests。authenticated 是否能直接 EXECUTE 必須按用途逐一決定；trigger-only/helper-only function不得開放直接呼叫。這不是本輪核准 SECURITY DEFINER。
+`SECURITY DEFINER` 以函式 owner 權限執行。若 owner 是 superuser 或具有 `BYPASSRLS`，`FORCE ROW LEVEL SECURITY` 不會成為高權限函式的限制來源。Migration 007 SQL Draft 預期由 Supabase migration owner 建立函式，不自行建立尚未驗證的 custom role，也不假設 owner 受 RLS 限制。所有 definer RPC 必須按「可能 bypass RLS」的安全等級審查：固定空 `search_path`、schema-qualified relation、從 `auth.uid()` 重建 Actor、完整輸入與狀態驗證、最小結果、原子 transaction、必要 Case row lock，以及最小 EXECUTE ACL。不得接受 client 自稱 actor、role、capability、verified Email 或 database time。
+
+函式依用途分成四類：純運算採 `SECURITY INVOKER`；Policy helper 僅在避免 RLS recursion 確有需要時採 definer，且只能回傳最小 boolean／identifier；只供其他 definer 呼叫的 internal helper 採 invoker 並撤銷 client EXECUTE；只有跨 RLS 寫入或原子治理操作的 authenticated RPC 才採 definer。一般 client 不能直接呼叫 internal helper，Policy helper 是否授予 authenticated EXECUTE 必須逐一證明必要性。
+
+Local dry-run 必須查驗 `pg_proc.proowner`、owner 的 superuser／`BYPASSRLS` 屬性、`prosecdef`、`proconfig` 中的 `search_path` 以及實際 EXECUTE ACL。這些尚未經本專案 Local Supabase 證明，因此 Remote Apply 維持 BLOCKED。
 
 前端不能自稱 actor、role、capability、purpose 或 effective time。所有 client 可呼叫操作仍需 database transaction、constraint 與 RLS enforcement。不得藉 Migration 007 放寬現有 v1 38 policies。
 
@@ -579,7 +583,7 @@ v1與v2的policy path完全分離：v2 helper不得讀 `care_receivers.owner_use
 
 ## 13. Access Event 定位與完整性
 
-`v2_access_events`只記錄：Case建立/啟用、授權聲明、Invitation發出/接受/拒絕/撤回/到期、Membership建立/暫停/撤銷/到期、Grant建立/變更/撤銷、管理權轉移、Auth link解除與DRAFT放棄。
+`v2_access_events`只記錄：Case啟用、授權聲明、Invitation發出/接受/拒絕/撤回/到期、Membership建立/暫停/撤銷/到期、Grant建立/變更/撤銷、管理權轉移、Auth link解除與DRAFT放棄。未發布 DRAFT 的建立不另留永久 `CASE_CREATED` Event，避免其真正刪除後留下第二種 nullable-Case event 例外。
 
 固定規則：
 
@@ -589,8 +593,12 @@ v1與v2的policy path完全分離：v2 helper不得讀 `care_receivers.owner_use
 - target kind只允許 `CASE`、`AUTHORIZATION_DECLARATION`、`INVITATION`、`MEMBERSHIP`、`ROLE_GRANT`、`ACTOR_REFERENCE`
 - target identifier在原物件日後去識別化時仍保留歷史意義
 - 七表方案維持，不為每種target額外建event table
+- `DRAFT_ABANDONED` 必須在 DRAFT 刪除前建立，當下先驗證 target 確實存在且屬於該 Case
+- DRAFT 刪除後，Event 的 Case FK 以 `ON DELETE SET NULL` 清空；原 Case UUID只作為不可變 tombstone target identifier
+- tombstone 只保存 actor、event type、target kind、原 Case UUID、event time及必要最小metadata，不保存長者名稱、健康資料或完整草稿內容
+- `DRAFT_ABANDONED` 是第一階段唯一允許 Case FK 為 NULL 的事件；target identifier不得被用來恢復內容或重新取得存取權
 
-推薦採受控 polymorphic target：因單一event可能指向六種foundation entity，資料庫無法用單一FK完整保證target存在。所有event只能由受控寫入操作建立，該操作必須在同一transaction先驗證target kind對應的物件存在且屬同一Case；event type與target kind使用固定相容矩陣。這個方案保留七表，但明確接受「無法取得完整declarative FK保證」的取捨。SQL Draft必須用negative tests證明一般client無法製造dangling target。
+推薦採受控 polymorphic target：因單一event可能指向六種foundation entity，資料庫無法用單一FK完整保證target存在。正常event只能由受控寫入操作建立，該操作必須在同一transaction先驗證target kind對應的物件存在且屬同一Case；event type與target kind使用固定相容矩陣。`DRAFT_ABANDONED` 先以同樣方式驗證，再因 hard delete 轉為最小 tombstone。這個方案保留七表，但明確接受「polymorphic target無法取得完整declarative FK保證」的取捨。SQL dry-run必須用negative tests證明一般client無法製造dangling target或利用 tombstone 取得內容。
 
 ## 14. Gate 重新分類
 
@@ -606,13 +614,15 @@ v1與v2的policy path完全分離：v2 helper不得讀 `care_receivers.owner_use
 - Access Event採固定kind的受控polymorphic target，不擴張七表
 - Rollback依「無資料」與「已有資料」分開，已有資料以feature-off/deny-access/forward-fix為優先
 
-### 14.2 SQL Draft 前仍未解決的 BLOCKER
+### 14.2 Static SQL Draft 已具體化、待 Local dry-run 驗證的邊界
 
-1. **Supabase confirmed Email trust boundary：** 必須在SQL Draft Review證明database側能可靠取得目前Auth account的Email與confirmed狀態；若不能，Invitation acceptance不可進入dry-run
-2. **Auth admin delete實際FK行為：** 必須在local PostgreSQL/Supabase設計中證明Auth delete能解除Actor link且helper立即fail-closed，無v1或v2 Cascade；不建立Auth schema trigger
-3. **Helper execution model：** 逐一決定helper owner、invoker/definer、direct EXECUTE ACL與避免RLS recursion的實際dependency；不能用一個過寬helper包辦
-4. **Last-manager concurrency primitive：** SQL Draft必須選定Case lock/serialization與錯誤語意，證明雙方互撤不會零manager
-5. **Access Event target validation mechanism：** 固定受控polymorphic取捨後，仍須在SQL Draft定義event-type/target-kind驗證責任與negative tests
+1. **Supabase confirmed Email trust boundary：** Draft 由 `auth.uid()` 查 `auth.users.email` 並要求 `email_confirmed_at IS NOT NULL`，不採信 client、JWT Email 或 `user_metadata`；實際 Auth schema 尚待 Local Supabase 證明
+2. **Auth admin delete實際FK行為：** Draft 採 Auth FK `ON DELETE SET NULL` 與無有效 Auth mapping 即 fail-closed；仍須證明無 v1/v2 Cascade 及 governance-unavailable 行為
+3. **Helper execution model：** 已分 pure invoker、Policy definer、internal invoker、authenticated transaction definer RPC；仍須查驗 migration owner、superuser／`BYPASSRLS`、`prosecdef`、`proconfig` 與 ACL
+4. **Last-manager concurrency primitive：** Draft 採 Case row lock、鎖後重讀與同 transaction 移轉；仍須並行測試雙方互撤與故意失敗 rollback
+5. **Access Event target validation：** Draft 採固定相容矩陣、建立當下 target/case 驗證及唯一 DRAFT tombstone 例外；仍須 negative tests
+
+上述皆為 Local dry-run 必測，不再構成 Static SQL Draft 的設計 BLOCKER；任何一項測試不通過都阻擋正式 Migration 與 Remote Apply。
 
 ### 14.3 僅阻擋Migration執行的驗證Gate
 
@@ -639,14 +649,17 @@ v1與v2的policy path完全分離：v2 helper不得讀 `care_receivers.owner_use
 ### 15.2 Design Review 判定
 
 - **Migration 007 Access Foundation Design Review：** `PASS — ACCESS FOUNDATION DECISIONS FROZEN`
-- **可進入本機 Migration 007 SQL Draft：** 是，但SQL Draft Gate必須解決第14.2節五項BLOCKER後，才可進PostgreSQL dry-run
+- **本機 Migration 007 SQL Draft：** 已完成 static security revision；第14.2節轉為 Local dry-run 必測邊界
 - **可操作 Supabase：** 否
 - **可修改 v1 RLS／Migration 001–006：** 否
+- **Static SQL Draft Review：** `PASS`，前提是草案仍留在 `docs/sql-drafts/` 且不得套用
+- **Local Supabase／PostgreSQL dry-run：** 可進入下一個獨立 Gate；owner、ACL、Auth schema、RLS recursion、並行與 tombstone 為必測
+- **Remote Supabase Apply：** `BLOCKED`
 
 七表足以表達本Gate已固定的Access Foundation規則。Design Review的產品與邏輯決策已PASS；剩餘問題屬SQL Draft必須具體化並驗證的安全實作邊界，不再要求新增第八張表。
 
 ### 15.3 下一個 Gate
 
-**Migration 007 Local SQL Draft Gate**
+**Migration 007 Local Supabase／PostgreSQL Dry-run Gate**
 
-下一Gate只允許在`migration-drafts`建立本機SQL草案與static review，具體化七表、constraints、受控transactions、helper ACL與policy dependency。不得直接移入正式migration、執行db push或操作遠端Supabase。
+下一Gate只允許在乾淨本機環境解析並測試 `docs/sql-drafts/007_v2_access_foundation_draft.sql`，查驗函式 owner／ACL／`search_path`、confirmed Email、Auth delete fail-closed、RLS isolation、last-manager並行及DRAFT tombstone。仍不得移入正式migration、執行db push或操作遠端Supabase。
