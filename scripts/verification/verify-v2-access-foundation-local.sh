@@ -7,6 +7,8 @@ EXPECTED_DRAFT_SHA="84007ccc2e5c16246435a1186e6123951f805bc383725504612d67e3dfbf
 FORMAL_MIGRATION_NAME="20260824220000_v2_access_foundation.sql"
 PROJECT_PREFIX="cc-v2-007-rc"
 PORTS=(58320 58321 58322 58323 58324 58325 58326 58327 58328 58329)
+MIGRATION_008_NAME="20260825090000_v2_identity_grant_alignment.sql"
+EXPECTED_MIGRATION_008_SHA="e54ee8d571672243454b60e70cac86a6c909a2f19c05bf498492736072521e8d"
 
 if [[ "${1:-}" == "--self-test-failure-exit-code" ]]; then
   echo "Simulated harness failure: FAIL=1" >&2
@@ -16,6 +18,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FIXTURE_ROOT="$REPO_ROOT/supabase/tests/v2-access-foundation"
+IDENTITY_FIXTURE_ROOT="$REPO_ROOT/supabase/tests/v2-identity-grant-alignment"
 DRAFT_PATH="$REPO_ROOT/docs/sql-drafts/007_v2_access_foundation_draft.sql"
 MIGRATION_ROOT="$REPO_ROOT/supabase/migrations"
 FORMAL_MIGRATION_PATH="$MIGRATION_ROOT/$FORMAL_MIGRATION_NAME"
@@ -55,8 +58,14 @@ if ! cmp -s "$DRAFT_PATH" "$FORMAL_MIGRATION_PATH"; then
 fi
 
 migration_files=("$MIGRATION_ROOT"/*.sql)
-if [[ "${#migration_files[@]}" -ne 7 ]]; then
-  echo "BLOCKED: formal migration directory must contain exactly Migration 001-007" >&2
+if [[ "${#migration_files[@]}" -ne 8 ]]; then
+  echo "BLOCKED: formal migration directory must contain exactly Migration 001-008" >&2
+  exit 2
+fi
+
+migration_008_path="$MIGRATION_ROOT/$MIGRATION_008_NAME"
+if [[ ! -f "$migration_008_path" ]] || [[ "$(shasum -a 256 "$migration_008_path" | awk '{print $1}')" != "$EXPECTED_MIGRATION_008_SHA" ]]; then
+  echo "BLOCKED: Migration 008 canonical fingerprint mismatch" >&2
   exit 2
 fi
 
@@ -66,7 +75,8 @@ dryrun_root="$(mktemp -d "${TMPDIR:-/tmp}/care-continuity-v2-007-harness.XXXXXX"
 logs_dir="$dryrun_root/logs"
 temp_supabase="$dryrun_root/supabase"
 temp_tests="$dryrun_root/tests"
-mkdir -p "$logs_dir" "$temp_supabase/migrations" "$temp_tests"
+temp_identity_tests="$dryrun_root/identity-tests"
+mkdir -p "$logs_dir" "$temp_supabase/migrations" "$temp_tests" "$temp_identity_tests"
 
 summary_file="$logs_dir/summary.txt"
 stack_stop_result="NOT_ATTEMPTED"
@@ -105,6 +115,7 @@ for migration_file in "${migration_files[@]}"; do
   cp "$migration_file" "$temp_supabase/migrations/$(basename "$migration_file")"
 done
 cp "$FIXTURE_ROOT"/*.sql "$temp_tests/"
+cp "$IDENTITY_FIXTURE_ROOT"/*.sql "$temp_identity_tests/"
 
 config_file="$temp_supabase/config.toml"
 replace_config() {
@@ -161,6 +172,7 @@ run_sql() {
 run_sql "$temp_tests/core.sql" "$logs_dir/core.log"
 run_sql "$temp_tests/security-regression.sql" "$logs_dir/security-regression.log"
 run_sql "$temp_tests/structural.sql" "$logs_dir/structural.log"
+run_sql "$temp_identity_tests/core.sql" "$logs_dir/identity-core.log"
 
 set +e
 docker exec -i "$db_container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <"$temp_tests/concurrency-session-a.sql" >"$logs_dir/concurrency-a.log" 2>&1 &
@@ -182,6 +194,10 @@ docker exec "$db_container" psql -X -At -U postgres -d postgres \
   -c "select outcome,count(*) from v2_access_harness.results group by outcome order by outcome" >"$logs_dir/result-counts.log"
 docker exec "$db_container" psql -X -At -U postgres -d postgres \
   -c "select test_name||'|'||outcome||'|'||detail from v2_access_harness.results order by test_name" >"$logs_dir/71-test-details.log"
+docker exec "$db_container" psql -X -At -U postgres -d postgres \
+  -c "select outcome,count(*) from v2_identity_harness.results group by outcome order by outcome" >"$logs_dir/identity-result-counts.log"
+docker exec "$db_container" psql -X -At -U postgres -d postgres \
+  -c "select test_name||'|'||outcome||'|'||detail from v2_identity_harness.results order by test_name" >"$logs_dir/identity-test-details.log"
 
 pass_count="$(awk -F'|' '$1=="PASS" {print $2}' "$logs_dir/result-counts.log")"
 fail_count="$(awk -F'|' '$1=="FAIL" {print $2}' "$logs_dir/result-counts.log")"
@@ -192,6 +208,10 @@ fail_count="${fail_count:-0}"
 skip_count="${skip_count:-0}"
 blocked_count="${blocked_count:-0}"
 total_count=$((pass_count + fail_count + skip_count + blocked_count))
+identity_pass_count="$(awk -F'|' '$1=="PASS" {print $2}' "$logs_dir/identity-result-counts.log")"
+identity_fail_count="$(awk -F'|' '$1=="FAIL" {print $2}' "$logs_dir/identity-result-counts.log")"
+identity_pass_count="${identity_pass_count:-0}"
+identity_fail_count="${identity_fail_count:-0}"
 
 {
   echo "pass=$pass_count"
@@ -199,6 +219,8 @@ total_count=$((pass_count + fail_count + skip_count + blocked_count))
   echo "skip=$skip_count"
   echo "blocked=$blocked_count"
   echo "total=$total_count"
+  echo "identity_pass=$identity_pass_count"
+  echo "identity_fail=$identity_fail_count"
   echo "concurrency_session_a_exit=$session_a_status"
   echo "concurrency_session_b_exit=$session_b_status"
   echo "inventory_begin"
@@ -206,10 +228,11 @@ total_count=$((pass_count + fail_count + skip_count + blocked_count))
   echo "inventory_end"
 } >>"$summary_file"
 
-if [[ "$pass_count" -eq 71 && "$fail_count" -eq 0 && "$skip_count" -eq 0 && "$blocked_count" -eq 0 && "$total_count" -eq 71 ]]; then
+if [[ "$pass_count" -eq 71 && "$fail_count" -eq 0 && "$skip_count" -eq 0 && "$blocked_count" -eq 0 && "$total_count" -eq 71 \
+   && "$identity_pass_count" -eq 35 && "$identity_fail_count" -eq 0 ]]; then
   final_exit=0
-  echo "Harness result: PASS (71 PASS / 0 FAIL / 0 SKIP / 0 BLOCKED)"
+  echo "Harness result: PASS (71/71 Access Foundation; 35/35 Identity Alignment)"
 else
   final_exit=1
-  echo "Harness result: FAIL ($pass_count PASS / $fail_count FAIL / $skip_count SKIP / $blocked_count BLOCKED)" >&2
+  echo "Harness result: FAIL (Access $pass_count/$total_count; Identity $identity_pass_count/35)" >&2
 fi

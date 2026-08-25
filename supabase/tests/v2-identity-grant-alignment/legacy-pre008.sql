@@ -1,0 +1,31 @@
+-- Local-only representative Migration 007 state. Copied into an isolated stack
+-- as a test migration immediately before Migration 008.
+INSERT INTO public.v2_actor_references(actor_id,actor_kind,display_name_snapshot)
+VALUES
+  ('81000000-0000-0000-0000-880000000001','HISTORICAL_ACTOR','Synthetic Legacy Admin'),
+  ('82000000-0000-0000-0000-880000000002','HISTORICAL_ACTOR','Synthetic Legacy Family'),
+  ('83000000-0000-0000-0000-880000000003','HISTORICAL_ACTOR','Synthetic Legacy Professional'),
+  ('84000000-0000-0000-0000-880000000004','HISTORICAL_ACTOR','Synthetic Legacy Recipient');
+
+INSERT INTO public.v2_cases(case_id,status,subject_display_name,draft_creator_actor_id,creation_operation_key)
+VALUES
+  ('81100000-0000-0000-0000-880000000001','ACTIVE','Synthetic Legacy Case Admin','81000000-0000-0000-0000-880000000001','81110000-0000-0000-0000-880000000001'),
+  ('82100000-0000-0000-0000-880000000002','ACTIVE','Synthetic Legacy Case Family','82000000-0000-0000-0000-880000000002','82110000-0000-0000-0000-880000000002'),
+  ('83100000-0000-0000-0000-880000000003','ACTIVE','Synthetic Legacy Case Professional','83000000-0000-0000-0000-880000000003','83110000-0000-0000-0000-880000000003'),
+  ('84100000-0000-0000-0000-880000000004','ACTIVE','Synthetic Legacy Case Recipient','84000000-0000-0000-0000-880000000004','84110000-0000-0000-0000-880000000004');
+
+INSERT INTO public.v2_case_memberships(
+  membership_id,case_id,actor_id,relationship_kind,status,starts_at,ends_at,accepted_at
+) VALUES
+  ('81200000-0000-0000-0000-880000000001','81100000-0000-0000-0000-880000000001','81000000-0000-0000-0000-880000000001','CASE_ADMIN','ACTIVE',clock_timestamp()-interval '1 day',NULL,clock_timestamp()-interval '1 day'),
+  ('82200000-0000-0000-0000-880000000002','82100000-0000-0000-0000-880000000002','82000000-0000-0000-0000-880000000002','FAMILY','ACTIVE',clock_timestamp()-interval '1 day',NULL,clock_timestamp()-interval '1 day'),
+  ('83200000-0000-0000-0000-880000000003','83100000-0000-0000-0000-880000000003','83000000-0000-0000-0000-880000000003','PROFESSIONAL','ACTIVE',clock_timestamp()-interval '1 day',clock_timestamp()+interval '30 days',clock_timestamp()-interval '1 day'),
+  ('84200000-0000-0000-0000-880000000004','84100000-0000-0000-0000-880000000004','84000000-0000-0000-0000-880000000004','CARE_RECIPIENT','ACTIVE',clock_timestamp()-interval '1 day',NULL,clock_timestamp()-interval '1 day');
+
+INSERT INTO public.v2_role_grants(
+  grant_id,membership_id,role_type,purpose,scope_ceiling,template_version,status,starts_at,ends_at,granted_by_actor_id
+) VALUES
+  ('81300000-0000-0000-0000-880000000001','81200000-0000-0000-0000-880000000001','CASE_ADMIN','CASE_ADMINISTRATION','AUTHOR_ONLY','LEGACY_TEST','ACTIVE',clock_timestamp()-interval '1 day',NULL,'81000000-0000-0000-0000-880000000001'),
+  ('82300000-0000-0000-0000-880000000002','82200000-0000-0000-0000-880000000002','FAMILY_MEMBER','FAMILY_CARE','FAMILY_ONLY','LEGACY_TEST','ACTIVE',clock_timestamp()-interval '1 day',NULL,'82000000-0000-0000-0000-880000000002'),
+  ('83300000-0000-0000-0000-880000000003','83200000-0000-0000-0000-880000000003','PROFESSIONAL_MEMBER','PROFESSIONAL_SERVICE','DIRECT_PARTICIPANTS','LEGACY_TEST','ACTIVE',clock_timestamp()-interval '1 day',clock_timestamp()+interval '30 days','83000000-0000-0000-0000-880000000003'),
+  ('84300000-0000-0000-0000-880000000004','84200000-0000-0000-0000-880000000004','CARE_RECIPIENT','FAMILY_CARE','SHARED_CARE','LEGACY_TEST','ACTIVE',clock_timestamp()-interval '1 day',NULL,'84000000-0000-0000-0000-880000000004');

@@ -2,9 +2,9 @@
 \pset tuples_only on
 \pset format unaligned
 
-SELECT v2_access_harness.record_result('Migration history contains 001 through 007',
-  (SELECT count(*)=7 FROM supabase_migrations.schema_migrations),
-  'seven ordered local migration history rows');
+SELECT v2_access_harness.record_result('Migration history contains 001 through 008',
+  (SELECT count(*)=8 FROM supabase_migrations.schema_migrations),
+  'eight ordered local migration history rows');
 SELECT v2_access_harness.record_result('v1 ten tables remain present',
   (SELECT count(*)=10 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='public' AND c.relkind='r' AND c.relname IN
@@ -13,19 +13,19 @@ SELECT v2_access_harness.record_result('v1 ten tables remain present',
 SELECT v2_access_harness.record_result('v1 thirty-eight policies remain present',
   (SELECT count(*)=38 FROM pg_policies WHERE schemaname='public' AND tablename NOT LIKE 'v2\_%' ESCAPE '\'),
   'v1 policy inventory count is unchanged');
-SELECT v2_access_harness.record_result('v2 seven tables exist',
-  (SELECT count(*)=7 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+SELECT v2_access_harness.record_result('v2 eleven tables exist',
+  (SELECT count(*)=11 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='public' AND c.relkind='r' AND c.relname LIKE 'v2\_%' ESCAPE '\'),
   'Access Foundation table inventory');
 SELECT v2_access_harness.record_result('v2 five SELECT policies exist',
   (SELECT count(*)=5 FROM pg_policies WHERE schemaname='public' AND tablename LIKE 'v2\_%' ESCAPE '\' AND cmd='SELECT'),
   'minimum read policies only');
-SELECT v2_access_harness.record_result('v2 seventeen functions exist',
-  (SELECT count(*)=17 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+SELECT v2_access_harness.record_result('v2 twenty functions exist',
+  (SELECT count(*)=20 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
    WHERE n.nspname IN ('public','v2_private') AND (p.proname LIKE '%v2%' OR n.nspname='v2_private')),
   'function inventory matches Draft');
 SELECT v2_access_harness.record_result('v2 RLS enabled and forced on all tables',
-  (SELECT count(*)=7 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity)
+  (SELECT count(*)=11 AND bool_and(c.relrowsecurity AND c.relforcerowsecurity)
    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='public' AND c.relkind='r' AND c.relname LIKE 'v2\_%' ESCAPE '\'),
   'direct table access defense');
@@ -53,11 +53,11 @@ SELECT v2_access_harness.record_result('authenticated has only two private polic
    WHERE n.nspname='v2_private' AND has_function_privilege('authenticated',p.oid,'EXECUTE')),
   'current Actor and boolean grant-path helpers only');
 SELECT v2_access_harness.record_result('internal helpers are not client executable',
-  (SELECT count(*)=6 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  (SELECT count(*)=9 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
    WHERE n.nspname='v2_private'
      AND NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
      AND NOT has_function_privilege('anon',p.oid,'EXECUTE')),
-  'six internal invoker helpers owner-only');
+  'nine internal invoker helpers owner-only');
 SELECT v2_access_harness.record_result('anon and authenticated have no v2 direct writes',
   NOT EXISTS(SELECT 1 FROM information_schema.role_table_grants
              WHERE table_schema='public' AND table_name LIKE 'v2\_%' ESCAPE '\'

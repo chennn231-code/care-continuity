@@ -205,12 +205,12 @@ INSERT INTO public.v2_identities (
 )
 SELECT DISTINCT
     membership.actor_id,
-    'LEGACY_UNSPECIFIED',
+    'LEGACY_UNSPECIFIED'::public.v2_identity_type,
+    NULL::public.v2_professional_type,
     NULL,
-    NULL,
-    'DECLARED',
+    'DECLARED'::public.v2_identity_verification_status,
     FALSE,
-    'ACTIVE'
+    'ACTIVE'::public.v2_identity_status
 FROM public.v2_case_memberships AS membership
 WHERE NOT EXISTS (
     SELECT 1
