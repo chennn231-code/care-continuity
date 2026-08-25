@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
   caseActivityForCurrentActor,
+  currentCaseActorContext,
   visibleActionsForCurrentActor,
   visibleCareCircleForCurrentActor,
   visibleProfessionalRecordsForCurrentActor,
   visibleQuestionsForCurrentActor,
   visibleTimelineForCurrentActor
 } from '../src/v2/state/caseCollaborationSelectors';
+import { PrototypeProvider } from '../src/v2/state/PrototypeProvider';
+import { PrototypeShell } from '../src/v2/components/PrototypeShell';
+import { PrototypeCaseHomePage } from '../src/v2/pages/PrototypeCaseHomePage';
 import { publishProfessionalRecord, createCorrectionDraft, professionalRecordVersion } from '../src/v2/state/professionalRecordState';
 import { addCareUpdate, createInitialPrototypeState, transitionAction } from '../src/v2/state/prototypeState';
 import { EMPTY_PROFESSIONAL_RECORD_DRAFT } from '../src/v2/state/professionalRecordState';
@@ -94,5 +101,47 @@ describe('v2 case collaboration correction gate', () => {
     const activities = caseActivityForCurrentActor(state, 'demo-case').filter((item) => item.sourceType === 'ACTION');
     expect(activities).toHaveLength(3);
     expect(activities.every((item) => item.sourceId === 'action-skin-check')).toBe(true);
+    expect(activities.every((item) => item.linkedQuestionId === 'skin-question')).toBe(true);
+    expect(activities.every((item) => item.linkedActionId === 'action-skin-check')).toBe(true);
+    expect(activities.every((item) => item.linkedActionStatus === 'COMPLETED')).toBe(true);
+  });
+
+  it('derives question and action linkage without replacing their existing ids', () => {
+    const state = createInitialPrototypeState();
+    const activity = caseActivityForCurrentActor(state, 'demo-case').find((item) => item.sourceId === 'question-skin');
+    expect(activity).toMatchObject({
+      linkedQuestionId: 'skin-question',
+      linkedQuestionStatus: 'ANSWERED',
+      linkedActionId: 'action-skin-check',
+      linkedActionStatus: 'PENDING_ACCEPTANCE'
+    });
+    expect(state.questions.find((item) => item.id === activity?.linkedQuestionId)?.sourceTimelineEntryId).toBe('question-skin');
+    expect(state.actions.find((item) => item.id === activity?.linkedActionId)?.linkedQuestionId).toBe('skin-question');
+  });
+
+  it('renders shell and case home from the same active actor context', () => {
+    const state = { ...createInitialPrototypeState(), activeRole: 'DAY_CARE' as const };
+    expect(currentCaseActorContext(state, 'demo-case')).toEqual({
+      actingRole: 'DAY_CARE',
+      relationshipLabel: '日照服務人員（虛構）',
+      purpose: '日照服務期間的照顧交接'
+    });
+    const html = renderToStaticMarkup(createElement(
+      MemoryRouter,
+      { initialEntries: ['/v2/prototype/cases/demo-case'] },
+      createElement(
+        PrototypeProvider,
+        { initialState: state },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, { path: '/v2/prototype', element: createElement(PrototypeShell) },
+            createElement(Route, { path: 'cases/:caseId', element: createElement(PrototypeCaseHomePage) }))
+        )
+      )
+    ));
+    expect(html.match(/目前個案關係：日照服務人員（虛構）/g)).toHaveLength(2);
+    expect(html).toContain('授權依據：日照服務期間的照顧交接');
+    expect(html).not.toContain('有效 grant path：家庭共同照顧');
   });
 });

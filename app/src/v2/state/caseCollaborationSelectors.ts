@@ -12,6 +12,22 @@ import type {
 } from '../types/prototype';
 import { currentActorGrantPaths } from './prototypeState';
 
+const relationshipLabels: Record<DemoRole, string> = {
+  FAMILY: '家庭成員',
+  DAY_CARE: '日照服務人員（虛構）',
+  NURSE: '日照護理服務人員（虛構）'
+};
+
+export function currentCaseActorContext(state: PrototypeState, caseId: string) {
+  const path = currentActorGrantPaths(state, caseId)[0];
+  if (!path) return null;
+  return {
+    actingRole: path.grant.actingRole,
+    relationshipLabel: relationshipLabels[path.grant.actingRole],
+    purpose: path.grant.purpose
+  };
+}
+
 function pathsForScope(state: PrototypeState, caseId: string, scope: SharingScope) {
   return currentActorGrantPaths(state, caseId).filter(({ grant }) => grant.sharingScopes.includes(scope));
 }
@@ -149,7 +165,10 @@ export function canSubmitCareUpdate(state: PrototypeState, input: {
 export function caseActivityForCurrentActor(state: PrototypeState, caseId: string): CaseActivityItem[] {
   const timelineActivities: CaseActivityItem[] = state.timeline
     .filter((entry) => entry.caseId === caseId)
-    .map((entry) => ({
+    .map((entry) => {
+      const linkedQuestion = state.questions.find((question) => question.sourceTimelineEntryId === entry.id && question.caseId === caseId);
+      const linkedAction = linkedQuestion && state.actions.find((action) => action.linkedQuestionId === linkedQuestion.id && action.caseId === caseId);
+      return {
       id: `activity-timeline-${entry.id}`,
       caseId,
       sourceType: 'TIMELINE_ENTRY',
@@ -160,8 +179,14 @@ export function caseActivityForCurrentActor(state: PrototypeState, caseId: strin
       timestamp: entry.recordedAt,
       summary: entry.summary,
       sharingScope: entry.sharingScope,
-      participantRoles: entry.participantRoles
-    }));
+      participantRoles: entry.participantRoles,
+      sourceLabel: entry.source,
+      linkedQuestionId: linkedQuestion?.id,
+      linkedQuestionStatus: linkedQuestion?.status,
+      linkedActionId: linkedAction?.id,
+      linkedActionStatus: linkedAction?.status
+      };
+    });
   const recordActivities: CaseActivityItem[] = state.professionalRecordVersions
     .filter((record) => record.caseId === caseId)
     .map((record) => ({
@@ -175,7 +200,8 @@ export function caseActivityForCurrentActor(state: PrototypeState, caseId: strin
       timestamp: record.publishedAt,
       summary: record.versionNumber === 1 ? '發布一筆專業照顧紀錄' : `追加更正專業照顧紀錄（版本 ${record.versionNumber}）`,
       sharingScope: record.sharingScope,
-      participantRoles: [record.actingRole]
+      participantRoles: [record.actingRole],
+      sourceLabel: `專業照顧紀錄版本 ${record.versionNumber}`
     }));
   const actionActivities: CaseActivityItem[] = state.actionStatusHistory
     .filter((history) => history.caseId === caseId)
@@ -189,7 +215,12 @@ export function caseActivityForCurrentActor(state: PrototypeState, caseId: strin
       timestamp: history.changedAt,
       summary: `處理事項狀態：${history.fromStatus} → ${history.toStatus}`,
       sharingScope: 'DIRECT_PARTICIPANTS',
-      participantRoles: [history.actorRole, state.actions.find((action) => action.id === history.actionId)?.assigneeRole ?? history.actorRole]
+      participantRoles: [history.actorRole, state.actions.find((action) => action.id === history.actionId)?.assigneeRole ?? history.actorRole],
+      sourceLabel: '處理事項狀態紀錄',
+      linkedQuestionId: state.actions.find((action) => action.id === history.actionId)?.linkedQuestionId,
+      linkedQuestionStatus: state.questions.find((question) => question.id === state.actions.find((action) => action.id === history.actionId)?.linkedQuestionId)?.status,
+      linkedActionId: history.actionId,
+      linkedActionStatus: state.actions.find((action) => action.id === history.actionId)?.status
     }));
   const reassignmentActivities: CaseActivityItem[] = state.responsibilityHistory
     .filter((history) => history.caseId === caseId)
@@ -203,7 +234,12 @@ export function caseActivityForCurrentActor(state: PrototypeState, caseId: strin
       timestamp: history.endedAt,
       summary: history.summary,
       sharingScope: 'DIRECT_PARTICIPANTS',
-      participantRoles: [state.actions.find((action) => action.id === history.actionId)?.assigneeRole ?? 'NURSE']
+      participantRoles: [state.actions.find((action) => action.id === history.actionId)?.assigneeRole ?? 'NURSE'],
+      sourceLabel: '責任週期紀錄',
+      linkedQuestionId: state.actions.find((action) => action.id === history.actionId)?.linkedQuestionId,
+      linkedQuestionStatus: state.questions.find((question) => question.id === state.actions.find((action) => action.id === history.actionId)?.linkedQuestionId)?.status,
+      linkedActionId: history.actionId,
+      linkedActionStatus: state.actions.find((action) => action.id === history.actionId)?.status
     }));
   return [...timelineActivities, ...recordActivities, ...actionActivities, ...reassignmentActivities]
     .filter((activity) => currentActorCanViewScope(state, activity.caseId, activity.sharingScope, activity.actorRole, activity.participantRoles, activity.actorIdentityId)

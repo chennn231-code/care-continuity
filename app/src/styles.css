@@ -389,6 +389,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .v2-case-nav { position: sticky; z-index: 10; top: 0; display: flex; justify-content: center; gap: 0.25rem; padding: 0.65rem 1rem; border-bottom: 1px solid rgba(88, 118, 134, 0.15); background: rgba(255, 253, 248, 0.94); backdrop-filter: blur(12px); }
 .v2-case-nav a { min-height: 2.75rem; display: inline-flex; align-items: center; padding: 0.55rem 0.9rem; border-radius: 0.8rem; color: var(--muted); text-decoration: none; font-weight: 700; }
 .v2-case-nav a.active { color: var(--mist-700); background: var(--mist-100); }
+.v2-case-nav-hint { display: none; }
 .v2-main { width: 100%; }
 .v2-page { width: min(1080px, calc(100% - 2rem)); margin: 0 auto; padding: clamp(2rem, 5vw, 4.5rem) 0 5rem; }
 .v2-page-heading { max-width: 720px; margin-bottom: 2rem; }
@@ -428,6 +429,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .v2-scope-note, .v2-inline-note { padding: 0.8rem 1rem; border-radius: 0.9rem; color: #4b626b; background: #edf3f3; line-height: 1.6; font-size: 0.87rem; }
 .v2-timeline, .v2-action-list, .v2-circle-list { display: grid; gap: 1rem; }
 .v2-timeline-card.is-superseded { opacity: 0.72; border-style: dashed; }
+.v2-timeline-links { display: grid; gap: 0.55rem; margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid rgba(88, 118, 134, 0.18); }
+.v2-timeline-links > div { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .v2-version { flex: 0 0 auto; color: var(--muted); font-size: 0.8rem; }
 .v2-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem 1rem; margin: 1.1rem 0 0; }
 .v2-meta-grid div { display: grid; gap: 0.25rem; }
@@ -591,6 +594,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .v2-demo-role > span { grid-column: 1 / -1; }
   .v2-case-nav { justify-content: flex-start; overflow-x: auto; }
   .v2-case-nav a { flex: 0 0 auto; }
+  .v2-case-nav-hint { display: block; margin: -0.15rem 0 0; padding: 0.35rem 1rem 0.55rem; color: var(--muted); background: rgba(255, 253, 248, 0.94); font-size: 0.78rem; text-align: right; }
+  .v2-timeline-links > div { align-items: flex-start; flex-direction: column; }
   .v2-page { width: min(100% - 1rem, 1080px); padding-top: 1.5rem; }
   .v2-heading-actions > .primary-button, .v2-new-summary > .secondary-button { width: 100%; }
   .v2-case-card, .v2-new-summary, .v2-dashboard-grid, .v2-form-row, .v2-followup-fields, .v2-choice-grid, .v2-boundary-stack, .v2-profession-grid, .v2-segmented-choice, .v2-credential-grid, .v2-workspace-layout, .v2-record-editor-layout, .v2-record-list, .v2-record-published-grid { grid-template-columns: 1fr; }

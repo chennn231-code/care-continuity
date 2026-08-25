@@ -224,6 +224,11 @@ export interface CaseActivityItem {
   summary: string;
   sharingScope: SharingScope;
   participantRoles?: DemoRole[];
+  sourceLabel: string;
+  linkedQuestionId?: string;
+  linkedQuestionStatus?: QuestionStatus;
+  linkedActionId?: string;
+  linkedActionStatus?: ActionStatus;
 }
 
 export interface ProfessionalRecordContent {

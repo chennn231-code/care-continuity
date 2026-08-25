@@ -15,7 +15,7 @@ export function PrototypeProfessionalRecordsPage() {
   return (
     <section className="v2-page">
       <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">{workspaceCase?.displayName}｜{PROFESSIONAL_RECORD_DEMO_LABEL}</p><h1>專業照顧紀錄</h1><p>本頁以日照護理師的虛構流程證明共同紀錄骨架，不代表所有專業職類已有正式模板，也不是正式病歷、護理紀錄或法定機構紀錄。</p></div>{canCreate && <Link className="primary-button" to={`/v2/prototype/cases/${caseId}/records/new`}>新增專業照顧紀錄</Link>}</header>
-      {!canCreate && <section className="v2-card v2-record-acting-context"><h2>目前不是專業紀錄操作情境</h2><p>建立紀錄必須由一條完整有效的日照護理師 grant path 單獨通過，不能與家庭權限拼接。</p><button className="secondary-button" type="button" onClick={() => setRole('NURSE')}>切換至虛構日照護理師情境</button></section>}
+      {!canCreate && <section className="v2-card v2-record-acting-context"><h2>目前不是專業紀錄操作情境</h2><p>建立紀錄必須使用已驗證且具有效個案關係的日照護理師身分，不能與家庭權限合併使用。</p><button className="secondary-button" type="button" onClick={() => setRole('NURSE')}>切換至虛構日照護理師情境</button></section>}
       <div className="v2-record-list">{records.map((record) => {
         const access = professionalRecordAccess(state, record.recordId);
         const projection = familyRecords.find((item) => item.recordId === record.recordId);

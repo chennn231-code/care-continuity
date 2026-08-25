@@ -30,6 +30,7 @@ import { V2_GUARDED_CASE_ROUTE_SUFFIXES } from '../src/v2/data/prototypeRoutes';
 import { canCreateProfessionalRecord } from '../src/v2/state/professionalRecordState';
 import { PrototypeProvider } from '../src/v2/state/PrototypeProvider';
 import { PrototypeCaseAccessGuard } from '../src/v2/components/PrototypeCaseAccessGuard';
+import { PrototypeInvitationVerificationPage } from '../src/v2/pages/PrototypeInvitationVerificationPage';
 
 function acceptVerifiedProfessionalInvitation() {
   let state = createInitialPrototypeState();
@@ -73,6 +74,32 @@ describe('v2 invitation and multi-case workspace prototype', () => {
     expect(verified.identities.find((item) => item.id === invitation?.recipientIdentityId)?.verificationStatus).toBe('VERIFIED');
     expect(invitation?.status).toBe('INVITED');
     expect(invitation && canAcceptInvitation(verified, invitation)).toBe(true);
+  });
+
+  it('replaces pending verification wording and mutation controls after verification completes', () => {
+    const loggedIn = simulateInvitationLogin(createInitialPrototypeState(), 'invite-professional-pending');
+    const verified = setProfessionalVerification(loggedIn, 'invite-professional-pending', 'VERIFIED');
+    const html = renderToStaticMarkup(createElement(
+      MemoryRouter,
+      { initialEntries: ['/v2/prototype/invitations/invite-professional-pending/verification'] },
+      createElement(
+        PrototypeProvider,
+        { initialState: verified },
+        createElement(
+          Routes,
+          null,
+          createElement(Route, {
+            path: '/v2/prototype/invitations/:invitationId/verification',
+            element: createElement(PrototypeInvitationVerificationPage)
+          })
+        )
+      )
+    ));
+    expect(html).toContain('驗證已完成');
+    expect(html).toContain('返回邀請內容');
+    expect(html).not.toContain('專業身分尚待驗證');
+    expect(html).not.toContain('模擬驗證通過');
+    expect(html).not.toContain('模擬驗證未通過');
   });
 
   it('accepts a valid invitation and creates one independent membership and grant path', () => {

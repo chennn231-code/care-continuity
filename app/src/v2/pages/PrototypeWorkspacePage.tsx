@@ -21,7 +21,7 @@ export function PrototypeWorkspacePage() {
   };
   return (
     <section className="v2-page v2-workspace-page">
-      <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">個人工作區概念</p><h1>我的個案</h1><p>只顯示目前有一條完整有效 grant path 的虛構個案，搜尋不會探測無權個案</p></div><Link className="primary-button" to="/v2/prototype/invitations/new">建立虛構邀請</Link></header>
+      <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">個人工作區概念</p><h1>我的個案</h1><p>只顯示目前身分與個案關係允許查看的虛構個案，搜尋不會探測無權個案</p></div><Link className="primary-button" to="/v2/prototype/invitations/new">建立虛構邀請</Link></header>
       {state.successMessage && <div className="v2-toast" role="status"><span>{state.successMessage}</span></div>}
       <section className="v2-workspace-tools" aria-label="個案搜尋與私人分類"><label>搜尋我可見的個案<input type="search" placeholder="輸入顯示名稱、角色或服務來源" value={query} onChange={(event) => setQuery(event.target.value)} /></label><div className="v2-private-tag-filter"><button type="button" className={!tagFilter ? 'active' : ''} onClick={() => setTagFilter(null)}>全部個案</button>{state.privateTags.map((tag) => <button type="button" className={tagFilter === tag.id ? 'active' : ''} onClick={() => setTagFilter(tag.id)} key={tag.id}>{tag.label}</button>)}</div><small>私人標籤只有你看得到，只用於整理個案，不是協作群組或授權來源</small></section>
       <div className="v2-workspace-layout">

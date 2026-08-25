@@ -13,7 +13,7 @@ export function PrototypeIdentitiesPage() {
           return <article className="v2-card" key={identity.id}><div className="v2-section-title"><h2>{profession?.label ?? IDENTITY_TYPE_LABELS[identity.identityType]}</h2>{identity.isPrimary && <span className="v2-fake-label">主要身分</span>}</div><p>{VERIFICATION_STATUS_LABELS[identity.verificationStatus]}</p><small>{identity.verificationStatus === 'VERIFIED' ? '此狀態仍不代表已加入任何長者個案' : '尚不可作為已驗證身分使用'}</small></article>;
         })}
       </div>
-      <p className="v2-logic-note">身分有效 ≠ 個案關係有效 ≠ 可以查看所有個案資料；每次操作仍需一條完整有效的 grant path</p>
+      <p className="v2-logic-note">身分有效 ≠ 個案關係有效 ≠ 可以查看所有個案資料；每次操作仍需符合目前身分、個案關係、目的、範圍與期間</p>
       <div className="v2-form-actions"><Link className="primary-button" to="/v2/prototype/register/identity?mode=secondary">新增第二身分</Link><Link className="text-button" to="/v2/prototype">返回體驗入口</Link></div>
     </section>
   );

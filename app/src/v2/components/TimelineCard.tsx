@@ -1,4 +1,5 @@
-import { DEMO_ROLE_LABELS, SHARING_SCOPE_LABELS } from '../data/mockData';
+import { Link } from 'react-router-dom';
+import { ACTION_STATUS_LABELS, DEMO_ROLE_LABELS, QUESTION_STATUS_LABELS, SHARING_SCOPE_LABELS } from '../data/mockData';
 import type { CaseActivityItem } from '../types/prototype';
 import { StatusPill } from './PrototypeShell';
 
@@ -18,9 +19,13 @@ export function TimelineCard({ entry }: { entry: CaseActivityItem }) {
         <div><dt>活動時間</dt><dd>{formatTime(entry.timestamp)}</dd></div>
         <div><dt>執行者</dt><dd>{entry.actorLabel}（{DEMO_ROLE_LABELS[entry.actorRole]}）</dd></div>
         <div><dt>來源類型</dt><dd>{sourceLabels[entry.sourceType]}</dd></div>
-        <div><dt>來源識別</dt><dd>{entry.sourceId}</dd></div>
+        <div><dt>來源資訊</dt><dd>{entry.sourceLabel}</dd></div>
         <div><dt>分享範圍</dt><dd>{SHARING_SCOPE_LABELS[entry.sharingScope]}</dd></div>
       </dl>
+      {(entry.linkedQuestionId || entry.linkedActionId) && <div className="v2-timeline-links">
+        {entry.linkedQuestionId && entry.linkedQuestionStatus && <div><span>相關問題：<strong>{QUESTION_STATUS_LABELS[entry.linkedQuestionStatus]}</strong></span><Link className="text-button" to={`/v2/prototype/cases/${entry.caseId}/actions#question-${entry.linkedQuestionId}`}>查看問題</Link></div>}
+        {entry.linkedActionId && entry.linkedActionStatus && <div><span>處理事項：<strong>{ACTION_STATUS_LABELS[entry.linkedActionStatus]}</strong></span><Link className="text-button" to={`/v2/prototype/cases/${entry.caseId}/actions#action-${entry.linkedActionId}`}>查看處理事項</Link></div>}
+      </div>}
     </article>
   );
 }

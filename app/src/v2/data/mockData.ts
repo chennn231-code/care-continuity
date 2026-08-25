@@ -1,4 +1,4 @@
-import type { ProfessionalType, PrototypeState } from '../types/prototype';
+import type { ActionStatus, ProfessionalType, PrototypeState, QuestionStatus } from '../types/prototype';
 
 export const DEMO_ROLE_LABELS = {
   FAMILY: '家屬',
@@ -26,6 +26,15 @@ export const VERIFICATION_STATUS_LABELS = {
   REJECTED: '驗證未通過',
   EXPIRED: '驗證已失效'
 } as const;
+
+export const ACTION_STATUS_LABELS: Record<ActionStatus, string> = {
+  PENDING_ACCEPTANCE: '等待接受', ACCEPTED: '已接受', IN_PROGRESS: '處理中', COMPLETED: '已完成',
+  DECLINED: '已拒絕', NEEDS_REASSIGNMENT: '需要重新指派', CANCELLED: '已取消'
+};
+
+export const QUESTION_STATUS_LABELS: Record<QuestionStatus, string> = {
+  OPEN: '待回覆', ANSWERED: '已回覆／待確認解決', RESOLVED: '已解決'
+};
 
 export const PROFESSIONAL_TYPE_OPTIONS: Array<{
   value: ProfessionalType;
