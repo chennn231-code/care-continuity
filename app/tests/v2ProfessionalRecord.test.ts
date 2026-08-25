@@ -28,6 +28,8 @@ const completedDraft = () => ({
   }
 });
 
+const nurseState = () => ({ ...createInitialPrototypeState(), activeRole: 'NURSE' as const });
+
 describe('v2 professional care record prototype', () => {
   it('labels the first template as a nurse demo scenario rather than all professions', () => {
     expect(PROFESSIONAL_RECORD_DEMO_LABEL).toBe('護理師展示情境');
@@ -35,7 +37,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('requires one complete, verified and currently valid nurse grant path', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     expect(canCreateProfessionalRecord(state, 'demo-case')).toBe(true);
 
     const expired = {
@@ -56,7 +58,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('does not combine the family grant with an incomplete professional grant', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     const incomplete = {
       ...state,
       roleGrants: state.roleGrants.map((grant) => grant.id === 'demo-grant-nurse'
@@ -77,7 +79,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('publishes a source-rich immutable version without mutating the initial fixture', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     const before = structuredClone(state);
     const next = publishProfessionalRecord(state, completedDraft());
     expect(state).toEqual(before);
@@ -94,7 +96,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('adds a correction version and preserves the complete original version', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     const original = professionalRecordVersion(state, 'professional-record-demo-existing');
     expect(original).not.toBeNull();
     const originalSnapshot = structuredClone(original!);
@@ -109,7 +111,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('rejects a stale correction instead of overwriting a newer version', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     const original = professionalRecordVersion(state, 'professional-record-demo-existing')!;
     const firstCorrection = createCorrectionDraft(original);
     firstCorrection.content.objectiveObservation = '第一次更正內容。';
@@ -122,7 +124,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('projects only explicitly shared family content without professional-only fields or hidden counts', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     const projection = familyProfessionalRecordProjection(state, 'professional-record-demo-existing');
     expect(projection).not.toBeNull();
     const serialized = JSON.stringify(projection);
@@ -133,7 +135,7 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('returns no family projection for author-only content', () => {
-    const state = createInitialPrototypeState();
+    const state = nurseState();
     const next = publishProfessionalRecord(state, { ...completedDraft(), sharingScope: 'AUTHOR_ONLY' });
     const record = latestProfessionalRecordVersions(next, 'demo-case').find((item) => item.recordId !== 'professional-record-demo-existing');
     expect(record).toBeTruthy();
@@ -141,14 +143,14 @@ describe('v2 professional care record prototype', () => {
   });
 
   it('keeps all professional record routes behind the shared case access guard', () => {
-    const lostAccess = removeWorkspaceCaseAccess(createInitialPrototypeState(), 'demo-case', 'REVOKED');
+    const lostAccess = removeWorkspaceCaseAccess(nurseState(), 'demo-case', 'REVOKED');
     const recordRoutes = V2_GUARDED_CASE_ROUTE_SUFFIXES.filter((route) => route.startsWith('records'));
     expect(recordRoutes).toHaveLength(4);
     for (const route of recordRoutes) expect(canCurrentActorAccessCase(lostAccess, 'demo-case'), route).toBe(false);
   });
 
   it('restores the fictional initial record after refresh-equivalent initialization', () => {
-    const changed = publishProfessionalRecord(createInitialPrototypeState(), completedDraft());
+    const changed = publishProfessionalRecord(nurseState(), completedDraft());
     const refreshed = createInitialPrototypeState();
     expect(changed.professionalRecordVersions.length).toBeGreaterThan(refreshed.professionalRecordVersions.length);
     expect(refreshed.professionalRecordVersions).toHaveLength(1);

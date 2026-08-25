@@ -81,8 +81,8 @@ describe('v2 prototype identity and permission contract', () => {
   });
 
   it('asks for acting context only when multiple complete grant paths are valid', () => {
-    const family: PrototypeIdentity = { id: 'family', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true };
-    const nurse: PrototypeIdentity = { id: 'nurse', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'VERIFIED', isPrimary: false };
+    const family: PrototypeIdentity = { id: 'family', accountId: 'demo-account', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true };
+    const nurse: PrototypeIdentity = { id: 'nurse', accountId: 'demo-account', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'VERIFIED', isPrimary: false };
     const memberships: MockCaseMembership[] = [
       { id: 'family-member', identityId: family.id, caseId: 'demo-case', relationship: 'FAMILY_MEMBER', status: 'ACTIVE', validUntil: null },
       { id: 'nurse-member', identityId: nurse.id, caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: null }

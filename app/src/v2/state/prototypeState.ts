@@ -43,6 +43,7 @@ export function completeIdentityRegistration(state: PrototypeState): PrototypeSt
   if (!identityType || (identityType === 'PROFESSIONAL' && !professionalType)) return state;
   const identity: PrototypeIdentity = {
     id: `prototype-identity-${state.identities.length + 1}`,
+    accountId: state.currentAccountId,
     identityType,
     professionalType,
     verificationStatus: 'DECLARED',
@@ -76,6 +77,37 @@ export function validGrantPaths(state: PrototypeState, caseId: string): Prototyp
   });
 }
 
+function dateOnlyStartsAt(value: string) {
+  return new Date(`${value}T00:00:00+08:00`).getTime();
+}
+
+function dateOnlyEndsAt(value: string) {
+  return new Date(`${value}T23:59:59+08:00`).getTime();
+}
+
+export function currentActorGrantPaths(
+  state: PrototypeState,
+  caseId: string,
+  now = new Date('2026-08-25T12:00:00+08:00')
+): PrototypeGrantPath[] {
+  const workspaceCase = state.workspaceCases.find((item) => item.id === caseId);
+  if (!workspaceCase || !['ACTIVE', 'EXPIRING'].includes(workspaceCase.accessStatus)) return [];
+  if (now.getTime() < dateOnlyStartsAt(workspaceCase.serviceStartsAt)) return [];
+  if (workspaceCase.serviceEndsAt && now.getTime() > dateOnlyEndsAt(workspaceCase.serviceEndsAt)) return [];
+
+  return state.roleGrants.flatMap((grant) => {
+    if (grant.actingRole !== state.activeRole || !grant.purpose.trim() || grant.capabilities.length === 0 || grant.sharingScopes.length === 0) return [];
+    const membership = state.memberships.find((item) => item.id === grant.membershipId && item.caseId === caseId);
+    if (!membership || membership.status !== 'ACTIVE') return [];
+    if (membership.validUntil && now.getTime() > dateOnlyEndsAt(membership.validUntil)) return [];
+    const identity = state.identities.find((item) => item.id === membership.identityId);
+    if (!identity || identity.accountId !== state.currentAccountId || identity.verificationStatus !== 'VERIFIED') return [];
+    if (grant.startsAt && now.getTime() < dateOnlyStartsAt(grant.startsAt)) return [];
+    if (grant.validUntil && now.getTime() > dateOnlyEndsAt(grant.validUntil)) return [];
+    return [{ identity, membership, grant }];
+  });
+}
+
 export function shouldChooseActingContext(paths: PrototypeGrantPath[]) {
   return paths.length > 1;
 }
@@ -99,15 +131,30 @@ export function transitionAction(
   actingRole: DemoRole
 ): PrototypeState {
   const action = state.actions.find((item) => item.id === actionId);
-  if (!action || action.assigneeRole !== actingRole || !canTransitionAction(action.status, nextStatus)) return state;
+  const hasCurrentPath = action && currentActorGrantPaths(state, action.caseId).some((path) => path.grant.actingRole === actingRole);
+  if (!action || !hasCurrentPath || action.assigneeRole !== actingRole || !canTransitionAction(action.status, nextStatus)) return state;
   return {
     ...state,
     actions: state.actions.map((item) => item.id === actionId ? { ...item, status: nextStatus } : item),
+    actionStatusHistory: [...state.actionStatusHistory, {
+      id: `action-status-history-${action.id}-${state.actionStatusHistory.length + 1}`,
+      caseId: action.caseId,
+      actionId: action.id,
+      fromStatus: action.status,
+      toStatus: nextStatus,
+      actorRole: actingRole,
+      changedAt: new Date().toISOString()
+    }],
     successMessage: nextStatus === 'COMPLETED' ? '已記錄負責者聲明處理完成，問題仍需另外確認是否解決' : '處理事項狀態已更新'
   };
 }
 
-export function resolveQuestion(state: PrototypeState, questionId: string): PrototypeState {
+export function resolveQuestion(state: PrototypeState, questionId: string, actingRole: DemoRole): PrototypeState {
+  const question = state.questions.find((item) => item.id === questionId);
+  if (!question) return state;
+  const canResolve = currentActorGrantPaths(state, question.caseId).some((path) =>
+    path.grant.actingRole === actingRole && path.grant.capabilities.includes('RESOLVE_QUESTION'));
+  if (!canResolve) return state;
   return {
     ...state,
     questions: state.questions.map((question) => question.id === questionId ? { ...question, status: 'RESOLVED' } : question),
@@ -136,7 +183,7 @@ export function addCareUpdate(state: PrototypeState, input: NewUpdateInput, now 
   const occurredAt = `${input.occurredDate}T${input.occurredTime}:00+08:00`;
   const entry: TimelineEntry = {
     id,
-    caseId: 'demo-case',
+    caseId: input.caseId,
     kind: input.kind,
     summary: input.content.trim(),
     occurredAt,
@@ -149,18 +196,29 @@ export function addCareUpdate(state: PrototypeState, input: NewUpdateInput, now 
     hasUpdatedVersion: false,
     isCurrentVersion: true
   };
+  const questionId = input.kind === 'QUESTION' ? `demo-question-${state.questions.length + 1}` : null;
+  const nextQuestions = questionId
+    ? [...state.questions, {
+        id: questionId,
+        caseId: input.caseId,
+        sourceTimelineEntryId: id,
+        text: input.content.trim(),
+        status: 'OPEN' as const,
+        askedBy: input.actingRole === 'FAMILY' ? '家屬' : input.actingRole === 'NURSE' ? '陳護理師' : '日照人員'
+      }]
+    : state.questions;
   const nextActions = input.needsAction && input.assigneeRole && input.dueAt
     ? [...state.actions, {
         id: `demo-action-${state.actions.length + 1}`,
-        caseId: 'demo-case',
+        caseId: input.caseId,
         title: `跟進：${input.content.trim().slice(0, 24)}`,
         detail: '由新增照顧變化時建立的虛構處理事項',
         assigneeRole: input.assigneeRole,
         assigneeName: input.assigneeRole === 'FAMILY' ? '林怡君' : input.assigneeRole === 'DAY_CARE' ? '王照服員' : '陳護理師',
         dueAt: input.dueAt,
         status: 'PENDING_ACCEPTANCE' as const,
-        linkedQuestionId: input.kind === 'QUESTION' ? id : 'skin-question'
+        linkedQuestionId: questionId ?? ''
       }]
     : state.actions;
-  return { ...state, timeline: [entry, ...state.timeline], actions: nextActions, successMessage: '已加入虛構照顧變化' };
+  return { ...state, timeline: [entry, ...state.timeline], questions: nextQuestions, actions: nextActions, successMessage: '已加入虛構照顧變化' };
 }

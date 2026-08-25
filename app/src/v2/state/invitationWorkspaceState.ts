@@ -1,7 +1,9 @@
+import { currentActorGrantPaths } from './prototypeState';
 import type {
   InvitationEffectiveStatus,
   PrototypeInvitation,
   PrototypeInvitationInput,
+  PrototypeIdentity,
   PrototypeState,
   PrototypeWorkspaceCase,
   VerificationStatus,
@@ -31,9 +33,23 @@ export function effectiveInvitationStatus(invitation: PrototypeInvitation, now =
   return invitation.status;
 }
 
-export function canAcceptInvitation(invitation: PrototypeInvitation, now = PROTOTYPE_CLOCK) {
+function currentIdentityForRecipient(state: PrototypeState, invitation: PrototypeInvitation) {
+  const linked = invitation.recipientIdentityId
+    ? state.identities.find((identity) => identity.id === invitation.recipientIdentityId)
+    : null;
+  if (linked) return linked;
+  const expectedType = invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'FAMILY';
+  return state.identities.find((identity) => identity.accountId === state.currentAccountId && identity.identityType === expectedType) ?? null;
+}
+
+export function invitationVerificationStatus(state: PrototypeState, invitation: PrototypeInvitation): VerificationStatus {
+  return currentIdentityForRecipient(state, invitation)?.verificationStatus
+    ?? (invitation.recipientType === 'PROFESSIONAL' ? 'PENDING_VERIFICATION' : 'DECLARED');
+}
+
+export function canAcceptInvitation(state: PrototypeState, invitation: PrototypeInvitation, now = PROTOTYPE_CLOCK) {
   if (effectiveInvitationStatus(invitation, now) !== 'INVITED') return false;
-  if (invitation.recipientType === 'PROFESSIONAL' && invitation.professionalVerificationStatus !== 'VERIFIED') return false;
+  if (invitationVerificationStatus(state, invitation) !== 'VERIFIED') return false;
   return now.getTime() < new Date(`${invitation.serviceEndsAt}T23:59:59+08:00`).getTime();
 }
 
@@ -47,30 +63,41 @@ export function invitationForPreview(state: PrototypeState, invitationId: string
 }
 
 export function simulateInvitationLogin(state: PrototypeState, invitationId: string): PrototypeState {
-  if (state.invitationSessionIds.includes(invitationId)) return state;
+  const invitation = state.invitations.find((item) => item.id === invitationId);
+  if (!invitation) return state;
+  const expectedType = invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'FAMILY';
+  let identity = invitation.recipientIdentityId
+    ? state.identities.find((item) => item.id === invitation.recipientIdentityId)
+    : state.identities.find((item) => item.accountId === state.currentAccountId && item.identityType === expectedType);
+  let identities = [...state.identities];
+  if (!identity) {
+    identity = {
+      id: `identity-login-${invitation.id}`,
+      accountId: `account-login-${invitation.id}`,
+      identityType: expectedType,
+      professionalType: expectedType === 'PROFESSIONAL' ? 'NURSE' : null,
+      verificationStatus: expectedType === 'PROFESSIONAL' ? 'PENDING_VERIFICATION' : 'VERIFIED',
+      isPrimary: true
+    };
+    identities.push(identity);
+  }
+  identities = identities.map((item) => item.accountId === identity.accountId
+    ? { ...item, isPrimary: item.id === identity.id }
+    : item);
   return {
     ...state,
-    invitationSessionIds: [...state.invitationSessionIds, invitationId],
+    currentAccountId: identity.accountId,
+    identities,
+    invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, recipientIdentityId: identity.id } : item),
+    invitationSessionIds: state.invitationSessionIds.includes(invitationId)
+      ? state.invitationSessionIds
+      : [...state.invitationSessionIds, invitationId],
     successMessage: '已完成虛構登入與 Email 綁定概念檢查，現在只顯示最低必要邀請資訊'
   };
 }
 
 export function canCurrentActorAccessCase(state: PrototypeState, caseId: string, now = PROTOTYPE_CLOCK) {
-  const workspaceCase = state.workspaceCases.find((item) => item.id === caseId);
-  if (!workspaceCase || !['ACTIVE', 'EXPIRING'].includes(workspaceCase.accessStatus)) return false;
-  if (now.getTime() < dateOnlyStartsAt(workspaceCase.serviceStartsAt)) return false;
-  if (workspaceCase.serviceEndsAt && now.getTime() > dateOnlyEndsAt(workspaceCase.serviceEndsAt)) return false;
-
-  return state.roleGrants.some((grant) => {
-    const membership = state.memberships.find((item) => item.id === grant.membershipId && item.caseId === caseId);
-    if (!membership || membership.status !== 'ACTIVE') return false;
-    if (membership.validUntil && now.getTime() > dateOnlyEndsAt(membership.validUntil)) return false;
-    const identity = state.identities.find((item) => item.id === membership.identityId);
-    if (!identity || identity.verificationStatus !== 'VERIFIED') return false;
-    if (grant.startsAt && now.getTime() < dateOnlyStartsAt(grant.startsAt)) return false;
-    if (grant.validUntil && now.getTime() > dateOnlyEndsAt(grant.validUntil)) return false;
-    return grant.capabilities.length > 0 && grant.sharingScopes.length > 0 && grant.purpose.trim().length > 0;
-  });
+  return currentActorGrantPaths(state, caseId, now).length > 0;
 }
 
 export function prototypeDemoCaseEntryPath(state: PrototypeState) {
@@ -82,8 +109,9 @@ export function managerReassignmentItems(state: PrototypeState, caseId: string, 
   const hasManagerPath = state.roleGrants.some((grant) => {
     const membership = state.memberships.find((item) => item.id === grant.membershipId && item.caseId === caseId && item.status === 'ACTIVE');
     if (!membership || !grant.capabilities.includes('MANAGE_MEMBERS')) return false;
-    const identity = state.identities.find((item) => item.id === membership.identityId && item.verificationStatus === 'VERIFIED');
+    const identity = state.identities.find((item) => item.id === membership.identityId && item.accountId === state.currentAccountId && item.verificationStatus === 'VERIFIED');
     if (!identity) return false;
+    if (grant.actingRole !== state.activeRole) return false;
     if (grant.startsAt && now.getTime() < dateOnlyStartsAt(grant.startsAt)) return false;
     if (grant.validUntil && now.getTime() > dateOnlyEndsAt(grant.validUntil)) return false;
     return true;
@@ -127,7 +155,7 @@ export function createPrototypeInvitation(
     serviceEndsAt: input.serviceEndsAt,
     expiresAt: addDays(now, 7).toISOString(),
     status: 'INVITED',
-    professionalVerificationStatus: input.recipientType === 'PROFESSIONAL' ? 'PENDING_VERIFICATION' : 'VERIFIED',
+    recipientIdentityId: null,
     ...credentialRepresentations(serial)
   };
   return {
@@ -184,9 +212,11 @@ export function setProfessionalVerification(
   invitationId: string,
   verificationStatus: Extract<VerificationStatus, 'VERIFIED' | 'REJECTED'>
 ): PrototypeState {
+  const invitation = state.invitations.find((item) => item.id === invitationId);
+  if (!invitation || invitation.recipientType !== 'PROFESSIONAL' || !invitation.recipientIdentityId) return state;
   return {
     ...state,
-    invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, professionalVerificationStatus: verificationStatus } : item),
+    identities: state.identities.map((identity) => identity.id === invitation.recipientIdentityId ? { ...identity, verificationStatus } : identity),
     successMessage: verificationStatus === 'VERIFIED'
       ? '虛構專業驗證已通過，仍需重新檢查並接受邀請'
       : '虛構專業驗證未通過，不會取得個案權限'
@@ -209,26 +239,50 @@ function workspaceCaseFromInvitation(invitation: PrototypeInvitation, accessStat
 
 export function acceptPrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
   const invitation = state.invitations.find((item) => item.id === invitationId);
-  if (!invitation || !canAcceptInvitation(invitation, now)) {
+  if (!invitation || !canAcceptInvitation(state, invitation, now)) {
     return { ...state, successMessage: '目前不能接受此邀請，請檢查驗證、期限與服務期間' };
   }
   const isFuture = now.getTime() < new Date(`${invitation.serviceStartsAt}T00:00:00+08:00`).getTime();
   const membershipStatus = isFuture ? 'WAITING_START' as const : 'ACTIVE' as const;
-  const existingIdentity = state.identities.find((identity) => invitation.recipientType === 'PROFESSIONAL'
-    ? identity.identityType === 'PROFESSIONAL' && identity.verificationStatus === 'VERIFIED'
-    : identity.identityType === 'FAMILY' && identity.verificationStatus === 'VERIFIED');
-  const identity = existingIdentity ?? {
-    id: `identity-from-${invitation.id}`,
-    identityType: invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL' as const : 'FAMILY' as const,
-    professionalType: invitation.recipientType === 'PROFESSIONAL' ? 'NURSE' as const : null,
-    verificationStatus: 'VERIFIED' as const,
-    isPrimary: false
-  };
+  const identity = currentIdentityForRecipient(state, invitation);
+  if (!identity || identity.accountId !== state.currentAccountId || identity.verificationStatus !== 'VERIFIED') {
+    return { ...state, successMessage: '目前不能接受此邀請，請先完成同一帳號身分的虛構驗證' };
+  }
   const membershipId = `membership-from-${invitation.id}`;
   const workspaceCase = workspaceCaseFromInvitation(invitation, isFuture ? 'WAITING_START' : 'ACTIVE');
+  const actingRole = invitation.recipientType === 'PROFESSIONAL' ? 'NURSE' as const : 'FAMILY' as const;
+  const grantId = `grant-from-${invitation.id}`;
+  const caseMember = {
+    id: `member-from-${invitation.id}`,
+    caseId: invitation.caseId,
+    name: invitation.recipientType === 'PROFESSIONAL' ? '陳護理師' : '受邀家屬',
+    role: actingRole,
+    relationship: invitation.roleLabel,
+    purpose: invitation.purpose,
+    scopeSummary: invitation.scopeSummary,
+    validFrom: invitation.serviceStartsAt,
+    validUntil: invitation.serviceEndsAt,
+    status: 'ACTIVE' as const
+  };
+
+  // Prototype manager path exists only to demonstrate that the same unresolved action remains
+  // visible to an authorized manager after the invited nurse loses access.
+  const managerIdentity: PrototypeIdentity = {
+    id: `manager-identity-for-${invitation.caseId}`,
+    accountId: identity.accountId,
+    identityType: 'FAMILY',
+    professionalType: null,
+    verificationStatus: 'VERIFIED',
+    isPrimary: false
+  };
+  const managerMembershipId = `manager-membership-for-${invitation.caseId}`;
+  const managerGrantId = `manager-grant-for-${invitation.caseId}`;
+  const addManagerPath = invitation.recipientType === 'PROFESSIONAL'
+    && !state.memberships.some((item) => item.id === managerMembershipId);
   return {
     ...state,
-    identities: existingIdentity ? state.identities : [...state.identities, identity],
+    activeRole: actingRole,
+    identities: addManagerPath ? [...state.identities, managerIdentity] : state.identities,
     memberships: [...state.memberships, {
       id: membershipId,
       identityId: identity.id,
@@ -236,17 +290,35 @@ export function acceptPrototypeInvitation(state: PrototypeState, invitationId: s
       relationship: invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL_SERVICE' : 'FAMILY_MEMBER',
       status: membershipStatus,
       validUntil: invitation.serviceEndsAt
-    }],
+    }, ...(addManagerPath ? [{
+      id: managerMembershipId,
+      identityId: managerIdentity.id,
+      caseId: invitation.caseId,
+      relationship: 'FAMILY_MEMBER' as const,
+      status: 'ACTIVE' as const,
+      validUntil: null
+    }] : [])],
     roleGrants: [...state.roleGrants, {
-      id: `grant-from-${invitation.id}`,
+      id: grantId,
       membershipId,
-      actingRole: invitation.recipientType === 'PROFESSIONAL' ? 'NURSE' : 'FAMILY',
+      actingRole,
       purpose: invitation.purpose,
       sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'],
-      capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE'],
+      capabilities: invitation.recipientType === 'PROFESSIONAL'
+        ? ['VIEW_PROFESSIONAL_CASE', 'VIEW_SHARED_CARE', 'ADD_UPDATE', 'CREATE_PROFESSIONAL_RECORD']
+        : ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'RESOLVE_QUESTION'],
       startsAt: invitation.serviceStartsAt,
       validUntil: invitation.serviceEndsAt
-    }],
+    }, ...(addManagerPath ? [{
+      id: managerGrantId,
+      membershipId: managerMembershipId,
+      actingRole: 'FAMILY' as const,
+      purpose: '個案協作管理展示',
+      sharingScopes: ['SHARED_CARE' as const, 'DIRECT_PARTICIPANTS' as const],
+      capabilities: ['VIEW_SHARED_CARE', 'MANAGE_MEMBERS', 'RESOLVE_QUESTION'],
+      validUntil: null
+    }] : [])],
+    members: [...state.members.filter((item) => item.id !== caseMember.id), caseMember],
     invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, status: 'ACCEPTED' } : item),
     workspaceCases: [...state.workspaceCases.filter((item) => item.id !== invitation.caseId), workspaceCase],
     successMessage: isFuture ? '已接受，等待服務開始，目前不顯示個案內容' : '已接受虛構邀請，個案已加入我的個案'
@@ -286,13 +358,18 @@ export function removeWorkspaceCaseAccess(
   caseId: string,
   reason: Extract<WorkspaceCaseAccessStatus, 'EXPIRED' | 'REVOKED'>
 ): PrototypeState {
-  const reassignedActions = state.actions.filter((item) => item.caseId === caseId && (item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS'));
+  const lostMembershipIds = state.roleGrants
+    .filter((grant) => grant.actingRole === state.activeRole)
+    .map((grant) => grant.membershipId)
+    .filter((membershipId) => state.memberships.some((item) => item.id === membershipId && item.caseId === caseId));
+  const reassignedActions = state.actions.filter((item) => item.caseId === caseId && item.assigneeRole === state.activeRole && (item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS'));
+  const otherActivePathRemains = state.roleGrants.some((grant) => grant.actingRole !== state.activeRole && state.memberships.some((membership) => membership.id === grant.membershipId && membership.caseId === caseId && membership.status === 'ACTIVE'));
   return {
     ...state,
-    workspaceCases: state.workspaceCases.map((item) => item.id === caseId ? { ...item, accessStatus: reason } : item),
+    workspaceCases: state.workspaceCases.map((item) => item.id === caseId ? { ...item, accessStatus: otherActivePathRemains ? 'ACTIVE' : reason } : item),
     privateTagAssignments: state.privateTagAssignments.filter((item) => item.caseId !== caseId),
-    memberships: state.memberships.map((item) => item.caseId === caseId ? { ...item, status: reason } : item),
-    actions: state.actions.map((item) => item.caseId === caseId && (item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS')
+    memberships: state.memberships.map((item) => lostMembershipIds.includes(item.id) ? { ...item, status: reason } : item),
+    actions: state.actions.map((item) => reassignedActions.some((action) => action.id === item.id)
       ? { ...item, status: 'NEEDS_REASSIGNMENT' }
       : item),
     responsibilityHistory: [
@@ -302,9 +379,22 @@ export function removeWorkspaceCaseAccess(
         caseId,
         actionId: item.id,
         formerAssigneeName: item.assigneeName,
+        previousStatus: item.status as 'ACCEPTED' | 'IN_PROGRESS',
         endedAt: PROTOTYPE_CLOCK.toISOString(),
         reason: reason === 'EXPIRED' ? 'SERVICE_EXPIRED' as const : 'MEMBERSHIP_REVOKED' as const,
         summary: reason === 'EXPIRED' ? '原負責人因服務到期而結束責任週期' : '原負責人因個案關係撤銷而結束責任週期'
+      }))
+    ],
+    actionStatusHistory: [
+      ...state.actionStatusHistory,
+      ...reassignedActions.map((item, index) => ({
+        id: `action-status-history-${item.id}-${state.actionStatusHistory.length + index + 1}`,
+        caseId,
+        actionId: item.id,
+        fromStatus: item.status,
+        toStatus: 'NEEDS_REASSIGNMENT' as const,
+        actorRole: state.activeRole,
+        changedAt: PROTOTYPE_CLOCK.toISOString()
       }))
     ],
     successMessage: reason === 'EXPIRED'

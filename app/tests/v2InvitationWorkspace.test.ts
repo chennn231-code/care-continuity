@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
   acceptPrototypeInvitation,
   canCurrentActorAccessCase,
@@ -7,6 +10,7 @@ import {
   declinePrototypeInvitation,
   effectiveInvitationStatus,
   invitationForPreview,
+  invitationVerificationStatus,
   managerReassignmentItems,
   prototypeDemoCaseEntryPath,
   removeWorkspaceCaseAccess,
@@ -21,6 +25,16 @@ import {
 } from '../src/v2/state/invitationWorkspaceState';
 import { createInitialPrototypeState } from '../src/v2/state/prototypeState';
 import { V2_GUARDED_CASE_ROUTE_SUFFIXES } from '../src/v2/data/prototypeRoutes';
+import { canCreateProfessionalRecord } from '../src/v2/state/professionalRecordState';
+import { PrototypeProvider } from '../src/v2/state/PrototypeProvider';
+import { PrototypeCaseAccessGuard } from '../src/v2/components/PrototypeCaseAccessGuard';
+
+function acceptVerifiedProfessionalInvitation() {
+  let state = createInitialPrototypeState();
+  state = simulateInvitationLogin(state, 'invite-professional-pending');
+  state = setProfessionalVerification(state, 'invite-professional-pending', 'VERIFIED');
+  return acceptPrototypeInvitation(state, 'invite-professional-pending');
+}
 
 describe('v2 invitation and multi-case workspace prototype', () => {
   it('derives an expired invitation from the clock without changing its stored status', () => {
@@ -28,15 +42,15 @@ describe('v2 invitation and multi-case workspace prototype', () => {
     const invitation = state.invitations.find((item) => item.id === 'invite-expired');
     expect(invitation?.status).toBe('INVITED');
     expect(invitation && effectiveInvitationStatus(invitation)).toBe('EXPIRED');
-    expect(invitation && canAcceptInvitation(invitation)).toBe(false);
+    expect(invitation && canAcceptInvitation(state, invitation)).toBe(false);
   });
 
   it('keeps pending professional verification separate from invitation status', () => {
     const state = createInitialPrototypeState();
     const invitation = state.invitations.find((item) => item.id === 'invite-professional-pending');
     expect(invitation?.status).toBe('INVITED');
-    expect(invitation?.professionalVerificationStatus).toBe('PENDING_VERIFICATION');
-    expect(invitation && canAcceptInvitation(invitation)).toBe(false);
+    expect(invitation && invitationVerificationStatus(state, invitation)).toBe('PENDING_VERIFICATION');
+    expect(invitation && canAcceptInvitation(state, invitation)).toBe(false);
   });
 
   it('does not expose invitation preview data before the simulated login check', () => {
@@ -50,11 +64,13 @@ describe('v2 invitation and multi-case workspace prototype', () => {
 
   it('does not auto-accept an invitation after professional verification', () => {
     const state = createInitialPrototypeState();
-    const verified = setProfessionalVerification(state, 'invite-professional-pending', 'VERIFIED');
+    const loggedIn = simulateInvitationLogin(state, 'invite-professional-pending');
+    const verified = setProfessionalVerification(loggedIn, 'invite-professional-pending', 'VERIFIED');
     const invitation = verified.invitations.find((item) => item.id === 'invite-professional-pending');
-    expect(invitation?.professionalVerificationStatus).toBe('VERIFIED');
+    expect(invitation && invitationVerificationStatus(verified, invitation)).toBe('VERIFIED');
+    expect(verified.identities.find((item) => item.id === invitation?.recipientIdentityId)?.verificationStatus).toBe('VERIFIED');
     expect(invitation?.status).toBe('INVITED');
-    expect(invitation && canAcceptInvitation(invitation)).toBe(true);
+    expect(invitation && canAcceptInvitation(verified, invitation)).toBe(true);
   });
 
   it('accepts a valid invitation and creates one independent membership and grant path', () => {
@@ -105,7 +121,7 @@ describe('v2 invitation and multi-case workspace prototype', () => {
     expect(prototypeDemoCaseEntryPath(removeWorkspaceCaseAccess(state, 'demo-case', 'REVOKED'))).toBe('/v2/prototype/workspace');
   });
 
-  it('keeps every declared case content route behind the same failed access decision', () => {
+  it('renders the shared access guard for every direct case content URL', () => {
     const state = removeWorkspaceCaseAccess(createInitialPrototypeState(), 'demo-case', 'EXPIRED');
     expect(V2_GUARDED_CASE_ROUTE_SUFFIXES).toEqual([
       '',
@@ -118,8 +134,27 @@ describe('v2 invitation and multi-case workspace prototype', () => {
       'records/:recordId',
       'records/:recordId/correct'
     ]);
-    for (const path of V2_GUARDED_CASE_ROUTE_SUFFIXES) {
-      expect(canCurrentActorAccessCase(state, 'demo-case'), path).toBe(false);
+    for (const suffix of V2_GUARDED_CASE_ROUTE_SUFFIXES) {
+      const requestedSuffix = suffix.replace(':recordId', 'record-demo');
+      const initialPath = `/v2/prototype/cases/demo-case${requestedSuffix ? `/${requestedSuffix}` : ''}`;
+      const childRoute = suffix
+        ? createElement(Route, { path: '*', element: createElement('div', null, 'SENSITIVE_CASE_CONTENT') })
+        : createElement(Route, { index: true, element: createElement('div', null, 'SENSITIVE_CASE_CONTENT') });
+      const html = renderToStaticMarkup(createElement(
+        MemoryRouter,
+        { initialEntries: [initialPath] },
+        createElement(
+          PrototypeProvider,
+          { initialState: state },
+          createElement(
+            Routes,
+            null,
+            createElement(Route, { path: '/v2/prototype/cases/:caseId', element: createElement(PrototypeCaseAccessGuard) }, childRoute)
+          )
+        )
+      ));
+      expect(html, initialPath).toContain('目前無法存取此個案');
+      expect(html, initialPath).not.toContain('SENSITIVE_CASE_CONTENT');
     }
   });
 
@@ -168,20 +203,68 @@ describe('v2 invitation and multi-case workspace prototype', () => {
     expect(next.responsibilityHistory.some((item) => item.actionId === 'action-meal-followup' && item.summary.includes('服務到期'))).toBe(true);
   });
 
+  it('does not reassign another role\'s unfinished action when the nurse path expires', () => {
+    const state = {
+      ...createInitialPrototypeState(),
+      activeRole: 'NURSE' as const,
+      actions: createInitialPrototypeState().actions.map((action) => action.id === 'action-skin-check'
+        ? { ...action, status: 'IN_PROGRESS' as const }
+        : action)
+    };
+    const next = removeWorkspaceCaseAccess(state, 'demo-case', 'EXPIRED');
+    expect(next.actions.find((item) => item.id === 'action-skin-check')?.status).toBe('NEEDS_REASSIGNMENT');
+    expect(next.actions.find((item) => item.id === 'action-meal-followup')?.status).toBe('IN_PROGRESS');
+  });
+
   it('shows reassignment only through an effective manager grant path', () => {
     const state = createInitialPrototypeState();
-    const managerItems = managerReassignmentItems(state, 'river-case');
+    const nurseState = { ...state, activeRole: 'NURSE' as const };
+    const managerItems = managerReassignmentItems(nurseState, 'river-case');
     expect(managerItems).toHaveLength(1);
     expect(managerItems[0].history?.summary).toContain('服務到期');
-    const lostAccess = removeWorkspaceCaseAccess(state, 'river-case', 'EXPIRED');
+    const lostAccess = removeWorkspaceCaseAccess(nurseState, 'river-case', 'EXPIRED');
     expect(managerReassignmentItems(lostAccess, 'river-case')).toEqual([]);
   });
 
   it('returns a fresh in-memory fixture after refresh-equivalent initialization', () => {
     const changed = removeWorkspaceCaseAccess(createInitialPrototypeState(), 'demo-case', 'REVOKED');
     const refreshed = createInitialPrototypeState();
-    expect(changed.workspaceCases.find((item) => item.id === 'demo-case')?.accessStatus).toBe('REVOKED');
+    expect(canCurrentActorAccessCase(changed, 'demo-case')).toBe(false);
     expect(refreshed.workspaceCases.find((item) => item.id === 'demo-case')?.accessStatus).toBe('ACTIVE');
     expect(refreshed.privateTagAssignments.some((item) => item.caseId === 'demo-case')).toBe(true);
+  });
+
+  it('uses the same identity verification state for invitation, header identity and identity profile', () => {
+    let state = simulateInvitationLogin(createInitialPrototypeState(), 'invite-professional-pending');
+    const invitation = state.invitations.find((item) => item.id === 'invite-professional-pending')!;
+    const linkedIdentity = state.identities.find((item) => item.id === invitation.recipientIdentityId)!;
+    expect(linkedIdentity.isPrimary).toBe(true);
+    expect(invitationVerificationStatus(state, invitation)).toBe('PENDING_VERIFICATION');
+    state = setProfessionalVerification(state, invitation.id, 'VERIFIED');
+    expect(invitationVerificationStatus(state, invitation)).toBe('VERIFIED');
+    expect(state.identities.find((item) => item.isPrimary)?.verificationStatus).toBe('VERIFIED');
+    expect(state.identities.filter((item) => item.accountId === state.currentAccountId).find((item) => item.id === invitation.recipientIdentityId)?.verificationStatus).toBe('VERIFIED');
+  });
+
+  it('opens an invited professional case through the shared guard and record grant path', () => {
+    const state = acceptVerifiedProfessionalInvitation();
+    expect(state.workspaceCases.find((item) => item.id === 'sun-case')?.displayName).toBe('陳爺爺');
+    expect(canCurrentActorAccessCase(state, 'sun-case')).toBe(true);
+    expect(canCreateProfessionalRecord(state, 'sun-case')).toBe(true);
+    for (const route of V2_GUARDED_CASE_ROUTE_SUFFIXES) {
+      expect(canCurrentActorAccessCase(state, 'sun-case'), route).toBe(true);
+    }
+  });
+
+  it('rejects direct URLs for an invited case when its single nurse grant path is incomplete', () => {
+    const state = acceptVerifiedProfessionalInvitation();
+    const incomplete = {
+      ...state,
+      roleGrants: state.roleGrants.map((grant) => grant.actingRole === 'NURSE' && state.memberships.find((item) => item.id === grant.membershipId)?.caseId === 'sun-case'
+        ? { ...grant, capabilities: [] }
+        : grant)
+    };
+    expect(canCurrentActorAccessCase(incomplete, 'sun-case')).toBe(false);
+    expect(canCreateProfessionalRecord(incomplete, 'sun-case')).toBe(false);
   });
 });

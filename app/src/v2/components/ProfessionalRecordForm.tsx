@@ -19,10 +19,11 @@ interface ProfessionalRecordFormProps {
   heading: string;
   description: string;
   submitLabel: string;
+  caseDisplayName: string;
   onPublish: (draft: ProfessionalRecordDraft) => string | null;
 }
 
-export function ProfessionalRecordForm({ initialDraft, heading, description, submitLabel, onPublish }: ProfessionalRecordFormProps) {
+export function ProfessionalRecordForm({ initialDraft, heading, description, submitLabel, caseDisplayName, onPublish }: ProfessionalRecordFormProps) {
   const navigate = useNavigate();
   const [draft, setDraft] = useState(() => structuredClone(initialDraft));
   const [errors, setErrors] = useState<ProfessionalRecordErrors>({});
@@ -105,7 +106,7 @@ export function ProfessionalRecordForm({ initialDraft, heading, description, sub
   return (
     <section className="v2-page v2-professional-record-form-page">
       <header className="v2-page-heading">
-        <p className="eyebrow">林奶奶｜{PROFESSIONAL_RECORD_DEMO_LABEL}</p>
+        <p className="eyebrow">{caseDisplayName}｜{PROFESSIONAL_RECORD_DEMO_LABEL}</p>
         <h1>{heading}</h1>
         <p>{description}</p>
       </header>

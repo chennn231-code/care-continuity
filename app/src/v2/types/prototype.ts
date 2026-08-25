@@ -61,6 +61,8 @@ export interface PrototypeAction {
 
 export interface PrototypeQuestion {
   id: string;
+  caseId: string;
+  sourceTimelineEntryId: string;
   text: string;
   status: QuestionStatus;
   askedBy: string;
@@ -69,6 +71,7 @@ export interface PrototypeQuestion {
 
 export interface CareCircleMember {
   id: string;
+  caseId: string;
   name: string;
   role: DemoRole;
   relationship: string;
@@ -80,6 +83,7 @@ export interface CareCircleMember {
 }
 
 export interface NewUpdateInput {
+  caseId: string;
   kind: 'OBSERVATION' | 'ARRANGEMENT' | 'QUESTION';
   occurredDate: string;
   occurredTime: string;
@@ -95,6 +99,7 @@ export interface NewUpdateInput {
 
 export interface PrototypeIdentity {
   id: string;
+  accountId: string;
   identityType: PrimaryIdentityType;
   professionalType: ProfessionalType | null;
   verificationStatus: VerificationStatus;
@@ -143,7 +148,7 @@ export interface PrototypeInvitation {
   serviceEndsAt: string;
   expiresAt: string;
   status: InvitationStoredStatus;
-  professionalVerificationStatus: VerificationStatus;
+  recipientIdentityId: string | null;
   credentialId: string;
   linkRepresentation: string;
   codeRepresentation: string;
@@ -188,9 +193,20 @@ export interface PrototypeResponsibilityHistory {
   caseId: string;
   actionId: string;
   formerAssigneeName: string;
+  previousStatus: Extract<ActionStatus, 'ACCEPTED' | 'IN_PROGRESS'>;
   endedAt: string;
   reason: 'SERVICE_EXPIRED' | 'MEMBERSHIP_REVOKED';
   summary: string;
+}
+
+export interface PrototypeActionStatusHistory {
+  id: string;
+  caseId: string;
+  actionId: string;
+  fromStatus: ActionStatus;
+  toStatus: ActionStatus;
+  actorRole: DemoRole;
+  changedAt: string;
 }
 
 export interface ProfessionalRecordContent {
@@ -255,6 +271,7 @@ export interface PrototypeGrantPath {
 }
 
 export interface PrototypeState {
+  currentAccountId: string;
   activeRole: DemoRole;
   identities: PrototypeIdentity[];
   identityDraft: IdentityRegistrationDraft;
@@ -269,6 +286,7 @@ export interface PrototypeState {
   privateTags: PrototypePrivateTag[];
   privateTagAssignments: PrototypeCaseTagAssignment[];
   responsibilityHistory: PrototypeResponsibilityHistory[];
+  actionStatusHistory: PrototypeActionStatusHistory[];
   professionalRecordVersions: ProfessionalRecordVersion[];
   invitationSessionIds: string[];
   lastInvitationId: string | null;

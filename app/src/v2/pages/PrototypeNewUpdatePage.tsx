@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { DEMO_ROLE_LABELS } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { DemoRole, NewUpdateInput, SharingScope } from '../types/prototype';
@@ -8,9 +8,11 @@ const today = '2026-08-25';
 
 export function PrototypeNewUpdatePage() {
   const { state, addUpdate } = usePrototype();
+  const { caseId = '' } = useParams();
+  const workspaceCase = state.workspaceCases.find((item) => item.id === caseId);
   const navigate = useNavigate();
   const [form, setForm] = useState<NewUpdateInput>({
-    kind: 'OBSERVATION', occurredDate: today, occurredTime: '09:00', content: '', source: '',
+    caseId, kind: 'OBSERVATION', occurredDate: today, occurredTime: '09:00', content: '', source: '',
     actingRole: state.activeRole, purpose: '共同照顧交接', sharingScope: 'SHARED_CARE', needsAction: false,
     assigneeRole: 'NURSE', dueAt: '2026-08-27T17:00'
   });
@@ -21,11 +23,11 @@ export function PrototypeNewUpdatePage() {
     if (!form.content.trim() || !form.source.trim()) { setError('請填寫內容與來源'); return; }
     if (form.needsAction && (!form.assigneeRole || !form.dueAt)) { setError('請選擇虛構負責人與期限'); return; }
     addUpdate(form);
-    navigate('/v2/prototype/cases/demo-case/timeline');
+    navigate(`/v2/prototype/cases/${caseId}/timeline`);
   };
   return (
     <section className="v2-page v2-form-page">
-      <header className="v2-page-heading"><p className="eyebrow">林奶奶｜虛構展示個案</p><h1>新增照顧變化</h1><p>記錄有來源的觀察、安排或問題，不把觀察寫成醫療診斷</p></header>
+      <header className="v2-page-heading"><p className="eyebrow">{workspaceCase?.displayName ?? '虛構展示個案'}｜虛構展示個案</p><h1>新增照顧變化</h1><p>記錄有來源的觀察、安排或問題，不把觀察寫成醫療診斷</p></header>
       <form className="v2-card form-stack" onSubmit={submit}>
         {error && <p className="form-message error" role="alert">{error}</p>}
         <label>類型<select value={form.kind} onChange={(event) => update('kind', event.target.value as NewUpdateInput['kind'])}><option value="OBSERVATION">觀察</option><option value="ARRANGEMENT">照顧安排</option><option value="QUESTION">問題</option></select></label>

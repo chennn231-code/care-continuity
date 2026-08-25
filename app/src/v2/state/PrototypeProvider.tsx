@@ -29,8 +29,8 @@ interface PrototypeContextValue {
 
 const PrototypeContext = createContext<PrototypeContextValue | null>(null);
 
-export function PrototypeProvider({ children }: PropsWithChildren) {
-  const [state, setState] = useState(createInitialPrototypeState);
+export function PrototypeProvider({ children, initialState }: PropsWithChildren<{ initialState?: PrototypeState }>) {
+  const [state, setState] = useState(() => initialState ? structuredClone(initialState) : createInitialPrototypeState());
   const value = useMemo<PrototypeContextValue>(() => ({
     state,
     setRole: (activeRole) => setState((current) => ({ ...current, activeRole, successMessage: null })),
@@ -40,7 +40,7 @@ export function PrototypeProvider({ children }: PropsWithChildren) {
     completeRegistration: () => setState((current) => completeIdentityRegistration(current)),
     addUpdate: (input) => setState((current) => addCareUpdate(current, input)),
     moveAction: (actionId, status) => setState((current) => transitionAction(current, actionId, status, current.activeRole)),
-    markQuestionResolved: (questionId) => setState((current) => resolveQuestion(current, questionId)),
+    markQuestionResolved: (questionId) => setState((current) => resolveQuestion(current, questionId, current.activeRole)),
     createInvitation: (input) => setState((current) => createPrototypeInvitation(current, input)),
     acceptInvitation: (invitationId) => setState((current) => acceptPrototypeInvitation(current, invitationId)),
     declineInvitation: (invitationId) => setState((current) => declinePrototypeInvitation(current, invitationId)),

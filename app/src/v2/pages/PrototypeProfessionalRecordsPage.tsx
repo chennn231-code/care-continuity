@@ -5,6 +5,7 @@ import { canCreateProfessionalRecord, familyProfessionalRecordProjection, latest
 export function PrototypeProfessionalRecordsPage() {
   const { caseId = 'demo-case' } = useParams();
   const { state, setRole } = usePrototype();
+  const workspaceCase = state.workspaceCases.find((item) => item.id === caseId);
   const records = latestProfessionalRecordVersions(state, caseId);
   const familyRecords = records.flatMap((record) => {
     const projection = familyProfessionalRecordProjection(state, record.recordId);
@@ -13,7 +14,7 @@ export function PrototypeProfessionalRecordsPage() {
   const canCreate = state.activeRole === 'NURSE' && canCreateProfessionalRecord(state, caseId);
   return (
     <section className="v2-page">
-      <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">林奶奶｜{PROFESSIONAL_RECORD_DEMO_LABEL}</p><h1>專業照顧紀錄</h1><p>本頁以日照護理師的虛構流程證明共同紀錄骨架，不代表所有專業職類已有正式模板，也不是正式病歷、護理紀錄或法定機構紀錄。</p></div>{canCreate && <Link className="primary-button" to={`/v2/prototype/cases/${caseId}/records/new`}>新增專業照顧紀錄</Link>}</header>
+      <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">{workspaceCase?.displayName}｜{PROFESSIONAL_RECORD_DEMO_LABEL}</p><h1>專業照顧紀錄</h1><p>本頁以日照護理師的虛構流程證明共同紀錄骨架，不代表所有專業職類已有正式模板，也不是正式病歷、護理紀錄或法定機構紀錄。</p></div>{canCreate && <Link className="primary-button" to={`/v2/prototype/cases/${caseId}/records/new`}>新增專業照顧紀錄</Link>}</header>
       {!canCreate && <section className="v2-card v2-record-acting-context"><h2>目前不是專業紀錄操作情境</h2><p>建立紀錄必須由一條完整有效的日照護理師 grant path 單獨通過，不能與家庭權限拼接。</p><button className="secondary-button" type="button" onClick={() => setRole('NURSE')}>切換至虛構日照護理師情境</button></section>}
       <div className="v2-record-list">
         {state.activeRole === 'FAMILY'

@@ -4,6 +4,7 @@ import type {
   ProfessionalRecordVersion,
   PrototypeState
 } from '../types/prototype';
+import { currentActorGrantPaths } from './prototypeState';
 
 export const PROFESSIONAL_RECORD_DEMO_LABEL = '護理師展示情境';
 
@@ -44,21 +45,10 @@ export function canCreateProfessionalRecord(
   caseId: string,
   now = new Date('2026-08-25T12:00:00+08:00')
 ) {
-  const today = now.toISOString().slice(0, 10);
-  return state.roleGrants.some((grant) => {
-    const membership = state.memberships.find((item) => item.id === grant.membershipId);
-    const identity = membership && state.identities.find((item) => item.id === membership.identityId);
-    return membership?.caseId === caseId
-      && membership.status === 'ACTIVE'
-      && identity?.verificationStatus === 'VERIFIED'
-      && grant.actingRole === 'NURSE'
+  return currentActorGrantPaths(state, caseId, now).some(({ grant }) =>
+      grant.actingRole === 'NURSE'
       && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
-      && Boolean(grant.purpose)
-      && grant.sharingScopes.length > 0
-      && (!grant.startsAt || grant.startsAt <= today)
-      && (!grant.validUntil || grant.validUntil >= today)
-      && (!membership.validUntil || membership.validUntil >= today);
-  });
+  );
 }
 
 export function validateProfessionalRecordDraft(draft: ProfessionalRecordDraft): ProfessionalRecordErrors {

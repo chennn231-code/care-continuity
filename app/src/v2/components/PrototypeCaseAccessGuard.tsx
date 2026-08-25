@@ -6,7 +6,7 @@ export function PrototypeCaseAccessGuard() {
   const { caseId } = useParams();
   const { state } = usePrototype();
 
-  if (!caseId || caseId !== 'demo-case' || !canCurrentActorAccessCase(state, caseId)) {
+  if (!caseId || !canCurrentActorAccessCase(state, caseId)) {
     return (
       <section className="v2-page v2-access-denied-page">
         <header className="v2-page-heading">

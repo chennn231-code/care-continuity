@@ -8,6 +8,31 @@ import {
   visibleTimelineEntries
 } from '../src/v2/state/prototypeState';
 import type { NewUpdateInput } from '../src/v2/types/prototype';
+import { acceptPrototypeInvitation, canCurrentActorAccessCase, managerReassignmentItems, removeWorkspaceCaseAccess, setProfessionalVerification, simulateInvitationLogin } from '../src/v2/state/invitationWorkspaceState';
+
+function acceptedSunCase() {
+  let state = simulateInvitationLogin(createInitialPrototypeState(), 'invite-professional-pending');
+  state = setProfessionalVerification(state, 'invite-professional-pending', 'VERIFIED');
+  return acceptPrototypeInvitation(state, 'invite-professional-pending');
+}
+
+function addLinkedQuestionAndAction(state = acceptedSunCase()) {
+  const familyState = { ...state, activeRole: 'FAMILY' as const };
+  return addCareUpdate(familyState, {
+    caseId: 'sun-case',
+    kind: 'QUESTION',
+    occurredDate: '2026-08-25',
+    occurredTime: '15:00',
+    content: '請協助確認本次皮膚觀察是否需要後續追蹤',
+    source: '虛構家屬提問',
+    actingRole: 'FAMILY',
+    purpose: '共同照顧交接',
+    sharingScope: 'DIRECT_PARTICIPANTS',
+    needsAction: true,
+    assigneeRole: 'NURSE',
+    dueAt: '2026-08-27T17:00'
+  }, new Date('2026-08-25T07:00:00Z'));
+}
 
 describe('v2 frontend prototype state', () => {
   it('does not allow an action to jump from pending acceptance to completed', () => {
@@ -18,7 +43,7 @@ describe('v2 frontend prototype state', () => {
   });
 
   it('moves an accepted action into progress and then completed', () => {
-    const initial = createInitialPrototypeState();
+    const initial = { ...createInitialPrototypeState(), activeRole: 'NURSE' as const };
     const accepted = transitionAction(initial, 'action-skin-check', 'ACCEPTED', 'NURSE');
     const active = transitionAction(accepted, 'action-skin-check', 'IN_PROGRESS', 'NURSE');
     const completed = transitionAction(active, 'action-skin-check', 'COMPLETED', 'NURSE');
@@ -42,7 +67,7 @@ describe('v2 frontend prototype state', () => {
 
   it('requires a separate question resolution action', () => {
     const state = createInitialPrototypeState();
-    const resolved = resolveQuestion(state, 'skin-question');
+    const resolved = resolveQuestion(state, 'skin-question', 'FAMILY');
     expect(state.questions.find((item) => item.id === 'skin-question')?.status).toBe('ANSWERED');
     expect(resolved.questions.find((item) => item.id === 'skin-question')?.status).toBe('RESOLVED');
   });
@@ -50,7 +75,7 @@ describe('v2 frontend prototype state', () => {
   it('adds a new care update and optional action only to in-memory state', () => {
     const state = createInitialPrototypeState();
     const input: NewUpdateInput = {
-      kind: 'OBSERVATION', occurredDate: '2026-08-25', occurredTime: '09:00',
+      caseId: 'demo-case', kind: 'OBSERVATION', occurredDate: '2026-08-25', occurredTime: '09:00',
       content: '今天起身時需要多一點扶持', source: '虛構家屬觀察', actingRole: 'FAMILY',
       purpose: '共同照顧交接', sharingScope: 'DIRECT_PARTICIPANTS', needsAction: true,
       assigneeRole: 'DAY_CARE', dueAt: '2026-08-26T17:00'
@@ -83,5 +108,47 @@ describe('v2 frontend prototype state', () => {
     expect(V2_PROTOTYPE_NOTICE).toContain('虛構資料');
     expect(V2_PROTOTYPE_NOTICE).toContain('重新整理後會重置');
     expect(V2_PRODUCT_DESCRIPTION).toContain(V2_PRODUCT_NAME);
+  });
+
+  it('keeps a newly created question and action linked through one immutable id', () => {
+    const state = addLinkedQuestionAndAction();
+    const question = state.questions.at(-1)!;
+    const action = state.actions.at(-1)!;
+    expect(question.caseId).toBe('sun-case');
+    expect(action.caseId).toBe('sun-case');
+    expect(action.linkedQuestionId).toBe(question.id);
+    expect(question.sourceTimelineEntryId).toBe(state.timeline[0].id);
+  });
+
+  it('completes the linked action without resolving its question, then resolves the same question independently', () => {
+    let state = addLinkedQuestionAndAction();
+    const questionId = state.questions.at(-1)!.id;
+    const actionId = state.actions.at(-1)!.id;
+    state = { ...state, activeRole: 'NURSE' };
+    state = transitionAction(state, actionId, 'ACCEPTED', 'NURSE');
+    state = transitionAction(state, actionId, 'IN_PROGRESS', 'NURSE');
+    state = transitionAction(state, actionId, 'COMPLETED', 'NURSE');
+    expect(state.questions.find((item) => item.id === questionId)?.status).toBe('OPEN');
+    const resolved = resolveQuestion({ ...state, activeRole: 'FAMILY' }, questionId, 'FAMILY');
+    expect(resolved.questions.find((item) => item.id === questionId)?.status).toBe('RESOLVED');
+    expect(resolved.actions.find((item) => item.id === actionId)?.linkedQuestionId).toBe(questionId);
+  });
+
+  it('moves the same unfinished action to reassignment and hides it from the expired nurse path', () => {
+    let state = addLinkedQuestionAndAction();
+    const questionId = state.questions.at(-1)!.id;
+    const actionId = state.actions.at(-1)!.id;
+    state = { ...state, activeRole: 'NURSE' };
+    state = transitionAction(state, actionId, 'ACCEPTED', 'NURSE');
+    state = transitionAction(state, actionId, 'IN_PROGRESS', 'NURSE');
+    const expired = removeWorkspaceCaseAccess(state, 'sun-case', 'EXPIRED');
+    expect(expired.actions.find((item) => item.id === actionId)?.status).toBe('NEEDS_REASSIGNMENT');
+    expect(expired.actions.find((item) => item.id === actionId)?.linkedQuestionId).toBe(questionId);
+    expect(expired.responsibilityHistory.find((item) => item.actionId === actionId)?.previousStatus).toBe('IN_PROGRESS');
+    expect(canCurrentActorAccessCase(expired, 'sun-case')).toBe(false);
+    expect(managerReassignmentItems(expired, 'sun-case')).toEqual([]);
+    const managerView = { ...expired, activeRole: 'FAMILY' as const };
+    expect(canCurrentActorAccessCase(managerView, 'sun-case')).toBe(true);
+    expect(managerReassignmentItems(managerView, 'sun-case').map((item) => item.action.id)).toEqual([actionId]);
   });
 });

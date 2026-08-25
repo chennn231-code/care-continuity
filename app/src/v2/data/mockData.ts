@@ -46,15 +46,19 @@ export const PROFESSIONAL_TYPE_OPTIONS: Array<{
 ];
 
 export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
+  currentAccountId: 'demo-account',
   activeRole: 'FAMILY',
   identities: [
-    { id: 'demo-identity-family', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true },
-    { id: 'demo-identity-nurse', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'VERIFIED', isPrimary: false }
+    { id: 'demo-identity-family', accountId: 'demo-account', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true },
+    { id: 'demo-identity-nurse', accountId: 'demo-account', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'VERIFIED', isPrimary: false },
+    { id: 'demo-identity-day-care', accountId: 'demo-account', identityType: 'PROFESSIONAL', professionalType: 'CARE_WORKER', verificationStatus: 'VERIFIED', isPrimary: false },
+    { id: 'demo-identity-invited-nurse', accountId: 'invited-nurse-account', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'PENDING_VERIFICATION', isPrimary: false }
   ],
   identityDraft: { mode: 'PRIMARY', identityType: null, professionalType: null },
   memberships: [
     { id: 'demo-membership-family', identityId: 'demo-identity-family', caseId: 'demo-case', relationship: 'FAMILY_MEMBER', status: 'ACTIVE', validUntil: null },
     { id: 'demo-membership-nurse', identityId: 'demo-identity-nurse', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-11-30' },
+    { id: 'demo-membership-day-care', identityId: 'demo-identity-day-care', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-11-01' },
     { id: 'demo-membership-river', identityId: 'demo-identity-nurse', caseId: 'river-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-09-05' },
     { id: 'demo-membership-future', identityId: 'demo-identity-nurse', caseId: 'future-case', relationship: 'PROFESSIONAL_SERVICE', status: 'WAITING_START', validUntil: '2026-11-30' }
   ],
@@ -66,6 +70,10 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     {
       id: 'demo-grant-nurse', membershipId: 'demo-membership-nurse', actingRole: 'NURSE', purpose: '日照護理服務紀錄與交接', startsAt: '2026-08-01',
       sharingScopes: ['AUTHOR_ONLY', 'SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_PROFESSIONAL_CASE', 'ADD_UPDATE', 'CREATE_PROFESSIONAL_RECORD'], validUntil: '2026-11-30'
+    },
+    {
+      id: 'demo-grant-day-care', membershipId: 'demo-membership-day-care', actingRole: 'DAY_CARE', purpose: '日照服務期間的照顧交接', startsAt: '2026-08-01',
+      sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE'], validUntil: '2026-11-01'
     },
     {
       id: 'demo-grant-river', membershipId: 'demo-membership-river', actingRole: 'NURSE', purpose: '居家護理服務與協作管理', startsAt: '2026-08-15',
@@ -83,19 +91,19 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     {
       id: 'invite-family-ready', previousInvitationId: null, caseId: 'harbor-case', caseDisplayName: '王奶奶', maskedCaseDisplayName: '王○○長輩', inviterName: '王家協作管理者',
       recipientType: 'FAMILY', recipientEmailHint: 'd***@example.invalid', roleLabel: '家屬／家庭照顧者', purpose: '家庭照顧協作', scopeSummary: '共同照顧與家庭限定資訊',
-      serviceStartsAt: '2026-08-25', serviceEndsAt: '2027-08-24', expiresAt: '2026-09-01T23:59:59+08:00', status: 'INVITED', professionalVerificationStatus: 'VERIFIED',
+      serviceStartsAt: '2026-08-25', serviceEndsAt: '2027-08-24', expiresAt: '2026-09-01T23:59:59+08:00', status: 'INVITED', recipientIdentityId: 'demo-identity-family',
       credentialId: 'credential-family-ready', linkRepresentation: 'https://winwin.example.invalid/invite/DEMO-FAMILY-READY', codeRepresentation: 'DEMO-FAMILY-READY'
     },
     {
       id: 'invite-professional-pending', previousInvitationId: null, caseId: 'sun-case', caseDisplayName: '陳爺爺', maskedCaseDisplayName: '陳○○長輩', inviterName: '陳家協作管理者',
       recipientType: 'PROFESSIONAL', recipientEmailHint: 'n***@example.invalid', roleLabel: '護理師', purpose: '皮膚狀況追蹤與護理建議', scopeSummary: '共同照顧與直接參與事項',
-      serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-11-30', expiresAt: '2026-09-02T23:59:59+08:00', status: 'INVITED', professionalVerificationStatus: 'PENDING_VERIFICATION',
+      serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-11-30', expiresAt: '2026-09-02T23:59:59+08:00', status: 'INVITED', recipientIdentityId: 'demo-identity-invited-nurse',
       credentialId: 'credential-professional-pending', linkRepresentation: 'https://winwin.example.invalid/invite/DEMO-NURSE-PENDING', codeRepresentation: 'DEMO-NURSE-PENDING'
     },
     {
       id: 'invite-expired', previousInvitationId: null, caseId: 'expired-case', caseDisplayName: '周奶奶', maskedCaseDisplayName: '周○○長輩', inviterName: '周家協作管理者',
       recipientType: 'FAMILY', recipientEmailHint: 'f***@example.invalid', roleLabel: '家屬／家庭照顧者', purpose: '家庭照顧協作', scopeSummary: '共同照顧資訊',
-      serviceStartsAt: '2026-08-01', serviceEndsAt: '2027-07-31', expiresAt: '2026-08-20T23:59:59+08:00', status: 'INVITED', professionalVerificationStatus: 'VERIFIED',
+      serviceStartsAt: '2026-08-01', serviceEndsAt: '2027-07-31', expiresAt: '2026-08-20T23:59:59+08:00', status: 'INVITED', recipientIdentityId: 'demo-identity-family',
       credentialId: 'credential-expired', linkRepresentation: 'https://winwin.example.invalid/invite/DEMO-EXPIRED', codeRepresentation: 'DEMO-EXPIRED'
     }
   ],
@@ -117,9 +125,10 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   responsibilityHistory: [
     {
       id: 'responsibility-history-river', caseId: 'river-case', actionId: 'action-river-followup', formerAssigneeName: '前任護理師',
-      endedAt: '2026-08-24T17:00:00+08:00', reason: 'SERVICE_EXPIRED', summary: '原負責人因服務到期而結束責任週期'
+      previousStatus: 'IN_PROGRESS', endedAt: '2026-08-24T17:00:00+08:00', reason: 'SERVICE_EXPIRED', summary: '原負責人因服務到期而結束責任週期'
     }
   ],
+  actionStatusHistory: [],
   professionalRecordVersions: [
     {
       id: 'professional-record-demo-existing-v1', recordId: 'professional-record-demo-existing', caseId: 'demo-case', versionNumber: 1,
@@ -265,6 +274,8 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   questions: [
     {
       id: 'skin-question',
+      caseId: 'demo-case',
+      sourceTimelineEntryId: 'question-skin',
       text: '手臂泛紅是否需要持續觀察？',
       status: 'ANSWERED',
       askedBy: '林怡君',
@@ -272,6 +283,8 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'meal-question',
+      caseId: 'demo-case',
+      sourceTimelineEntryId: 'question-skin',
       text: '下週一的午餐由誰準備？',
       status: 'OPEN',
       askedBy: '林怡君'
@@ -279,17 +292,17 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   ],
   members: [
     {
-      id: 'member-family', name: '林怡君', role: 'FAMILY', relationship: '女兒',
+      id: 'member-family', caseId: 'demo-case', name: '林怡君', role: 'FAMILY', relationship: '女兒',
       purpose: '家庭照顧協作', scopeSummary: '家庭限定與共同照顧內容',
       validFrom: '2026-08-01', validUntil: null, status: 'ACTIVE'
     },
     {
-      id: 'member-day-care', name: '王照服員', role: 'DAY_CARE', relationship: '日照服務人員',
+      id: 'member-day-care', caseId: 'demo-case', name: '王照服員', role: 'DAY_CARE', relationship: '日照服務人員',
       purpose: '日照服務期間的照顧交接', scopeSummary: '共同照顧與直接參與內容',
       validFrom: '2026-08-01', validUntil: '2026-11-01', status: 'ACTIVE'
     },
     {
-      id: 'member-nurse', name: '陳護理師', role: 'NURSE', relationship: '居家護理人員',
+      id: 'member-nurse', caseId: 'demo-case', name: '陳護理師', role: 'NURSE', relationship: '居家護理人員',
       purpose: '指定問題與處理事項', scopeSummary: '共同照顧與直接參與內容',
       validFrom: '2026-08-15', validUntil: '2026-09-05', status: 'EXPIRING'
     }

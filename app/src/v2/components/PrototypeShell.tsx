@@ -19,7 +19,7 @@ export function PrototypeShell() {
   const isCaseRoute = Boolean(caseId && canCurrentActorAccessCase(state, caseId));
   const invitationId = location.pathname.match(/^\/v2\/prototype\/invitations\/(?!new$|created$)([^/]+)/)?.[1];
   const showAccountSummary = shouldShowAccountSummary(location.pathname) && (!invitationId || canViewInvitationPreview(state, invitationId));
-  const primaryIdentity = state.identities.find((identity) => identity.isPrimary);
+  const primaryIdentity = state.identities.find((identity) => identity.accountId === state.currentAccountId && identity.isPrimary);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -44,11 +44,11 @@ export function PrototypeShell() {
           {roles.map((role) => <button type="button" className={state.activeRole === role ? 'active' : ''} aria-pressed={state.activeRole === role} onClick={() => setRole(role)} key={role}>{DEMO_ROLE_LABELS[role]}</button>)}
         </div>
       </details><nav className="v2-case-nav" aria-label="展示個案導覽">
-        <NavLink to="/v2/prototype/cases/demo-case" end>個案首頁</NavLink>
-        <NavLink to="/v2/prototype/cases/demo-case/timeline">照顧變化</NavLink>
-        <NavLink to="/v2/prototype/cases/demo-case/actions">處理事項</NavLink>
-        <NavLink to="/v2/prototype/cases/demo-case/circle">照顧圈</NavLink>
-        <NavLink to="/v2/prototype/cases/demo-case/records">專業紀錄</NavLink>
+        <NavLink to={`/v2/prototype/cases/${caseId}`} end>個案首頁</NavLink>
+        <NavLink to={`/v2/prototype/cases/${caseId}/timeline`}>照顧變化</NavLink>
+        <NavLink to={`/v2/prototype/cases/${caseId}/actions`}>處理事項</NavLink>
+        <NavLink to={`/v2/prototype/cases/${caseId}/circle`}>照顧圈</NavLink>
+        <NavLink to={`/v2/prototype/cases/${caseId}/records`}>專業紀錄</NavLink>
       </nav></>}
       <main id="v2-main" className="v2-main"><Outlet /></main>
     </div>
