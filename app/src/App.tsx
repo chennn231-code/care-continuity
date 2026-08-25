@@ -34,13 +34,21 @@ import { PrototypeInvitationVerificationPage } from './v2/pages/PrototypeInvitat
 import { PrototypeWorkspacePage } from './v2/pages/PrototypeWorkspacePage';
 import { PrototypeCaseAccessGuard } from './v2/components/PrototypeCaseAccessGuard';
 import { V2_GUARDED_CASE_ROUTE_SUFFIXES, type V2GuardedCaseRouteSuffix } from './v2/data/prototypeRoutes';
+import { PrototypeProfessionalRecordsPage } from './v2/pages/PrototypeProfessionalRecordsPage';
+import { PrototypeProfessionalRecordNewPage } from './v2/pages/PrototypeProfessionalRecordNewPage';
+import { PrototypeProfessionalRecordDetailPage } from './v2/pages/PrototypeProfessionalRecordDetailPage';
+import { PrototypeProfessionalRecordCorrectionPage } from './v2/pages/PrototypeProfessionalRecordCorrectionPage';
 
 const v2CaseRouteElements: Record<V2GuardedCaseRouteSuffix, ReactNode> = {
   '': <PrototypeCaseHomePage />,
   timeline: <PrototypeTimelinePage />,
   'updates/new': <PrototypeNewUpdatePage />,
   actions: <PrototypeActionsPage />,
-  circle: <PrototypeCirclePage />
+  circle: <PrototypeCirclePage />,
+  records: <PrototypeProfessionalRecordsPage />,
+  'records/new': <PrototypeProfessionalRecordNewPage />,
+  'records/:recordId': <PrototypeProfessionalRecordDetailPage />,
+  'records/:recordId/correct': <PrototypeProfessionalRecordCorrectionPage />
 };
 
 function AuthEntryRoute() {

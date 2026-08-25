@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, useState, type PropsWithChildren } from 'react';
 import { addCareUpdate, beginIdentityRegistration, completeIdentityRegistration, createInitialPrototypeState, resolveQuestion, selectIdentityType, selectProfessionalType, transitionAction } from './prototypeState';
 import { acceptPrototypeInvitation, createPrototypeInvitation, declinePrototypeInvitation, removeWorkspaceCaseAccess, resendPrototypeInvitation, revokePrototypeInvitation, setProfessionalVerification, simulateInvitationLogin, togglePrivateTag } from './invitationWorkspaceState';
-import type { ActionStatus, DemoRole, IdentityRegistrationMode, NewUpdateInput, PrimaryIdentityType, ProfessionalType, PrototypeInvitationInput, PrototypeState } from '../types/prototype';
+import { publishProfessionalRecord } from './professionalRecordState';
+import type { ActionStatus, DemoRole, IdentityRegistrationMode, NewUpdateInput, PrimaryIdentityType, ProfessionalRecordDraft, ProfessionalType, PrototypeInvitationInput, PrototypeState } from '../types/prototype';
 
 interface PrototypeContextValue {
   state: PrototypeState;
@@ -22,6 +23,7 @@ interface PrototypeContextValue {
   setInvitationVerification: (invitationId: string, status: 'VERIFIED' | 'REJECTED') => void;
   toggleCaseTag: (caseId: string, tagId: string) => void;
   removeCaseAccess: (caseId: string, reason: 'EXPIRED' | 'REVOKED') => void;
+  publishRecord: (draft: ProfessionalRecordDraft) => string | null;
   clearSuccess: () => void;
 }
 
@@ -48,6 +50,13 @@ export function PrototypeProvider({ children }: PropsWithChildren) {
     setInvitationVerification: (invitationId, status) => setState((current) => setProfessionalVerification(current, invitationId, status)),
     toggleCaseTag: (caseId, tagId) => setState((current) => togglePrivateTag(current, caseId, tagId)),
     removeCaseAccess: (caseId, reason) => setState((current) => removeWorkspaceCaseAccess(current, caseId, reason)),
+    publishRecord: (draft) => {
+      const publishedId = draft.recordId ?? `professional-record-demo-${state.professionalRecordVersions.length + 1}`;
+      const next = publishProfessionalRecord(state, draft);
+      if (next === state) return null;
+      setState(next);
+      return publishedId;
+    },
     clearSuccess: () => setState((current) => ({ ...current, successMessage: null }))
   }), [state]);
   return <PrototypeContext.Provider value={value}>{children}</PrototypeContext.Provider>;

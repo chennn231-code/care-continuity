@@ -28,6 +28,7 @@ export type InvitationStoredStatus = 'INVITED' | 'ACCEPTED' | 'DECLINED' | 'REVO
 export type InvitationEffectiveStatus = InvitationStoredStatus | 'EXPIRED';
 export type InvitationRecipientType = 'FAMILY' | 'PROFESSIONAL';
 export type WorkspaceCaseAccessStatus = 'ACTIVE' | 'EXPIRING' | 'WAITING_START' | 'EXPIRED' | 'REVOKED' | 'SUSPENDED';
+export type ProfessionalRecordSharingScope = 'AUTHOR_ONLY' | 'SHARED_CARE' | 'DIRECT_PARTICIPANTS';
 
 export interface TimelineEntry {
   id: string;
@@ -192,6 +193,61 @@ export interface PrototypeResponsibilityHistory {
   summary: string;
 }
 
+export interface ProfessionalRecordContent {
+  serviceDate: string;
+  startedAt: string;
+  endedAt: string;
+  serviceLocation: string;
+  subjectReport: string;
+  objectiveObservation: string;
+  assessmentSummary: string;
+  serviceProvided: string;
+  followUpPlan: string;
+  followUpDueDate: string;
+  professionalOnlyNotes: string;
+}
+
+export interface ProfessionalRecordDraft {
+  caseId: string;
+  actingRole: 'NURSE';
+  purpose: string;
+  sharingScope: ProfessionalRecordSharingScope;
+  content: ProfessionalRecordContent;
+  recordId?: string;
+  correctionOfVersionId?: string;
+  correctionReason?: string;
+}
+
+export interface ProfessionalRecordVersion {
+  id: string;
+  recordId: string;
+  caseId: string;
+  versionNumber: number;
+  authorName: string;
+  actingRole: 'NURSE';
+  purpose: string;
+  sharingScope: ProfessionalRecordSharingScope;
+  occurredAt: string;
+  recordedAt: string;
+  publishedAt: string;
+  supersedesVersionId?: string;
+  correctionReason?: string;
+  content: ProfessionalRecordContent;
+}
+
+export interface FamilyProfessionalRecordProjection {
+  recordId: string;
+  versionNumber: number;
+  authorLabel: string;
+  occurredAt: string;
+  purpose: string;
+  objectiveObservation: string;
+  serviceProvided: string;
+  followUpPlan: string;
+  followUpDueDate: string;
+  wasCorrected: boolean;
+}
+
 export interface PrototypeGrantPath {
   identity: PrototypeIdentity;
   membership: MockCaseMembership;
@@ -213,6 +269,7 @@ export interface PrototypeState {
   privateTags: PrototypePrivateTag[];
   privateTagAssignments: PrototypeCaseTagAssignment[];
   responsibilityHistory: PrototypeResponsibilityHistory[];
+  professionalRecordVersions: ProfessionalRecordVersion[];
   invitationSessionIds: string[];
   lastInvitationId: string | null;
   successMessage: string | null;

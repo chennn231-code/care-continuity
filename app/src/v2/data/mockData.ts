@@ -54,6 +54,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   identityDraft: { mode: 'PRIMARY', identityType: null, professionalType: null },
   memberships: [
     { id: 'demo-membership-family', identityId: 'demo-identity-family', caseId: 'demo-case', relationship: 'FAMILY_MEMBER', status: 'ACTIVE', validUntil: null },
+    { id: 'demo-membership-nurse', identityId: 'demo-identity-nurse', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-11-30' },
     { id: 'demo-membership-river', identityId: 'demo-identity-nurse', caseId: 'river-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-09-05' },
     { id: 'demo-membership-future', identityId: 'demo-identity-nurse', caseId: 'future-case', relationship: 'PROFESSIONAL_SERVICE', status: 'WAITING_START', validUntil: '2026-11-30' }
   ],
@@ -61,6 +62,10 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     {
       id: 'demo-grant-family', membershipId: 'demo-membership-family', actingRole: 'FAMILY', purpose: '家庭共同照顧',
       sharingScopes: ['SHARED_CARE', 'FAMILY_ONLY', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'RESOLVE_QUESTION', 'MANAGE_MEMBERS'], validUntil: null
+    },
+    {
+      id: 'demo-grant-nurse', membershipId: 'demo-membership-nurse', actingRole: 'NURSE', purpose: '日照護理服務紀錄與交接', startsAt: '2026-08-01',
+      sharingScopes: ['AUTHOR_ONLY', 'SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_PROFESSIONAL_CASE', 'ADD_UPDATE', 'CREATE_PROFESSIONAL_RECORD'], validUntil: '2026-11-30'
     },
     {
       id: 'demo-grant-river', membershipId: 'demo-membership-river', actingRole: 'NURSE', purpose: '居家護理服務與協作管理', startsAt: '2026-08-15',
@@ -113,6 +118,23 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     {
       id: 'responsibility-history-river', caseId: 'river-case', actionId: 'action-river-followup', formerAssigneeName: '前任護理師',
       endedAt: '2026-08-24T17:00:00+08:00', reason: 'SERVICE_EXPIRED', summary: '原負責人因服務到期而結束責任週期'
+    }
+  ],
+  professionalRecordVersions: [
+    {
+      id: 'professional-record-demo-existing-v1', recordId: 'professional-record-demo-existing', caseId: 'demo-case', versionNumber: 1,
+      authorName: '陳護理師', actingRole: 'NURSE', purpose: '日照護理服務紀錄與交接', sharingScope: 'SHARED_CARE',
+      occurredAt: '2026-08-24T14:00:00+08:00', recordedAt: '2026-08-24T14:35:00+08:00', publishedAt: '2026-08-24T14:35:00+08:00',
+      content: {
+        serviceDate: '2026-08-24', startedAt: '14:00', endedAt: '14:30', serviceLocation: '安心日照（虛構）',
+        subjectReport: '長輩表示手臂沒有疼痛，願意配合查看。',
+        objectiveObservation: '左前臂可見約硬幣大小的局部泛紅；觀察時未見破皮或滲液。',
+        assessmentSummary: '依本次可見狀況記錄，持續觀察外觀變化；本段不作醫療診斷。',
+        serviceProvided: '協助清潔周邊皮膚並提醒避免抓揉，已向家屬說明本次客觀觀察。',
+        followUpPlan: '下次服務時再次觀察外觀，如有明顯變化由家屬依需要尋求醫療專業協助。',
+        followUpDueDate: '2026-08-26',
+        professionalOnlyNotes: '虛構專業工作備註：後續紀錄時維持相同觀察位置描述。'
+      }
     }
   ],
   timeline: [

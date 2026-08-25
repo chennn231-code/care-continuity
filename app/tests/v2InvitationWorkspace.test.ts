@@ -107,7 +107,17 @@ describe('v2 invitation and multi-case workspace prototype', () => {
 
   it('keeps every declared case content route behind the same failed access decision', () => {
     const state = removeWorkspaceCaseAccess(createInitialPrototypeState(), 'demo-case', 'EXPIRED');
-    expect(V2_GUARDED_CASE_ROUTE_SUFFIXES).toEqual(['', 'timeline', 'updates/new', 'actions', 'circle']);
+    expect(V2_GUARDED_CASE_ROUTE_SUFFIXES).toEqual([
+      '',
+      'timeline',
+      'updates/new',
+      'actions',
+      'circle',
+      'records',
+      'records/new',
+      'records/:recordId',
+      'records/:recordId/correct'
+    ]);
     for (const path of V2_GUARDED_CASE_ROUTE_SUFFIXES) {
       expect(canCurrentActorAccessCase(state, 'demo-case'), path).toBe(false);
     }
