@@ -1,197 +1,216 @@
-# 備份心
+# WinWin v2 — 跨角色照顧協作 Prototype
 
-> **看得完整，才接得住**
+> 讓不同時間、不同照顧者留下的變化，可以被下一位理解、接受並追蹤到完成
 
-**家庭長期照顧中斷風險預警與照顧韌性支持系統**
+WinWin v2 由「備份心」v1 的照顧中斷與備援研究基線演進而來。目前產品聚焦於以長者個案為中心，讓家庭與不同專業照顧人員在受控權限下回報變化、提出問題、釐清責任並完成交接，同時只開放完成當次照顧協作所需的最低必要資訊。
 
-「備份心」關注的不是一般健康紀錄，也不是照顧者心理陪伴，而是一個很具體的問題：
+本 Repository 同時保存 v1 歷史基線與 v2 Proposed Prototype。v1 並非錯誤方向，也未被刪除；其 Coverage、Scenario、Backup 與 Offline Handoff 成果仍是研究及 regression baseline。
 
-> **如果明天主要照顧者突然不能照顧，現在的照顧安排還能不能繼續？**
+## 產品現況
 
-本專題希望在照顧中斷真正發生前，協助家庭辨識可能出現的「照顧斷點」，並逐步建立可執行的替代照顧與服務備援方案。
+| 範圍 | 狀態 | 說明 |
+|---|---|---|
+| v1 Current / Historical Baseline | 保留於 `main` | 聚焦照顧中斷、備援安排、Coverage、Scenario 與 Task Handoff |
+| v2 Proposed Prototype | 開發中 | 聚焦跨角色照顧協作、來源、問題、責任狀態與服務期間權限 |
+| 目前工作分支 | `codex/v2-frontend-prototype` | 包含 v2 文件、Migration 007 release candidate 與純前端 Prototype |
+| v2 Production | 尚未上線 | Prototype 與本機資料庫驗證不代表遠端或 Production 已具備 v2 能力 |
+| `main` | 尚未被 v2 取代 | v2 尚未 merge 至 `main`，也未全面更名 Repository 或 package |
 
-## 品牌定位
+目前狀態應區分為：
 
-- **App 名稱：** 備份心
-- **品牌標語：** 為照顧，多準備一個如果
-- **核心意象：** 備份、承接、安心、穩定、被托住
-- **語氣方向：** 專業、溫和、清楚，不製造恐慌，也不過度醫療化
+- **已完成：** v2 治理、Domain／Logical Model、Migration 007 本機驗證，以及第一條純前端身分與照顧協作 Prototype。
+- **設計已審查、尚未實作：** Invitation & Multi-case Workspace 前端 slice。
+- **尚未部署：** Migration 007 remote apply、正式專業身分驗證、正式邀請後端補充契約及 v2 Production routes。
 
-## 視覺設計方向
+## WinWin v2 核心問題
 
-### 主配色
+家庭與專業照顧人員可能在不同時間、不同服務場域留下資訊，造成：
 
-採用 **霧藍 + 暖奶白** 作為主要品牌色彩方向。
+- 照顧變化散落在不同人、訊息或紀錄中。
+- 後續人員重複詢問，或不知道前一次服務發現了什麼。
+- 回報、問題、負責人、接受、處理與完成被混成同一種「已確認」。
+- 專業服務結束後，原成員仍可能保有不應持續的個案存取。
+- 為了交接而過度分享完整紀錄，超出當次照顧所需範圍。
 
-- **霧藍：** 傳達穩定、安全感與「備份」的可靠性，避免過冷的科技感。
-- **暖奶白：** 作為主要背景與留白色，降低純白搭配醫療藍所產生的醫院感。
+WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得懂、有人接受、可以追蹤到完成的交接流程；權限模型是必要的治理機制，但不能取代主要使用流程，也不應增加第一線人員大量重複登打。
 
-目前仍屬設計系統建立階段；正式 HEX／RGB 色碼應在 UI 原型確認後統一制定，避免在尚未驗證前任意固定色值。
+## v2 核心原則
 
-### UI / 品牌風格
+- 以長者個案為中心，不把個案永久綁定單一帳號或機構。
+- 帳號身分不等於身分已驗證，也不等於個案權限。
+- Invitation 是加入提議，不等於 Case Membership。
+- Membership 表示個案關係，不等於可以查看所有內容。
+- 每次操作必須由一條完整 grant path 單獨通過；不同角色的能力、目的、範圍與期限不得拼接。
+- 協作管理者可以管理治理事項，但不因此取得所有敏感內容。
+- 個案管理員／A 單位個管員是專業職稱，不等於 WinWin 協作管理者。
+- 回報不等於確認。
+- 指派不等於接受；接受不等於開始處理。
+- 工作完成不等於相關問題已解決。
+- 已發布內容採追加式更正，保留原作者、來源與版本歷程。
+- 個案生命週期不依附單一帳號；刪除帳號不得直接刪除整個個案 Graph。
+- 專業存取必須受服務目的、資料範圍與有效期間限制。
+- 摘要、列印或其他衍生輸出不得突破原始資料權限。
 
-- 圓潤但不幼稚的線條
-- 適度使用柔和陰影與毛玻璃質感
-- 整體視覺呈現「穩穩托住」的感覺
-- 圖標可探索「雙手交握」、「兩盞燈」等備援與承接意象，偏抽象、避免過度具象
-- 標題採明體 Serif、內文與操作資訊採黑體 Sans-serif，兼顧資訊層級與可讀性
+## 已完成的 v2 Frontend Prototype
 
-### 應避免
+目前 Repository 已實作以下純前端、可點擊的 v2 展示：
 
-- 大面積大紅色：容易形成過度急迫、警報式感受
-- 純白 + 鮮明醫療藍：容易產生醫院／醫療系統印象
-- 過度卡通化插畫：可能降低長照服務與風險資訊的可信度
-- 只為科技感而加入過多動畫、漸層或裝飾
+- WinWin v2 品牌、Prototype Shell 與虛構資料提示。
+- 主要身分註冊流程：長者本人、家屬／家庭照顧者、專業照顧人員。
+- 專業職類選擇與未驗證提示。
+- `DECLARED`、`PENDING_VERIFICATION`、`VERIFIED`、`REJECTED`、`EXPIRED` 身分驗證狀態展示。
+- 「我的身分」、主要身分與新增第二身分概念。
+- 虛構個案列表與個案首頁。
+- 上次查看後的新變化呈現。
+- 照顧變化時間軸與來源資訊。
+- Observation、Arrangement 與 Question 的畫面語意。
+- Action 的等待接受、已接受、處理中與已完成流程。
+- Question 必須獨立標示解決，不會因 Action 完成而自動解決。
+- 明確分離的 Prototype 權限預覽工具。
+- in-memory state；重新整理後重置。
 
-## 專題核心問題
+### Prototype 限制
 
-當家庭主要照顧者因生病、住院、工作或其他突發事件暫時無法繼續照顧時，家庭現有的照顧安排是否仍能運作？
+- 所有 v2 展示資料均為虛構資料，不使用真實照顧資料。
+- 不收集真實證照、身分證、機構文件或法律授權文件。
+- v2 Frontend Prototype 不連線 Supabase。
+- 不使用 `localStorage`、IndexedDB 或正式後端持久化。
+- 畫面中的角色、驗證、Membership 與 Grant 都是流程展示，不代表正式權限 enforcement。
+- 使用者聲明授權不代表已完成身分代理、意思能力、電子簽章或法律效力驗證。
+- Prototype 不代表已符合所有個資、醫療或長照法規。
 
-系統要回答的不是「照顧者壓力有多高」，而是：
+## Invitation & Multi-case Workspace 狀態
 
-- 是否只有一位主要照顧者？
-- 是否存在真正能接手的替代照顧者？
-- 替代者是否知道並具備必要照顧能力？
-- 一天中是否存在無人承接的照顧空窗？
-- 是否已有正式長照服務，或知道如何快速銜接？
-- 若家庭沒有其他可接手親友，是否能建立以正式服務與在地資源為主的備援路徑？
+**狀態：Design reviewed／Frontend slice not yet implemented。**
 
-## 目前核心流程
+目前固定的方向包括：
 
-1. 辨識家庭照顧結構
-2. 找出可能的照顧中斷風險
-3. 模擬主要照顧者離開的情境
-4. 找出具體照顧斷點
-5. 建立替代照顧方案
-6. 形成照顧備援計畫
-7. 必要時銜接正式長照服務
+- 協作管理者或具有完整邀請 grant path 的成員發出邀請。
+- 專屬連結、QR Code 與一次性代碼共用同一個高熵 Invitation credential。
+- 開啟連結或掃描 QR Code 不授予權限；受邀者仍需登入自己的帳號並完成必要核對。
+- `PENDING_VERIFICATION` 是身分驗證狀態，不是 Invitation 狀態。
+- 接受邀請不一定立即取得內容權限；服務開始日在未來時只能等待服務開始。
+- 邀請是否逾期依 database clock 衍生判斷，不依賴背景排程改寫狀態。
+- 私人資料夾與標籤只負責個人整理，不是協作群組，也不產生或延長權限。
+- 失去個案權限後，不顯示空白卡、舊名稱、隱藏個案數量或其他可推測資訊。
 
-## 核心情境：「如果明天我不能照顧呢？」
+邀請拒絕、安全預覽、重送、正式專業驗證與私人分類目前仍只允許作為未來 in-memory Prototype 模擬，不得宣稱已由 Migration 007、Supabase 或 Production 支援。
 
-預計模擬主要照顧者離開：
+## Migration 007 Access Foundation
 
-- 24 小時
-- 72 小時
-- 7 天
-- 長期無法繼續照顧
+正式 migration candidate 已存在：
 
-系統逐項檢查必要照顧工作是否仍有人或服務可以承接，例如：
+[`supabase/migrations/20260824220000_v2_access_foundation.sql`](supabase/migrations/20260824220000_v2_access_foundation.sql)
 
-- 早餐／飲食
-- 用藥協助
-- 如廁
-- 移位
-- 洗澡
-- 外出
-- 就醫
-- 夜間照顧
-- 緊急事件
+Repository 可確認的狀態：
 
-系統重點不是只輸出模糊的高／中／低風險，而是指出：
+- Migration 007 Access Foundation 已建立正式 migration 檔案。
+- 已從 Migration 001 開始執行 fresh isolated local verification。
+- Local verification：71/71 PASS，0 FAIL／0 SKIP／0 BLOCKED。
+- Repository 已包含可重跑的 migration verification harness。
+- Migration 007 尚未 apply 至 Remote Supabase。
+- Production Remote Apply Gate 仍為 `BLOCKED`。
+- 不得宣稱 Production 已存在 v2 tables、RLS policies 或 RPC。
 
-- **哪一個時間**
-- **哪一項照顧工作**
-- **目前由誰負責**
-- **主要照顧者不在時由誰或哪項服務承接**
-- **缺少哪一種人力、能力或服務**
+本機驗證不等於遠端驗證。Remote migration history、Production Auth settings、備份／還原能力與 apply 後 smoke test 仍須在另行授權的 Gate 中確認。
 
-## 家庭沒有第二照顧者時
+## v1 的保留方式
 
-「沒有其他家人可以接手」本身不是系統無法處理的例外，而是重要的照顧結構資訊。
+- `main` 繼續保留「備份心」v1 基線。
+- v1 Coverage Engine、Scenario、Backup、Task Handoff、首頁 freshness reminder 與 Offline Handoff 保留為歷史研究及 regression baseline。
+- v2 採 additive evolution，不改寫 Migration 001–006。
+- v1 與 v2 可以在研究與 Prototype 階段並存。
+- Coverage／Scenario 是否回接 v2 尚未決定，不能視為 v2 第一階段已完成能力。
+- 歷史文件中的「備份心」名稱保留其時間與研究脈絡，不進行無差別全文替換。
 
-當家庭只有主要照顧者與被照顧者、其他親友在國外、無法實際接手或已不存在時，系統不應強迫使用者填入一位不存在的「備案照顧者」。應改為辨識：
+## 技術棧
 
-1. 哪些必要照顧工作沒有自然人備援
-2. 哪些工作可以由正式長照服務、社區資源或其他合法服務承接
-3. 哪些工作仍存在無法立即填補的照顧斷點
-4. 使用者下一步需要確認或尋求哪些專業協助
+版本依 [`app/package.json`](app/package.json) 的目前宣告：
 
-這類家庭可能正是本專題最需要支援的高脆弱照顧結構之一，但專題階段不自行宣稱其為正式「高風險」分類，除非後續有研究或專家依據。
+| 技術 | 版本／用途 |
+|---|---|
+| React | `^19.1.1` |
+| React DOM | `^19.1.1` |
+| React Router DOM | `^7.9.1` |
+| TypeScript | `^5.6.3` |
+| Vite | `^7.1.7` |
+| Vitest | `^2.1.8` |
+| Supabase JavaScript SDK | `^2.57.4` |
+| PostgreSQL / Supabase | v1 與 v2 migration、RLS、RPC 基礎 |
+| Vercel | 現有 v1 SPA deployment baseline；v2 尚未宣稱已部署 |
 
-## 資料共享與知情原則
+Repository 沒有導入 UI component library；v2 Prototype 沿用 React、TypeScript、現有 CSS 與 responsive patterns。
 
-照顧者在 App 中填寫某位親友為「可能的替代照顧者」，**不代表對方已同意接手，也不代表系統可以直接把資料分享給對方**。
+## 本機操作
 
-原型設計應區分：
+以下指令從 Repository 根目錄執行，不需要真實照顧資料：
 
-- **照顧者自行盤點：** 僅代表使用者認為某人「可能可以協助」
-- **已聯繫：** 使用者已實際詢問對方
-- **已確認：** 對方明確同意特定照顧工作或時段
+```bash
+cd app
+npm install
+npm run dev
+```
 
-未經確認的人力不能在情境模擬中直接視為可靠備援。
+預設 Vite 顯示的本機網址啟動後，開啟：
 
-資料分享則採「明確邀請／授權」原則；除非使用者主動分享，否則照顧資料不應自動提供給其他親友或第三方。
+```text
+/v2/prototype
+```
 
-## 填寫與 UX 原則
+驗證指令：
 
-- 重要問題原則上可採「一頁一題」，降低認知負擔並把問題說清楚。
-- 每個問題頁面可提供右上角「？」說明入口，解釋為什麼詢問、名詞代表什麼，以及如何判斷。
-- 問句應使用專業但容易理解的語言，避免讓使用者因術語而誤填。
-- 不為了完整而要求一次輸入大量資料；優先蒐集能直接影響照顧中斷判斷的必要資訊。
+```bash
+cd app
+npm test
+npm run typecheck
+npm run build
+```
 
-## 重要設計原則
-
-- 不以心理陪伴、情緒聊天為核心。
-- 不以跌倒偵測、GPS 監控、吃藥提醒或一般健康紀錄為主要功能。
-- 不自行創造沒有研究依據的風險分數、權重或預警門檻。
-- 若使用原型規則，只能標示為設計驗證用規則，不宣稱為正式風險評估工具。
-- 重要判斷不只依靠生成式 AI；可由規則完成的功能優先使用可解釋的規則系統。
-- 採資料最小化原則，只蒐集與照顧中斷判斷有關的必要資料。
-- 涉及家庭關係、聯絡方式、健康與醫療資訊時，需設計角色權限與明確授權。
-- 照顧需求、人力與服務會變動，因此備援資料必須能持續確認有效性，而不是只建立一次。
-- 專題階段優先完成可驗證的 MVP，不追求功能數量。
-
-## 與長照 3.0 的設計關聯
-
-本專題主要從以下方向對應長照政策精神，而非單純將政策名稱作為標籤：
-
-- 強化家庭支持
-- 提升照顧服務連續性
-- 整合正式長照與在地資源
-- 以智慧工具協助家庭提早盤點與建立備援
-- 支持在地安老情境下的照顧韌性
-
-實際政策內容與用語仍需依最新官方資料持續查證。
-
-## 專案狀態
-
-截至 2026-08-23，專案已進入 **可公開測試的 MVP vertical slice／Offline Delivery E2E 階段**。
-
-目前已完成並驗證：
-
-- Supabase canonical migration workflow、Authentication lifecycle 與 Migration 001–006
-- 10 張啟用 RLS 的核心表、38 個 policies，以及 `task_handoffs` owner-chain 權限
-- 被照顧者、照顧任務、照顧來源與目前分工的 React authenticated CRUD 流程
-- Exact-time Coverage Engine 與 24 小時／72 小時／7 天主要照顧者中斷模擬
-- 具體日期、時間與工作層級的 Care Gap 顯示
-- `POSSIBLE`／`CONFIRMED`／`CONFIRMED_WITH_LIMITS` 備援安排 CRUD 與 Scenario Engine 串接
-- Category-specific Task Handoff、最後更新／主要照顧者確認與首頁重新確認提醒
-- Scenario 中獨立呈現 Coverage 與 Handoff Readiness
-- Offline Delivery 多 Task 交接包、print-friendly HTML 與瀏覽器列印／另存 PDF
-- Vercel production：<https://care-continuity-eta.vercel.app>
-
-Scenario 結果目前維持即時計算，不使用風險分數、AI 推薦或 evaluation persistence。Offline Delivery 的本機實作與 production deployment 已完成，但尚未用真實 fixture graph 完成 Production E2E，也尚未人工確認 OS Print Preview，因此不得宣稱 Offline Delivery Gate 已完整通過。
+目前 v2 Frontend Prototype 使用記憶體狀態；重新整理頁面會重置展示資料。
 
 ## Repository 結構
 
 ```text
 care-continuity/
 ├── README.md
+├── app/                         # React + Vite；v1 App 與隔離的 v2 Prototype
 ├── docs/
-│   ├── research/        # 文獻、政策、現況與問題驗證
-│   ├── requirements/    # 功能需求與 MVP
-│   ├── ux/              # Persona、Journey、IA、User Flow、視覺規範
-│   └── architecture/    # 資料、權限、後台與技術架構
-├── prototype/           # Prototype 與介面原型相關紀錄
-├── supabase/            # Canonical schema、Migration 002–006 與 Supabase config
-└── app/                 # React + Vite MVP 與 Coverage Engine
+│   ├── architecture/           # Domain、Logical Model、Migration 與流程設計
+│   ├── requirements/           # 產品治理與權限需求
+│   ├── research/               # v1／v2 市場與證據研究
+│   └── verification/           # Migration 007 本機與 release verification
+├── scripts/verification/       # 可重跑的本機 migration verification harness
+└── supabase/
+    ├── migrations/             # Migration 001–007
+    └── tests/                  # Access Foundation verification SQL
 ```
 
-## 目前驗證基線
+## 重要文件導覽
 
-- Offline Delivery feature baseline：`4d143b57512e1e8715ae1d67806c77f7a1770b33`
-- App tests：167/167
-- TypeScript typecheck：通過
-- Production build：通過
-- Vercel production deployment：Ready，且目前 production 包含上述 Offline Delivery feature baseline
-- 下一步與已知限制：[2026-08-23 project status](docs/project-status/2026-08-23-offline-delivery-deployment.md)
+### 產品治理與研究
+
+- [v2 Product Governance & Permission Matrix](docs/requirements/V2_PRODUCT_GOVERNANCE_PERMISSION_MATRIX_DRAFT.md)
+- [v2 Competitor Evidence Review](docs/research/existing-solutions/v2-competitor-evidence-review-2026-08-24.md)
+
+### Domain、Logical Model 與流程設計
+
+- [v2 Domain Model Design Review](docs/architecture/V2_DOMAIN_MODEL_DESIGN_REVIEW_DRAFT.md)
+- [v2 Logical Data Model Design Review](docs/architecture/V2_LOGICAL_DATA_MODEL_DESIGN_REVIEW_DRAFT.md)
+- [Migration 007 Access Foundation Design Review](docs/architecture/V2_MIGRATION_007_ACCESS_FOUNDATION_DESIGN_REVIEW_DRAFT.md)
+- [Migration 007 Release Review](docs/architecture/V2_MIGRATION_007_RELEASE_REVIEW_DRAFT.md)
+- [Invitation & Multi-case Workspace Design Review](docs/architecture/V2_INVITATION_MULTI_CASE_WORKSPACE_DESIGN_REVIEW_DRAFT.md)
+
+### Migration 007 verification
+
+- [Local Dry-run Report](docs/verification/V2_MIGRATION_007_LOCAL_DRY_RUN_REPORT.md)
+- [Repository Harness Report](docs/verification/V2_MIGRATION_007_REPOSITORY_HARNESS_REPORT.md)
+- [Release Candidate Verification Report](docs/verification/V2_MIGRATION_007_RELEASE_CANDIDATE_VERIFICATION_REPORT.md)
+- [Remote Read-only Preflight Report](docs/verification/V2_MIGRATION_007_REMOTE_READ_ONLY_PREFLIGHT_REPORT.md)
+
+## 安全與專題聲明
+
+- WinWin v2 目前是學生 Prototype，不是正式醫療、護理、長照或法律系統。
+- 不提供醫療診斷、處方、風險保證或緊急服務。
+- 不宣稱市場首創、臺灣唯一或已降低真實照顧中斷事件。
+- Local verification、設計文件及可點擊畫面不能替代 Production security review。
+- 未經另行 Gate 與明確授權，不得將 v2 Prototype 狀態描述為遠端已部署能力。
