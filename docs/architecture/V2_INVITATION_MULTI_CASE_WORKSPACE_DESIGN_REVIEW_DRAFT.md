@@ -112,8 +112,17 @@ No partial Actor, Membership, Grant, or event may remain after failure.
 
 - Decline creates no Membership or Grant and immediately invalidates the token.
 - Revoke is available only to a complete, effective invitation-management grant path.
-- Expired invitations cannot be accepted even if no background process has rewritten their stored status.
+- Expiration is an effective state derived from database clock. Even when the stored row remains `INVITED`, the UI must display `EXPIRED` and disable acceptance after `expires_at`; no background scheduler is required to rewrite the row.
 - Resend revokes the former invitation and creates a new one; both histories remain traceable.
+
+### 5.4 Verification waiting does not add an Invitation state
+
+`PENDING_VERIFICATION` belongs only to Identity Verification. It must not be added to the Invitation state vocabulary.
+
+- A professional invitation remains `INVITED` while the recipient's professional identity is awaiting verification.
+- Verification success does not automatically accept the invitation.
+- After verification succeeds, the system must re-check token validity, invitation effective expiration, confirmed-Email binding, case status, service period, and current governance before acceptance.
+- If any invitation condition has ceased to be valid during the wait, acceptance must fail without creating Membership or Grant.
 
 ## 6. Professional verification and activation
 
@@ -133,6 +142,7 @@ receive professional invitation
 - `VERIFIED` does not automatically create Membership.
 - `REJECTED` and `EXPIRED` verification paths cannot be used for professional actions.
 - The Prototype must not collect real licenses, identity documents, organization documents, or personal data.
+- Waiting for professional verification is simulated in memory in the current Frontend Prototype; it is not enforced by Migration 007.
 
 Migration 007 stores unverified professional and organization statements but does not implement a formal Identity Verification model. A production claim that unverified professionals are technically prevented from professional access requires a later Domain and Logical Model Review.
 
@@ -141,6 +151,7 @@ Migration 007 stores unverified professional and organization statements but doe
 - Invitation acceptance creates Membership; Invitation alone never authorizes content.
 - Membership identifies the relationship to one case.
 - Role Grant identifies the role, purpose, scope ceiling, capabilities, and period.
+- Acceptance before a future `starts_at` may create Membership and Grant, but the relationship remains accepted and waiting for service start. Before `starts_at`, only the minimum relationship metadata may be shown; case content remains inaccessible.
 - Every operation uses one complete grant path; abilities from different grants cannot be combined.
 - Effective access uses database clock and does not depend on a background scheduler.
 - An expired, revoked, or suspended Membership or Grant immediately stops authorization.
@@ -223,7 +234,7 @@ They must not store or duplicate:
 - cross-case content;
 - permissions transferable to another account.
 
-After access is lost, a private reference cannot reveal the prior case name, summary, member list, or changes during the inaccessible period. Persisting private organization requires a separate Domain and Logical Model Review and must not be added to Migration 007.
+After access is lost, the first-version behavior is to immediately hide or remove the case-to-folder/tag association. It must not leave an empty card, prior case name, summary, member list, hidden-case count, or any indication that an inaccessible case exists. A private reference cannot reveal changes during the inaccessible period. Persisting private organization requires a separate Domain and Logical Model Review and must not be added to Migration 007.
 
 ## 11. Walkthroughs
 
@@ -280,6 +291,16 @@ Migration 007 supports invitation and time-bound access but not formal professio
 
 Migration 007 must remain unchanged for this Prototype review. Missing production capabilities belong to later reviews and additive migrations.
 
+The following capabilities are in-memory Prototype simulations only until their backend contracts are separately reviewed and implemented:
+
+- invitation decline;
+- minimum safe invitation preview;
+- invitation resend;
+- professional identity verification and waiting-state enforcement;
+- private folders, tags, sorting, and access-loss cleanup.
+
+Neither the UI nor verification reports may describe these simulated capabilities as supported by Migration 007, Supabase, or Production.
+
 ## 13. Recommended next Frontend Prototype slice
 
 The next clickable slice may use only in-memory, fictional data to demonstrate:
@@ -295,17 +316,19 @@ The next clickable slice may use only in-memory, fictional data to demonstrate:
 - immediate removal from the visible set after simulated access loss;
 - explicit Prototype and fictional-data notices.
 
-It must not connect to Supabase or claim that Migration 007 implements formal identity verification, private folder persistence, or Action reassignment.
+It must not connect to Supabase or claim that Migration 007 implements invitation decline, safe preview, resend, formal identity verification, private folder persistence, access-loss cleanup, or Action reassignment.
 
 ## 14. Gate conclusion
 
 | Gate | Result | Reason |
 |---|---|---|
-| Invitation Flow Design | `PARTIAL` | Core flow is defined; production decline, preview, resend, and expiry contracts remain missing |
-| Service Relationship Lifecycle | `PARTIAL` | Period, revoke, and rejoin rules are defined; formal verification and Action reassignment remain outside Migration 007 |
+| Product Flow Design | `PASS WITH DEFERRED BACKEND CONTRACTS` | Product states and boundaries are fixed; listed backend contracts remain explicitly deferred |
+| Invitation Flow Design | `PASS WITH DEFERRED BACKEND CONTRACTS` | Verification waiting stays outside Invitation state; future-start and derived-expiry behavior are fixed; decline, preview, and resend remain Prototype simulations |
+| Service Relationship Lifecycle | `PASS WITH DEFERRED BACKEND CONTRACTS` | Acceptance, future start, expiration, revoke, and rejoin behavior are fixed; formal verification and Action reassignment remain outside Migration 007 |
 | Multi-case Workspace | `PASS` for Prototype presentation | An in-memory, authorization-filtered presentation slice can proceed |
 | Private Organization Model | `PASS` for product boundary; `PARTIAL` for persistence | It is strictly personal organization; persistence needs a later model review |
-| Next Frontend Prototype slice | `ALLOWED` with constraints | In-memory fictional data only; no formal enforcement claims |
+| Next Frontend Prototype slice | `APPROVED` with constraints | In-memory fictional data that resets on refresh; no formal enforcement claims |
+| Formal persistence | `BLOCKED` | Missing backend contracts and model reviews must be completed first |
 | New Domain / Logical Model Review | `REQUIRED` before persistence | Required for professional verification, private organization, and Action responsibility |
 | Migration 007 | `UNCHANGED` | Do not expand the validated Access Foundation migration for Prototype UI |
 | Remote Supabase | `NOT TOUCHED` | This review provides no remote-apply authorization |
