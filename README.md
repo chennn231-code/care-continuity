@@ -18,8 +18,8 @@ WinWin v2 由「備份心」v1 的照顧中斷與備援研究基線演進而來�
 
 目前狀態應區分為：
 
-- **已完成：** v2 治理、Domain／Logical Model、Migration 007 本機驗證，以及第一條純前端身分與照顧協作 Prototype。
-- **設計已審查、尚未實作：** Invitation & Multi-case Workspace 前端 slice。
+- **已完成：** v2 治理、Domain／Logical Model、Migration 007 本機驗證，以及純前端身分、照顧協作、Invitation 與 Multi-case Workspace Prototype。
+- **已完成前端展示、尚未接後端：** Invitation & Multi-case Workspace 已完成 in-memory clickable slice 與 Prototype 範圍的 access guard。
 - **尚未部署：** Migration 007 remote apply、正式專業身分驗證、正式邀請後端補充契約及 v2 Production routes。
 
 ## WinWin v2 核心問題
@@ -67,6 +67,12 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 - Action 的等待接受、已接受、處理中與已完成流程。
 - Question 必須獨立標示解決，不會因 Action 完成而自動解決。
 - 明確分離的 Prototype 權限預覽工具。
+- 協作管理者建立虛構邀請，以及連結、QR Code 與一次性代碼的共同 credential 展示。
+- 未登入邀請門檻、最低必要預覽、接受、拒絕、撤回、逾期與重送流程。
+- 專業身分等待驗證，以及服務開始日前不顯示個案內容。
+- 「我的個案」多個案工作區、安全搜尋與只有本人可見的私人標籤。
+- 到期或撤銷後從可見集合與私人標籤移除，未完成事項標示為需要重新指派。
+- 集中式 access selector 與共用個案 route guard；此 guard 僅供 Prototype 流程展示。
 - in-memory state；重新整理後重置。
 
 ### Prototype 限制
@@ -81,9 +87,9 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 
 ## Invitation & Multi-case Workspace 狀態
 
-**狀態：Design reviewed／Frontend slice not yet implemented。**
+**狀態：Design reviewed／in-memory Frontend Prototype implemented。**
 
-目前固定的方向包括：
+目前已在純前端 Prototype 中展示：
 
 - 協作管理者或具有完整邀請 grant path 的成員發出邀請。
 - 專屬連結、QR Code 與一次性代碼共用同一個高熵 Invitation credential。
@@ -94,7 +100,7 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 - 私人資料夾與標籤只負責個人整理，不是協作群組，也不產生或延長權限。
 - 失去個案權限後，不顯示空白卡、舊名稱、隱藏個案數量或其他可推測資訊。
 
-邀請拒絕、安全預覽、重送、正式專業驗證與私人分類目前仍只允許作為未來 in-memory Prototype 模擬，不得宣稱已由 Migration 007、Supabase 或 Production 支援。
+邀請拒絕、安全預覽、重送、專業驗證等待、私人分類與 access guard 目前均為 in-memory Prototype 模擬。前端 guard 不是正式安全邊界；正式撤銷、失權與資料隔離仍須由 Supabase RLS 與後端授權共同強制執行，不得宣稱已由 Migration 007、Remote Supabase 或 Production 支援。
 
 ## Migration 007 Access Foundation
 
