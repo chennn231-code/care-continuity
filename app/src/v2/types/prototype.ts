@@ -38,6 +38,7 @@ export interface TimelineEntry {
   occurredAt: string;
   recordedAt: string;
   authorRole: DemoRole;
+  authorIdentityId?: string;
   source: string;
   sharingScope: SharingScope;
   participantRoles?: DemoRole[];
@@ -209,6 +210,22 @@ export interface PrototypeActionStatusHistory {
   changedAt: string;
 }
 
+export type CaseActivitySourceType = 'TIMELINE_ENTRY' | 'PROFESSIONAL_RECORD' | 'ACTION';
+
+export interface CaseActivityItem {
+  id: string;
+  caseId: string;
+  sourceType: CaseActivitySourceType;
+  sourceId: string;
+  actorRole: DemoRole;
+  actorLabel: string;
+  actorIdentityId?: string;
+  timestamp: string;
+  summary: string;
+  sharingScope: SharingScope;
+  participantRoles?: DemoRole[];
+}
+
 export interface ProfessionalRecordContent {
   serviceDate: string;
   startedAt: string;
@@ -240,6 +257,7 @@ export interface ProfessionalRecordVersion {
   caseId: string;
   versionNumber: number;
   authorName: string;
+  authorIdentityId?: string;
   actingRole: 'NURSE';
   purpose: string;
   sharingScope: ProfessionalRecordSharingScope;

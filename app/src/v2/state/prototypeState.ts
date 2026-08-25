@@ -179,6 +179,14 @@ function rolesForScope(scope: SharingScope, authorRole: DemoRole, assigneeRole?:
 }
 
 export function addCareUpdate(state: PrototypeState, input: NewUpdateInput, now = new Date()): PrototypeState {
+  const allowedPath = currentActorGrantPaths(state, input.caseId, now).find(({ grant }) =>
+    grant.actingRole === input.actingRole
+    && grant.purpose === input.purpose
+    && grant.capabilities.includes('ADD_UPDATE')
+    && grant.sharingScopes.includes(input.sharingScope));
+  const validAssignee = !input.needsAction || (Boolean(input.assigneeRole) && state.members.some((member) =>
+    member.caseId === input.caseId && member.role === input.assigneeRole && member.status === 'ACTIVE'));
+  if (!allowedPath || !validAssignee) return state;
   const id = `demo-update-${state.timeline.length + 1}`;
   const occurredAt = `${input.occurredDate}T${input.occurredTime}:00+08:00`;
   const entry: TimelineEntry = {
@@ -189,6 +197,7 @@ export function addCareUpdate(state: PrototypeState, input: NewUpdateInput, now 
     occurredAt,
     recordedAt: now.toISOString(),
     authorRole: input.actingRole,
+    authorIdentityId: allowedPath.identity.id,
     source: input.source.trim(),
     sharingScope: input.sharingScope,
     participantRoles: rolesForScope(input.sharingScope, input.actingRole, input.assigneeRole),

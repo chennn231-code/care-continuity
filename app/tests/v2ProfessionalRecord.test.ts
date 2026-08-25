@@ -69,6 +69,18 @@ describe('v2 professional care record prototype', () => {
     expect(canCreateProfessionalRecord(incomplete, 'demo-case')).toBe(false);
   });
 
+  it('rejects a professional record mutation with an unauthorized purpose or scope', () => {
+    const state = nurseState();
+    expect(publishProfessionalRecord(state, { ...completedDraft(), purpose: '自行宣告的目的' })).toBe(state);
+    const restricted = {
+      ...state,
+      roleGrants: state.roleGrants.map((grant) => grant.id === 'demo-grant-nurse'
+        ? { ...grant, sharingScopes: ['DIRECT_PARTICIPANTS' as const] }
+        : grant)
+    };
+    expect(publishProfessionalRecord(restricted, completedDraft())).toBe(restricted);
+  });
+
   it('validates required content and rejects an end time before the start time', () => {
     const draft = completedDraft();
     draft.content.objectiveObservation = '';

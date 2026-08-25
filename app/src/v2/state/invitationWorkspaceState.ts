@@ -3,7 +3,6 @@ import type {
   InvitationEffectiveStatus,
   PrototypeInvitation,
   PrototypeInvitationInput,
-  PrototypeIdentity,
   PrototypeState,
   PrototypeWorkspaceCase,
   VerificationStatus,
@@ -49,12 +48,28 @@ export function invitationVerificationStatus(state: PrototypeState, invitation: 
 
 export function canAcceptInvitation(state: PrototypeState, invitation: PrototypeInvitation, now = PROTOTYPE_CLOCK) {
   if (effectiveInvitationStatus(invitation, now) !== 'INVITED') return false;
+  if (!canViewInvitationPreview(state, invitation.id)) return false;
+  if (!invitationBelongsToCurrentAccount(state, invitation)) return false;
   if (invitationVerificationStatus(state, invitation) !== 'VERIFIED') return false;
   return now.getTime() < new Date(`${invitation.serviceEndsAt}T23:59:59+08:00`).getTime();
 }
 
+export function invitationBelongsToCurrentAccount(state: PrototypeState, invitation: PrototypeInvitation) {
+  if (!invitation.recipientIdentityId) return false;
+  return state.identities.some((identity) =>
+    identity.id === invitation.recipientIdentityId && identity.accountId === state.currentAccountId);
+}
+
+export function invitationsForCurrentAccount(state: PrototypeState) {
+  return state.invitations.filter((invitation) => invitationBelongsToCurrentAccount(state, invitation));
+}
+
 export function canViewInvitationPreview(state: PrototypeState, invitationId: string) {
-  return state.invitationSessionIds.includes(invitationId);
+  const invitation = state.invitations.find((item) => item.id === invitationId);
+  return Boolean(invitation
+    && effectiveInvitationStatus(invitation) === 'INVITED'
+    && invitationBelongsToCurrentAccount(state, invitation)
+    && state.invitationSessionIds.includes(invitationId));
 }
 
 export function invitationForPreview(state: PrototypeState, invitationId: string) {
@@ -64,7 +79,9 @@ export function invitationForPreview(state: PrototypeState, invitationId: string
 
 export function simulateInvitationLogin(state: PrototypeState, invitationId: string): PrototypeState {
   const invitation = state.invitations.find((item) => item.id === invitationId);
-  if (!invitation) return state;
+  if (!invitation || effectiveInvitationStatus(invitation) !== 'INVITED') {
+    return { ...state, successMessage: '目前無法使用此邀請' };
+  }
   const expectedType = invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'FAMILY';
   let identity = invitation.recipientIdentityId
     ? state.identities.find((item) => item.id === invitation.recipientIdentityId)
@@ -98,6 +115,10 @@ export function simulateInvitationLogin(state: PrototypeState, invitationId: str
 
 export function canCurrentActorAccessCase(state: PrototypeState, caseId: string, now = PROTOTYPE_CLOCK) {
   return currentActorGrantPaths(state, caseId, now).length > 0;
+}
+
+export function canManageCaseInvitations(state: PrototypeState, caseId: string, now = PROTOTYPE_CLOCK) {
+  return currentActorGrantPaths(state, caseId, now).some(({ grant }) => grant.capabilities.includes('MANAGE_MEMBERS'));
 }
 
 export function prototypeDemoCaseEntryPath(state: PrototypeState) {
@@ -137,6 +158,11 @@ export function createPrototypeInvitation(
   input: PrototypeInvitationInput,
   now = PROTOTYPE_CLOCK
 ): PrototypeState {
+  const authorized = currentActorGrantPaths(state, input.caseId, now).some(({ grant }) =>
+    grant.capabilities.includes('MANAGE_MEMBERS')
+    && grant.sharingScopes.length > 0
+    && grant.purpose.trim().length > 0);
+  if (!authorized) return { ...state, successMessage: '目前沒有建立此個案邀請的權限' };
   const serial = state.invitations.length + 1;
   const id = `invite-created-${serial}`;
   const invitation: PrototypeInvitation = {
@@ -168,7 +194,7 @@ export function createPrototypeInvitation(
 
 export function declinePrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
   const invitation = state.invitations.find((item) => item.id === invitationId);
-  if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED') return state;
+  if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED' || !canViewInvitationPreview(state, invitationId)) return state;
   return {
     ...state,
     invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, status: 'DECLINED' } : item),
@@ -178,7 +204,7 @@ export function declinePrototypeInvitation(state: PrototypeState, invitationId: 
 
 export function revokePrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
   const invitation = state.invitations.find((item) => item.id === invitationId);
-  if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED') return state;
+  if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED' || !canManageCaseInvitations(state, invitation.caseId, now)) return state;
   return {
     ...state,
     invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, status: 'REVOKED' } : item),
@@ -188,7 +214,7 @@ export function revokePrototypeInvitation(state: PrototypeState, invitationId: s
 
 export function resendPrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
   const source = state.invitations.find((item) => item.id === invitationId);
-  if (!source || effectiveInvitationStatus(source, now) === 'ACCEPTED') return state;
+  if (!source || effectiveInvitationStatus(source, now) === 'ACCEPTED' || !canManageCaseInvitations(state, source.caseId, now)) return state;
   const serial = state.invitations.length + 1;
   const replacementId = `invite-resent-${serial}`;
   const replacement: PrototypeInvitation = {
@@ -213,7 +239,7 @@ export function setProfessionalVerification(
   verificationStatus: Extract<VerificationStatus, 'VERIFIED' | 'REJECTED'>
 ): PrototypeState {
   const invitation = state.invitations.find((item) => item.id === invitationId);
-  if (!invitation || invitation.recipientType !== 'PROFESSIONAL' || !invitation.recipientIdentityId) return state;
+  if (!invitation || invitation.recipientType !== 'PROFESSIONAL' || !invitation.recipientIdentityId || !canViewInvitationPreview(state, invitationId)) return state;
   return {
     ...state,
     identities: state.identities.map((identity) => identity.id === invitation.recipientIdentityId ? { ...identity, verificationStatus } : identity),
@@ -265,24 +291,9 @@ export function acceptPrototypeInvitation(state: PrototypeState, invitationId: s
     status: 'ACTIVE' as const
   };
 
-  // Prototype manager path exists only to demonstrate that the same unresolved action remains
-  // visible to an authorized manager after the invited nurse loses access.
-  const managerIdentity: PrototypeIdentity = {
-    id: `manager-identity-for-${invitation.caseId}`,
-    accountId: identity.accountId,
-    identityType: 'FAMILY',
-    professionalType: null,
-    verificationStatus: 'VERIFIED',
-    isPrimary: false
-  };
-  const managerMembershipId = `manager-membership-for-${invitation.caseId}`;
-  const managerGrantId = `manager-grant-for-${invitation.caseId}`;
-  const addManagerPath = invitation.recipientType === 'PROFESSIONAL'
-    && !state.memberships.some((item) => item.id === managerMembershipId);
   return {
     ...state,
     activeRole: actingRole,
-    identities: addManagerPath ? [...state.identities, managerIdentity] : state.identities,
     memberships: [...state.memberships, {
       id: membershipId,
       identityId: identity.id,
@@ -290,14 +301,7 @@ export function acceptPrototypeInvitation(state: PrototypeState, invitationId: s
       relationship: invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL_SERVICE' : 'FAMILY_MEMBER',
       status: membershipStatus,
       validUntil: invitation.serviceEndsAt
-    }, ...(addManagerPath ? [{
-      id: managerMembershipId,
-      identityId: managerIdentity.id,
-      caseId: invitation.caseId,
-      relationship: 'FAMILY_MEMBER' as const,
-      status: 'ACTIVE' as const,
-      validUntil: null
-    }] : [])],
+    }],
     roleGrants: [...state.roleGrants, {
       id: grantId,
       membershipId,
@@ -309,15 +313,7 @@ export function acceptPrototypeInvitation(state: PrototypeState, invitationId: s
         : ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'RESOLVE_QUESTION'],
       startsAt: invitation.serviceStartsAt,
       validUntil: invitation.serviceEndsAt
-    }, ...(addManagerPath ? [{
-      id: managerGrantId,
-      membershipId: managerMembershipId,
-      actingRole: 'FAMILY' as const,
-      purpose: '個案協作管理展示',
-      sharingScopes: ['SHARED_CARE' as const, 'DIRECT_PARTICIPANTS' as const],
-      capabilities: ['VIEW_SHARED_CARE', 'MANAGE_MEMBERS', 'RESOLVE_QUESTION'],
-      validUntil: null
-    }] : [])],
+    }],
     members: [...state.members.filter((item) => item.id !== caseMember.id), caseMember],
     invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, status: 'ACCEPTED' } : item),
     workspaceCases: [...state.workspaceCases.filter((item) => item.id !== invitation.caseId), workspaceCase],

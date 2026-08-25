@@ -7,10 +7,12 @@ import {
   canCurrentActorAccessCase,
   canAcceptInvitation,
   canViewInvitationPreview,
+  createPrototypeInvitation,
   declinePrototypeInvitation,
   effectiveInvitationStatus,
   invitationForPreview,
   invitationVerificationStatus,
+  invitationsForCurrentAccount,
   managerReassignmentItems,
   prototypeDemoCaseEntryPath,
   removeWorkspaceCaseAccess,
@@ -74,7 +76,7 @@ describe('v2 invitation and multi-case workspace prototype', () => {
   });
 
   it('accepts a valid invitation and creates one independent membership and grant path', () => {
-    const state = createInitialPrototypeState();
+    const state = simulateInvitationLogin(createInitialPrototypeState(), 'invite-family-ready');
     const next = acceptPrototypeInvitation(state, 'invite-family-ready');
     const invitation = next.invitations.find((item) => item.id === 'invite-family-ready');
     const membership = next.memberships.find((item) => item.caseId === 'harbor-case');
@@ -86,7 +88,7 @@ describe('v2 invitation and multi-case workspace prototype', () => {
   });
 
   it('keeps an accepted future service outside the visible case collection', () => {
-    const state = createInitialPrototypeState();
+    const state = simulateInvitationLogin(createInitialPrototypeState(), 'invite-family-ready');
     const future = {
       ...state,
       invitations: state.invitations.map((item) => item.id === 'invite-family-ready'
@@ -97,6 +99,51 @@ describe('v2 invitation and multi-case workspace prototype', () => {
     expect(next.memberships.find((item) => item.caseId === 'harbor-case')?.status).toBe('WAITING_START');
     expect(visibleWorkspaceCases(next).map((item) => item.id)).not.toContain('harbor-case');
     expect(waitingStartWorkspaceCases(next).map((item) => item.id)).toContain('harbor-case');
+  });
+
+  it('does not grant a professional recipient a family or manager path', () => {
+    const state = acceptVerifiedProfessionalInvitation();
+    const recipientIdentityIds = state.identities.filter((identity) => identity.accountId === state.currentAccountId).map((identity) => identity.id);
+    const recipientMembershipIds = state.memberships.filter((membership) => recipientIdentityIds.includes(membership.identityId) && membership.caseId === 'sun-case').map((membership) => membership.id);
+    const grants = state.roleGrants.filter((grant) => recipientMembershipIds.includes(grant.membershipId));
+    expect(grants).toHaveLength(1);
+    expect(grants[0].actingRole).toBe('NURSE');
+    expect(grants[0].capabilities).not.toContain('MANAGE_MEMBERS');
+    expect(grants[0].capabilities).not.toContain('RESOLVE_QUESTION');
+    expect(state.identities.filter((identity) => identity.accountId === state.currentAccountId).some((identity) => identity.identityType === 'FAMILY')).toBe(false);
+  });
+
+  it('lists only invitations bound to the current account', () => {
+    const state = createInitialPrototypeState();
+    expect(invitationsForCurrentAccount(state).map((item) => item.id)).toEqual(['invite-family-ready', 'invite-expired']);
+    const professional = simulateInvitationLogin(state, 'invite-professional-pending');
+    expect(invitationsForCurrentAccount(professional).map((item) => item.id)).toEqual(['invite-professional-pending']);
+  });
+
+  it('does not establish a preview session for expired or revoked invitations', () => {
+    const state = createInitialPrototypeState();
+    const expired = simulateInvitationLogin(state, 'invite-expired');
+    expect(canViewInvitationPreview(expired, 'invite-expired')).toBe(false);
+    expect(invitationForPreview(expired, 'invite-expired')).toBeNull();
+    const revokedState = { ...state, invitations: state.invitations.map((item) => item.id === 'invite-family-ready' ? { ...item, status: 'REVOKED' as const } : item) };
+    const revoked = simulateInvitationLogin(revokedState, 'invite-family-ready');
+    expect(canViewInvitationPreview(revoked, 'invite-family-ready')).toBe(false);
+    expect(invitationForPreview(revoked, 'invite-family-ready')).toBeNull();
+  });
+
+  it('requires a valid invitation session before acceptance', () => {
+    const state = createInitialPrototypeState();
+    expect(acceptPrototypeInvitation(state, 'invite-family-ready').invitations.find((item) => item.id === 'invite-family-ready')?.status).toBe('INVITED');
+  });
+
+  it('requires MANAGE_MEMBERS to create an invitation', () => {
+    const state = { ...createInitialPrototypeState(), activeRole: 'NURSE' as const };
+    const input = {
+      caseId: 'demo-case', caseDisplayName: '林奶奶', recipientType: 'FAMILY' as const, roleLabel: '家屬', purpose: '共同照顧', scopeSummary: '共同照顧', serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-12-31'
+    };
+    expect(createPrototypeInvitation(state, input).invitations).toEqual(state.invitations);
+    const manager = { ...state, activeRole: 'FAMILY' as const };
+    expect(createPrototypeInvitation(manager, input).invitations).toHaveLength(state.invitations.length + 1);
   });
 
   it('uses one access selector for active, future, expired, revoked and suspended relationships', () => {
@@ -160,21 +207,29 @@ describe('v2 invitation and multi-case workspace prototype', () => {
 
   it('does not create a membership when an invitation is declined or revoked', () => {
     const state = createInitialPrototypeState();
-    const declined = declinePrototypeInvitation(state, 'invite-family-ready');
-    const revoked = revokePrototypeInvitation(state, 'invite-family-ready');
+    const declined = declinePrototypeInvitation(simulateInvitationLogin(state, 'invite-family-ready'), 'invite-family-ready');
+    const created = createPrototypeInvitation(state, {
+      caseId: 'demo-case', caseDisplayName: '林奶奶', recipientType: 'FAMILY', roleLabel: '家屬', purpose: '共同照顧', scopeSummary: '共同照顧', serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-12-31'
+    });
+    const createdId = created.lastInvitationId!;
+    const revoked = revokePrototypeInvitation(created, createdId);
     expect(declined.invitations.find((item) => item.id === 'invite-family-ready')?.status).toBe('DECLINED');
-    expect(revoked.invitations.find((item) => item.id === 'invite-family-ready')?.status).toBe('REVOKED');
+    expect(revoked.invitations.find((item) => item.id === createdId)?.status).toBe('REVOKED');
     expect(declined.memberships.some((item) => item.caseId === 'harbor-case')).toBe(false);
     expect(revoked.memberships.some((item) => item.caseId === 'harbor-case')).toBe(false);
   });
 
   it('resends with a new credential and revokes the former credential', () => {
     const state = createInitialPrototypeState();
-    const next = resendPrototypeInvitation(state, 'invite-family-ready');
+    const created = createPrototypeInvitation(state, {
+      caseId: 'demo-case', caseDisplayName: '林奶奶', recipientType: 'FAMILY', roleLabel: '家屬', purpose: '共同照顧', scopeSummary: '共同照顧', serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-12-31'
+    });
+    const createdId = created.lastInvitationId!;
+    const next = resendPrototypeInvitation(created, createdId);
     const replacement = next.invitations[0];
-    const original = next.invitations.find((item) => item.id === 'invite-family-ready');
-    expect(replacement.previousInvitationId).toBe('invite-family-ready');
-    expect(replacement.credentialId).not.toBe(state.invitations[0].credentialId);
+    const original = next.invitations.find((item) => item.id === createdId);
+    expect(replacement.previousInvitationId).toBe(createdId);
+    expect(replacement.credentialId).not.toBe(created.invitations.find((item) => item.id === createdId)?.credentialId);
     expect(replacement.linkRepresentation).toContain(replacement.codeRepresentation);
     expect(original?.status).toBe('REVOKED');
   });

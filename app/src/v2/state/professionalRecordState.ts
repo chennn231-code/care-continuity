@@ -5,6 +5,11 @@ import type {
   PrototypeState
 } from '../types/prototype';
 import { currentActorGrantPaths } from './prototypeState';
+import {
+  currentActorCanViewFullProfessionalRecord,
+  currentActorCanViewProfessionalRecord,
+  visibleProfessionalRecordsForCurrentActor
+} from './caseCollaborationSelectors';
 
 export const PROFESSIONAL_RECORD_DEMO_LABEL = '護理師展示情境';
 
@@ -51,6 +56,29 @@ export function canCreateProfessionalRecord(
   );
 }
 
+export function professionalRecordGrantPath(
+  state: PrototypeState,
+  caseId: string,
+  now = new Date('2026-08-25T12:00:00+08:00')
+) {
+  return currentActorGrantPaths(state, caseId, now).find(({ grant }) =>
+    grant.actingRole === 'NURSE'
+    && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')) ?? null;
+}
+
+export function createProfessionalRecordDraftForCurrentActor(state: PrototypeState, caseId: string): ProfessionalRecordDraft | null {
+  const path = professionalRecordGrantPath(state, caseId);
+  if (!path) return null;
+  const sharingScope = path.grant.sharingScopes.find((scope) => scope === 'SHARED_CARE' || scope === 'DIRECT_PARTICIPANTS' || scope === 'AUTHOR_ONLY');
+  if (!sharingScope) return null;
+  return {
+    ...structuredClone(EMPTY_PROFESSIONAL_RECORD_DRAFT),
+    caseId,
+    purpose: path.grant.purpose,
+    sharingScope
+  };
+}
+
 export function validateProfessionalRecordDraft(draft: ProfessionalRecordDraft): ProfessionalRecordErrors {
   const errors: ProfessionalRecordErrors = {};
   if (!draft.content.serviceDate) errors.serviceDate = '請選擇服務日期';
@@ -78,6 +106,10 @@ export function latestProfessionalRecordVersions(state: PrototypeState, caseId: 
   return [...latestByRecord.values()].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
 }
 
+export function visibleProfessionalRecordVersions(state: PrototypeState, caseId: string) {
+  return visibleProfessionalRecordsForCurrentActor(state, caseId);
+}
+
 export function professionalRecordVersions(state: PrototypeState, recordId: string) {
   return state.professionalRecordVersions
     .filter((item) => item.recordId === recordId)
@@ -86,6 +118,12 @@ export function professionalRecordVersions(state: PrototypeState, recordId: stri
 
 export function professionalRecordVersion(state: PrototypeState, recordId: string) {
   return professionalRecordVersions(state, recordId)[0] ?? null;
+}
+
+export function professionalRecordAccess(state: PrototypeState, recordId: string) {
+  const record = professionalRecordVersion(state, recordId);
+  if (!record || !currentActorCanViewProfessionalRecord(state, record)) return null;
+  return { record, canViewFull: currentActorCanViewFullProfessionalRecord(state, record) };
 }
 
 export function createCorrectionDraft(version: ProfessionalRecordVersion): ProfessionalRecordDraft {
@@ -106,7 +144,12 @@ export function publishProfessionalRecord(
   draft: ProfessionalRecordDraft,
   now = new Date('2026-08-25T15:10:00+08:00')
 ): PrototypeState {
-  if (!canCreateProfessionalRecord(state, draft.caseId, now) || hasProfessionalRecordErrors(validateProfessionalRecordDraft(draft))) return state;
+  const authorizedPath = currentActorGrantPaths(state, draft.caseId, now).find(({ grant }) =>
+    grant.actingRole === draft.actingRole
+    && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
+    && grant.purpose === draft.purpose
+    && grant.sharingScopes.includes(draft.sharingScope));
+  if (!authorizedPath || hasProfessionalRecordErrors(validateProfessionalRecordDraft(draft))) return state;
   const existingVersions = draft.recordId ? professionalRecordVersions(state, draft.recordId) : [];
   if (draft.correctionOfVersionId && existingVersions[0]?.id !== draft.correctionOfVersionId) return state;
   const recordId = draft.recordId ?? `professional-record-demo-${state.professionalRecordVersions.length + 1}`;
@@ -119,6 +162,7 @@ export function publishProfessionalRecord(
     caseId: draft.caseId,
     versionNumber,
     authorName: '陳護理師',
+    authorIdentityId: authorizedPath.identity.id,
     actingRole: 'NURSE',
     purpose: draft.purpose,
     sharingScope: draft.sharingScope,
@@ -154,4 +198,10 @@ export function familyProfessionalRecordProjection(
     followUpDueDate: version.content.followUpDueDate,
     wasCorrected: version.versionNumber > 1
   };
+}
+
+export function currentActorProfessionalRecordProjection(state: PrototypeState, recordId: string) {
+  const access = professionalRecordAccess(state, recordId);
+  if (!access || access.canViewFull) return null;
+  return familyProfessionalRecordProjection(state, recordId);
 }

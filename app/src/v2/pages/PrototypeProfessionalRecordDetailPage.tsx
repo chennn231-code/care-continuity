@@ -1,15 +1,16 @@
 import { Link, useParams } from 'react-router-dom';
 import { usePrototype } from '../state/PrototypeProvider';
-import { familyProfessionalRecordProjection, professionalRecordVersion, professionalRecordVersions } from '../state/professionalRecordState';
+import { currentActorProfessionalRecordProjection, familyProfessionalRecordProjection, professionalRecordAccess, professionalRecordVersion, professionalRecordVersions } from '../state/professionalRecordState';
 
 export function PrototypeProfessionalRecordDetailPage() {
   const { caseId = 'demo-case', recordId = '' } = useParams();
   const { state, setRole } = usePrototype();
-  const record = professionalRecordVersion(state, recordId);
+  const access = professionalRecordAccess(state, recordId);
+  const record = access?.record;
   const versions = professionalRecordVersions(state, recordId);
-  const familyView = familyProfessionalRecordProjection(state, recordId);
+  const familyView = currentActorProfessionalRecordProjection(state, recordId);
   if (!record || record.caseId !== caseId) return <section className="v2-page v2-access-denied-page"><h1>目前無法查看此紀錄</h1><Link to={`/v2/prototype/cases/${caseId}/records`}>返回專業紀錄</Link></section>;
-  const viewingAsFamily = state.activeRole === 'FAMILY';
+  const viewingAsFamily = !access.canViewFull;
   return (
     <section className="v2-page v2-record-detail-page">
       <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">已發布・版本 {record.versionNumber}</p><h1>{record.content.serviceDate} 專業照顧紀錄</h1><p>已發布內容不能直接覆寫；原始版本、作者與時間會保留。</p></div>{!viewingAsFamily && <Link className="secondary-button" to={`/v2/prototype/cases/${caseId}/records/${recordId}/correct`}>追加更正</Link>}</header>

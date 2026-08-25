@@ -3,6 +3,7 @@ import { V2_DOCUMENT_TITLE, V2_PRODUCT_DESCRIPTION, V2_PRODUCT_LOGO, V2_PRODUCT_
 import {
   addCareUpdate,
   createInitialPrototypeState,
+  currentActorGrantPaths,
   resolveQuestion,
   transitionAction,
   visibleTimelineEntries
@@ -17,7 +18,7 @@ function acceptedSunCase() {
 }
 
 function addLinkedQuestionAndAction(state = acceptedSunCase()) {
-  const familyState = { ...state, activeRole: 'FAMILY' as const };
+  const familyState = { ...state, currentAccountId: 'sun-manager-account', activeRole: 'FAMILY' as const };
   return addCareUpdate(familyState, {
     caseId: 'sun-case',
     kind: 'QUESTION',
@@ -26,7 +27,7 @@ function addLinkedQuestionAndAction(state = acceptedSunCase()) {
     content: '請協助確認本次皮膚觀察是否需要後續追蹤',
     source: '虛構家屬提問',
     actingRole: 'FAMILY',
-    purpose: '共同照顧交接',
+    purpose: '家庭個案協作管理',
     sharingScope: 'DIRECT_PARTICIPANTS',
     needsAction: true,
     assigneeRole: 'NURSE',
@@ -77,7 +78,7 @@ describe('v2 frontend prototype state', () => {
     const input: NewUpdateInput = {
       caseId: 'demo-case', kind: 'OBSERVATION', occurredDate: '2026-08-25', occurredTime: '09:00',
       content: '今天起身時需要多一點扶持', source: '虛構家屬觀察', actingRole: 'FAMILY',
-      purpose: '共同照顧交接', sharingScope: 'DIRECT_PARTICIPANTS', needsAction: true,
+      purpose: '家庭共同照顧', sharingScope: 'DIRECT_PARTICIPANTS', needsAction: true,
       assigneeRole: 'DAY_CARE', dueAt: '2026-08-26T17:00'
     };
     const next = addCareUpdate(state, input, new Date('2026-08-25T01:05:00Z'));
@@ -111,7 +112,10 @@ describe('v2 frontend prototype state', () => {
   });
 
   it('keeps a newly created question and action linked through one immutable id', () => {
-    const state = addLinkedQuestionAndAction();
+    const accepted = acceptedSunCase();
+    const manager = { ...accepted, currentAccountId: 'sun-manager-account', activeRole: 'FAMILY' as const };
+    expect(currentActorGrantPaths(manager, 'sun-case').map((path) => path.grant.id)).toEqual(['demo-grant-sun-manager']);
+    const state = addLinkedQuestionAndAction(accepted);
     const question = state.questions.at(-1)!;
     const action = state.actions.at(-1)!;
     expect(question.caseId).toBe('sun-case');
@@ -124,12 +128,12 @@ describe('v2 frontend prototype state', () => {
     let state = addLinkedQuestionAndAction();
     const questionId = state.questions.at(-1)!.id;
     const actionId = state.actions.at(-1)!.id;
-    state = { ...state, activeRole: 'NURSE' };
+    state = { ...state, currentAccountId: 'invited-nurse-account', activeRole: 'NURSE' };
     state = transitionAction(state, actionId, 'ACCEPTED', 'NURSE');
     state = transitionAction(state, actionId, 'IN_PROGRESS', 'NURSE');
     state = transitionAction(state, actionId, 'COMPLETED', 'NURSE');
     expect(state.questions.find((item) => item.id === questionId)?.status).toBe('OPEN');
-    const resolved = resolveQuestion({ ...state, activeRole: 'FAMILY' }, questionId, 'FAMILY');
+    const resolved = resolveQuestion({ ...state, currentAccountId: 'sun-manager-account', activeRole: 'FAMILY' }, questionId, 'FAMILY');
     expect(resolved.questions.find((item) => item.id === questionId)?.status).toBe('RESOLVED');
     expect(resolved.actions.find((item) => item.id === actionId)?.linkedQuestionId).toBe(questionId);
   });
@@ -138,7 +142,7 @@ describe('v2 frontend prototype state', () => {
     let state = addLinkedQuestionAndAction();
     const questionId = state.questions.at(-1)!.id;
     const actionId = state.actions.at(-1)!.id;
-    state = { ...state, activeRole: 'NURSE' };
+    state = { ...state, currentAccountId: 'invited-nurse-account', activeRole: 'NURSE' };
     state = transitionAction(state, actionId, 'ACCEPTED', 'NURSE');
     state = transitionAction(state, actionId, 'IN_PROGRESS', 'NURSE');
     const expired = removeWorkspaceCaseAccess(state, 'sun-case', 'EXPIRED');
@@ -147,7 +151,7 @@ describe('v2 frontend prototype state', () => {
     expect(expired.responsibilityHistory.find((item) => item.actionId === actionId)?.previousStatus).toBe('IN_PROGRESS');
     expect(canCurrentActorAccessCase(expired, 'sun-case')).toBe(false);
     expect(managerReassignmentItems(expired, 'sun-case')).toEqual([]);
-    const managerView = { ...expired, activeRole: 'FAMILY' as const };
+    const managerView = { ...expired, currentAccountId: 'sun-manager-account', activeRole: 'FAMILY' as const };
     expect(canCurrentActorAccessCase(managerView, 'sun-case')).toBe(true);
     expect(managerReassignmentItems(managerView, 'sun-case').map((item) => item.action.id)).toEqual([actionId]);
   });

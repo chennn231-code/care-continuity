@@ -3,6 +3,7 @@ import { StatusPill } from '../components/PrototypeShell';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { ActionStatus } from '../types/prototype';
 import { useParams } from 'react-router-dom';
+import { currentActorCanViewQuestion, visibleActionsForCurrentActor } from '../state/caseCollaborationSelectors';
 
 const statusLabels: Record<ActionStatus, string> = {
   PENDING_ACCEPTANCE: '等待接受', ACCEPTED: '已接受', IN_PROGRESS: '處理中', COMPLETED: '已完成',
@@ -17,7 +18,7 @@ const nextStep: Partial<Record<ActionStatus, { status: ActionStatus; label: stri
 export function PrototypeActionsPage() {
   const { state, moveAction, markQuestionResolved, clearSuccess } = usePrototype();
   const { caseId = 'demo-case' } = useParams();
-  const caseActions = state.actions.filter((action) => action.caseId === caseId);
+  const caseActions = visibleActionsForCurrentActor(state, caseId);
   return (
     <section className="v2-page">
       <header className="v2-page-heading"><p className="eyebrow">責任與進度</p><h1>處理事項</h1><p>指派、接受、開始處理與完成是不同階段</p></header>
@@ -26,7 +27,7 @@ export function PrototypeActionsPage() {
       <div className="v2-action-list">{caseActions.map((action) => {
         const step = nextStep[action.status];
         const canAct = action.assigneeRole === state.activeRole && step;
-        const question = state.questions.find((item) => item.id === action.linkedQuestionId);
+        const question = state.questions.find((item) => item.id === action.linkedQuestionId && currentActorCanViewQuestion(state, item));
         return <article className="v2-card v2-action-card" key={action.id}>
           <div className="v2-card-heading"><div><StatusPill tone={action.status === 'COMPLETED' ? 'complete' : action.status === 'PENDING_ACCEPTANCE' ? 'pending' : 'active'}>{statusLabels[action.status]}</StatusPill><h2>{action.title}</h2></div><strong>{DEMO_ROLE_LABELS[action.assigneeRole]}</strong></div>
           <p>{action.detail}</p><dl className="v2-meta-grid"><div><dt>虛構負責人</dt><dd>{action.assigneeName}</dd></div><div><dt>期限</dt><dd>{new Date(action.dueAt).toLocaleString('zh-TW')}</dd></div></dl>
@@ -34,6 +35,7 @@ export function PrototypeActionsPage() {
           {question && <section className="v2-linked-question"><h3>相關問題</h3><p>{question.text}</p><p>問題狀態：<strong>{question.status === 'OPEN' ? '待回覆' : question.status === 'ANSWERED' ? '已回覆／待確認解決' : '已解決'}</strong></p>{question.status !== 'RESOLVED' && state.activeRole === 'FAMILY' && <button className="secondary-button" type="button" onClick={() => markQuestionResolved(question.id)}>標示問題已解決</button>}</section>}
         </article>;
       })}</div>
+      {caseActions.length === 0 && <section className="v2-empty-state"><h2>目前沒有可見的處理事項</h2><p>此頁不顯示未授權事項或其數量。</p></section>}
       <section className="v2-card v2-status-reference"><h2>其他狀態</h2><div><StatusPill>已拒絕</StatusPill><StatusPill tone="pending">需要重新指派</StatusPill><StatusPill>已取消</StatusPill></div><p>這些狀態在本輪只展示文案，不提供模擬操作</p></section>
     </section>
   );

@@ -52,7 +52,8 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     { id: 'demo-identity-family', accountId: 'demo-account', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true },
     { id: 'demo-identity-nurse', accountId: 'demo-account', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'VERIFIED', isPrimary: false },
     { id: 'demo-identity-day-care', accountId: 'demo-account', identityType: 'PROFESSIONAL', professionalType: 'CARE_WORKER', verificationStatus: 'VERIFIED', isPrimary: false },
-    { id: 'demo-identity-invited-nurse', accountId: 'invited-nurse-account', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'PENDING_VERIFICATION', isPrimary: false }
+    { id: 'demo-identity-invited-nurse', accountId: 'invited-nurse-account', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'PENDING_VERIFICATION', isPrimary: false },
+    { id: 'demo-identity-sun-manager', accountId: 'sun-manager-account', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true }
   ],
   identityDraft: { mode: 'PRIMARY', identityType: null, professionalType: null },
   memberships: [
@@ -60,7 +61,8 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     { id: 'demo-membership-nurse', identityId: 'demo-identity-nurse', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-11-30' },
     { id: 'demo-membership-day-care', identityId: 'demo-identity-day-care', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-11-01' },
     { id: 'demo-membership-river', identityId: 'demo-identity-nurse', caseId: 'river-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-09-05' },
-    { id: 'demo-membership-future', identityId: 'demo-identity-nurse', caseId: 'future-case', relationship: 'PROFESSIONAL_SERVICE', status: 'WAITING_START', validUntil: '2026-11-30' }
+    { id: 'demo-membership-future', identityId: 'demo-identity-nurse', caseId: 'future-case', relationship: 'PROFESSIONAL_SERVICE', status: 'WAITING_START', validUntil: '2026-11-30' },
+    { id: 'demo-membership-sun-manager', identityId: 'demo-identity-sun-manager', caseId: 'sun-case', relationship: 'FAMILY_MEMBER', status: 'ACTIVE', validUntil: null }
   ],
   roleGrants: [
     {
@@ -82,6 +84,10 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     {
       id: 'demo-grant-future', membershipId: 'demo-membership-future', actingRole: 'NURSE', purpose: '日照護理服務', startsAt: '2026-09-01',
       sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE'], validUntil: '2026-11-30'
+    },
+    {
+      id: 'demo-grant-sun-manager', membershipId: 'demo-membership-sun-manager', actingRole: 'FAMILY', purpose: '家庭個案協作管理',
+      sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'MANAGE_MEMBERS', 'RESOLVE_QUESTION'], validUntil: null
     }
   ],
   successMessage: null,
@@ -133,6 +139,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     {
       id: 'professional-record-demo-existing-v1', recordId: 'professional-record-demo-existing', caseId: 'demo-case', versionNumber: 1,
       authorName: '陳護理師', actingRole: 'NURSE', purpose: '日照護理服務紀錄與交接', sharingScope: 'SHARED_CARE',
+      authorIdentityId: 'demo-identity-nurse',
       occurredAt: '2026-08-24T14:00:00+08:00', recordedAt: '2026-08-24T14:35:00+08:00', publishedAt: '2026-08-24T14:35:00+08:00',
       content: {
         serviceDate: '2026-08-24', startedAt: '14:00', endedAt: '14:30', serviceLocation: '安心日照（虛構）',
