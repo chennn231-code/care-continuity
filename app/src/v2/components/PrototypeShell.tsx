@@ -4,6 +4,7 @@ import { V2_DOCUMENT_TITLE, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOG
 import { DEMO_ROLE_LABELS, IDENTITY_TYPE_LABELS, VERIFICATION_STATUS_LABELS } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { DemoRole } from '../types/prototype';
+import { canCurrentActorAccessCase, canViewInvitationPreview } from '../state/invitationWorkspaceState';
 
 const roles = Object.keys(DEMO_ROLE_LABELS) as DemoRole[];
 
@@ -14,8 +15,10 @@ export function shouldShowAccountSummary(pathname: string) {
 export function PrototypeShell() {
   const { state, setRole } = usePrototype();
   const location = useLocation();
-  const isCaseRoute = location.pathname.includes('/cases/demo-case');
-  const showAccountSummary = shouldShowAccountSummary(location.pathname);
+  const caseId = location.pathname.match(/^\/v2\/prototype\/cases\/([^/]+)/)?.[1];
+  const isCaseRoute = Boolean(caseId && canCurrentActorAccessCase(state, caseId));
+  const invitationId = location.pathname.match(/^\/v2\/prototype\/invitations\/(?!new$|created$)([^/]+)/)?.[1];
+  const showAccountSummary = shouldShowAccountSummary(location.pathname) && (!invitationId || canViewInvitationPreview(state, invitationId));
   const primaryIdentity = state.identities.find((identity) => identity.isPrimary);
 
   useEffect(() => {

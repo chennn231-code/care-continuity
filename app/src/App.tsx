@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { RequireAuth } from './auth/RequireAuth';
 import { AuthPage } from './pages/AuthPage';
 import { ConfirmEmailPage } from './pages/ConfirmEmailPage';
@@ -26,6 +27,21 @@ import { PrototypeProfessionPage } from './v2/pages/PrototypeProfessionPage';
 import { PrototypeVerificationPage } from './v2/pages/PrototypeVerificationPage';
 import { PrototypeRegisterCompletePage } from './v2/pages/PrototypeRegisterCompletePage';
 import { PrototypeIdentitiesPage } from './v2/pages/PrototypeIdentitiesPage';
+import { PrototypeInvitationCreatePage } from './v2/pages/PrototypeInvitationCreatePage';
+import { PrototypeInvitationCredentialPage } from './v2/pages/PrototypeInvitationCredentialPage';
+import { PrototypeInvitationPreviewPage } from './v2/pages/PrototypeInvitationPreviewPage';
+import { PrototypeInvitationVerificationPage } from './v2/pages/PrototypeInvitationVerificationPage';
+import { PrototypeWorkspacePage } from './v2/pages/PrototypeWorkspacePage';
+import { PrototypeCaseAccessGuard } from './v2/components/PrototypeCaseAccessGuard';
+import { V2_GUARDED_CASE_ROUTE_SUFFIXES, type V2GuardedCaseRouteSuffix } from './v2/data/prototypeRoutes';
+
+const v2CaseRouteElements: Record<V2GuardedCaseRouteSuffix, ReactNode> = {
+  '': <PrototypeCaseHomePage />,
+  timeline: <PrototypeTimelinePage />,
+  'updates/new': <PrototypeNewUpdatePage />,
+  actions: <PrototypeActionsPage />,
+  circle: <PrototypeCirclePage />
+};
 
 function AuthEntryRoute() {
   const location = useLocation();
@@ -56,12 +72,17 @@ export function App() {
         <Route path="register/verification" element={<PrototypeVerificationPage />} />
         <Route path="register/complete" element={<PrototypeRegisterCompletePage />} />
         <Route path="profile/identities" element={<PrototypeIdentitiesPage />} />
+        <Route path="workspace" element={<PrototypeWorkspacePage />} />
+        <Route path="invitations/new" element={<PrototypeInvitationCreatePage />} />
+        <Route path="invitations/created" element={<PrototypeInvitationCredentialPage />} />
+        <Route path="invitations/:invitationId/verification" element={<PrototypeInvitationVerificationPage />} />
+        <Route path="invitations/:invitationId" element={<PrototypeInvitationPreviewPage />} />
         <Route path="cases" element={<PrototypeCasesPage />} />
-        <Route path="cases/demo-case" element={<PrototypeCaseHomePage />} />
-        <Route path="cases/demo-case/timeline" element={<PrototypeTimelinePage />} />
-        <Route path="cases/demo-case/updates/new" element={<PrototypeNewUpdatePage />} />
-        <Route path="cases/demo-case/actions" element={<PrototypeActionsPage />} />
-        <Route path="cases/demo-case/circle" element={<PrototypeCirclePage />} />
+        <Route path="cases/:caseId" element={<PrototypeCaseAccessGuard />}>
+          {V2_GUARDED_CASE_ROUTE_SUFFIXES.map((path) => path
+            ? <Route path={path} element={v2CaseRouteElements[path]} key={path} />
+            : <Route index element={v2CaseRouteElements[path]} key="index" />)}
+        </Route>
       </Route>
       <Route element={<RequireAuth />}>
         <Route path="/setup/receiver" element={<ReceiverSetupPage />} />

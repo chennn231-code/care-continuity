@@ -490,6 +490,49 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .v2-complete-card { max-width: 680px; }
 .v2-complete-card hr { border: 0; border-top: 1px solid rgba(88, 118, 134, 0.2); }
 .v2-identity-list { display: grid; gap: 1rem; margin-bottom: 1rem; }
+.v2-inline-links { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.v2-invitation-case { display: grid; gap: 0.3rem; margin-bottom: 1.2rem; padding: 1rem; border-radius: 1rem; background: var(--mist-100); }
+.v2-invitation-case span, .v2-invitation-case small { color: var(--muted); }
+.v2-invitation-case strong { font-size: 1.25rem; }
+.v2-segmented-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; }
+.v2-segmented-choice label { display: flex; align-items: center; gap: 0.6rem; min-height: 3.25rem; padding: 0.8rem; border: 1px solid rgba(88, 118, 134, 0.2); border-radius: 0.9rem; background: #fffdf8; cursor: pointer; }
+.v2-segmented-choice input { width: auto; }
+.v2-credential-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.v2-credential-grid .v2-card { display: grid; min-width: 0; align-content: start; gap: 0.65rem; }
+.v2-credential-grid h2, .v2-invitation-preview-card h2, .v2-workspace-case h3 { margin: 0.4rem 0 0; }
+.v2-credential-grid code { display: block; max-width: 100%; padding: 0.7rem; border-radius: 0.7rem; overflow-wrap: anywhere; color: #385563; background: #edf3f3; font-size: 0.78rem; }
+.v2-mock-qr { display: grid; width: 7.5rem; aspect-ratio: 1; place-items: center; padding: 0.65rem; border: 0.65rem solid #263e47; background: repeating-linear-gradient(45deg, #263e47 0 0.45rem, #fffdf8 0.45rem 0.9rem); }
+.v2-mock-qr span { width: 2.8rem; aspect-ratio: 1; border: 0.55rem solid #fffdf8; background: #263e47; }
+.v2-invitation-preview-card { display: grid; gap: 1rem; margin-bottom: 1rem; }
+.v2-invitation-preview-card .v2-section-title > strong { color: var(--mist-700); font-size: 1rem; }
+.v2-workspace-tools { display: grid; gap: 0.75rem; margin-bottom: 1.2rem; padding: 1rem; border-radius: 1.2rem; background: rgba(255, 253, 248, 0.9); }
+.v2-workspace-tools label { display: grid; gap: 0.4rem; color: var(--mist-700); font-weight: 750; }
+.v2-workspace-tools input { width: 100%; }
+.v2-workspace-tools small { color: var(--muted); line-height: 1.5; }
+.v2-private-tag-filter { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.v2-private-tag-filter button { min-height: 2.6rem; padding: 0.55rem 0.8rem; border: 1px solid var(--mist-300); border-radius: 999px; color: var(--mist-700); background: #fffdf8; cursor: pointer; }
+.v2-private-tag-filter button.active { color: #fff; background: var(--mist-700); }
+.v2-workspace-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.65fr); gap: 1rem; align-items: start; }
+.v2-workspace-cases, .v2-workspace-side { display: grid; gap: 1rem; }
+.v2-workspace-case { display: grid; gap: 0.9rem; }
+.v2-workspace-case .v2-section-title > div { min-width: 0; }
+.v2-tag-picker { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; margin: 0; padding: 0.8rem; border: 1px solid rgba(88, 118, 134, 0.18); border-radius: 0.9rem; }
+.v2-tag-picker legend { padding: 0 0.35rem; color: var(--muted); font-size: 0.8rem; font-weight: 750; }
+.v2-tag-picker label { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--mist-700); font-size: 0.84rem; }
+.v2-tag-picker input { width: auto; }
+.v2-private-tag-note { color: var(--muted); line-height: 1.5; }
+.v2-manager-reassignment { display: grid; gap: 0.55rem; padding: 0.9rem; border: 1px solid #d6b96e; border-radius: 0.9rem; color: #624d20; background: #fff5d9; }
+.v2-manager-reassignment > div { display: grid; gap: 0.2rem; }
+.v2-manager-reassignment small { color: #735c2f; }
+.v2-invitation-form fieldset { margin: 0; padding: 0.8rem; border: 1px solid rgba(88, 118, 134, 0.2); border-radius: 1rem; }
+.v2-invitation-form legend { padding: 0 0.35rem; font-weight: 750; }
+.v2-access-denied-page, .v2-invitation-login-page { max-width: 720px; }
+.v2-access-denied-page .v2-logic-note, .v2-invitation-login-page .v2-logic-note { margin-top: 1rem; }
+.v2-workspace-link { display: grid; gap: 0.2rem; margin-top: 0.7rem; padding: 0.8rem; border-radius: 0.8rem; color: var(--ink); background: var(--mist-100); text-decoration: none; }
+.v2-workspace-link small { color: var(--muted); }
+.v2-waiting-relationship { display: grid; gap: 0.3rem; margin-top: 0.7rem; padding: 0.8rem; border: 1px dashed rgba(88, 118, 134, 0.32); border-radius: 0.8rem; }
+.v2-waiting-relationship span, .v2-waiting-relationship small { color: var(--muted); }
+.v2-empty-state { padding: 1rem; border: 1px dashed rgba(88, 118, 134, 0.32); border-radius: 1rem; color: var(--muted); background: rgba(255, 253, 248, 0.72); line-height: 1.6; }
 
 @media (max-width: 720px) {
   .v2-topbar, .v2-heading-actions, .v2-new-summary { align-items: stretch; flex-direction: column; }
@@ -500,7 +543,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .v2-case-nav a { flex: 0 0 auto; }
   .v2-page { width: min(100% - 1rem, 1080px); padding-top: 1.5rem; }
   .v2-heading-actions > .primary-button, .v2-new-summary > .secondary-button { width: 100%; }
-  .v2-case-card, .v2-new-summary, .v2-dashboard-grid, .v2-form-row, .v2-followup-fields, .v2-choice-grid, .v2-boundary-stack, .v2-profession-grid { grid-template-columns: 1fr; }
+  .v2-case-card, .v2-new-summary, .v2-dashboard-grid, .v2-form-row, .v2-followup-fields, .v2-choice-grid, .v2-boundary-stack, .v2-profession-grid, .v2-segmented-choice, .v2-credential-grid, .v2-workspace-layout { grid-template-columns: 1fr; }
   .v2-case-card { align-items: stretch; }
   .v2-meta-grid { grid-template-columns: 1fr; }
   .v2-form-actions { flex-direction: column; }
@@ -512,6 +555,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .v2-landing-brand img { width: 82%; max-height: 6.5rem; margin: 0 auto 0.35rem; }
   .v2-identity-carousel { margin-inline: -0.5rem; padding-inline: 1rem; scroll-padding-inline: 1rem; }
   .v2-identity-card { flex-basis: min(82vw, 340px); min-height: 23rem; }
+  .v2-credential-grid .v2-card { min-height: 0; }
+  .v2-mock-qr { width: 6.5rem; }
 }
 
 @media (max-width: 390px) {

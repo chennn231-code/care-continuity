@@ -1,11 +1,12 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { TimelineCard } from '../components/TimelineCard';
 import { usePrototype } from '../state/PrototypeProvider';
 import { visibleTimelineEntries } from '../state/prototypeState';
 
 export function PrototypeTimelinePage() {
   const { state, clearSuccess } = usePrototype();
-  const entries = visibleTimelineEntries(state);
+  const { caseId = 'demo-case' } = useParams();
+  const entries = visibleTimelineEntries(state, state.activeRole, caseId);
   return (
     <section className="v2-page">
       <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">林奶奶｜虛構展示個案</p><h1>照顧變化時間軸</h1><p>先保留誰在什麼時間看到什麼，再把需要處理的事情接下去</p></div><Link className="primary-button" to="/v2/prototype/cases/demo-case/updates/new">新增照顧變化</Link></header>

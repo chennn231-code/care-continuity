@@ -47,17 +47,78 @@ export const PROFESSIONAL_TYPE_OPTIONS: Array<{
 
 export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   activeRole: 'FAMILY',
-  identities: [{ id: 'demo-identity-family', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true }],
+  identities: [
+    { id: 'demo-identity-family', identityType: 'FAMILY', professionalType: null, verificationStatus: 'VERIFIED', isPrimary: true },
+    { id: 'demo-identity-nurse', identityType: 'PROFESSIONAL', professionalType: 'NURSE', verificationStatus: 'VERIFIED', isPrimary: false }
+  ],
   identityDraft: { mode: 'PRIMARY', identityType: null, professionalType: null },
-  memberships: [{ id: 'demo-membership-family', identityId: 'demo-identity-family', caseId: 'demo-case', relationship: 'FAMILY_MEMBER', status: 'ACTIVE', validUntil: null }],
-  roleGrants: [{
-    id: 'demo-grant-family', membershipId: 'demo-membership-family', actingRole: 'FAMILY', purpose: '家庭共同照顧',
-    sharingScopes: ['SHARED_CARE', 'FAMILY_ONLY', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'RESOLVE_QUESTION'], validUntil: null
-  }],
+  memberships: [
+    { id: 'demo-membership-family', identityId: 'demo-identity-family', caseId: 'demo-case', relationship: 'FAMILY_MEMBER', status: 'ACTIVE', validUntil: null },
+    { id: 'demo-membership-river', identityId: 'demo-identity-nurse', caseId: 'river-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: '2026-09-05' },
+    { id: 'demo-membership-future', identityId: 'demo-identity-nurse', caseId: 'future-case', relationship: 'PROFESSIONAL_SERVICE', status: 'WAITING_START', validUntil: '2026-11-30' }
+  ],
+  roleGrants: [
+    {
+      id: 'demo-grant-family', membershipId: 'demo-membership-family', actingRole: 'FAMILY', purpose: '家庭共同照顧',
+      sharingScopes: ['SHARED_CARE', 'FAMILY_ONLY', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'RESOLVE_QUESTION', 'MANAGE_MEMBERS'], validUntil: null
+    },
+    {
+      id: 'demo-grant-river', membershipId: 'demo-membership-river', actingRole: 'NURSE', purpose: '居家護理服務與協作管理', startsAt: '2026-08-15',
+      sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'MANAGE_MEMBERS'], validUntil: '2026-09-05'
+    },
+    {
+      id: 'demo-grant-future', membershipId: 'demo-membership-future', actingRole: 'NURSE', purpose: '日照護理服務', startsAt: '2026-09-01',
+      sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'], capabilities: ['VIEW_SHARED_CARE', 'ADD_UPDATE'], validUntil: '2026-11-30'
+    }
+  ],
   successMessage: null,
+  lastInvitationId: null,
+  invitationSessionIds: [],
+  invitations: [
+    {
+      id: 'invite-family-ready', previousInvitationId: null, caseId: 'harbor-case', caseDisplayName: '王奶奶', maskedCaseDisplayName: '王○○長輩', inviterName: '王家協作管理者',
+      recipientType: 'FAMILY', recipientEmailHint: 'd***@example.invalid', roleLabel: '家屬／家庭照顧者', purpose: '家庭照顧協作', scopeSummary: '共同照顧與家庭限定資訊',
+      serviceStartsAt: '2026-08-25', serviceEndsAt: '2027-08-24', expiresAt: '2026-09-01T23:59:59+08:00', status: 'INVITED', professionalVerificationStatus: 'VERIFIED',
+      credentialId: 'credential-family-ready', linkRepresentation: 'https://winwin.example.invalid/invite/DEMO-FAMILY-READY', codeRepresentation: 'DEMO-FAMILY-READY'
+    },
+    {
+      id: 'invite-professional-pending', previousInvitationId: null, caseId: 'sun-case', caseDisplayName: '陳爺爺', maskedCaseDisplayName: '陳○○長輩', inviterName: '陳家協作管理者',
+      recipientType: 'PROFESSIONAL', recipientEmailHint: 'n***@example.invalid', roleLabel: '護理師', purpose: '皮膚狀況追蹤與護理建議', scopeSummary: '共同照顧與直接參與事項',
+      serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-11-30', expiresAt: '2026-09-02T23:59:59+08:00', status: 'INVITED', professionalVerificationStatus: 'PENDING_VERIFICATION',
+      credentialId: 'credential-professional-pending', linkRepresentation: 'https://winwin.example.invalid/invite/DEMO-NURSE-PENDING', codeRepresentation: 'DEMO-NURSE-PENDING'
+    },
+    {
+      id: 'invite-expired', previousInvitationId: null, caseId: 'expired-case', caseDisplayName: '周奶奶', maskedCaseDisplayName: '周○○長輩', inviterName: '周家協作管理者',
+      recipientType: 'FAMILY', recipientEmailHint: 'f***@example.invalid', roleLabel: '家屬／家庭照顧者', purpose: '家庭照顧協作', scopeSummary: '共同照顧資訊',
+      serviceStartsAt: '2026-08-01', serviceEndsAt: '2027-07-31', expiresAt: '2026-08-20T23:59:59+08:00', status: 'INVITED', professionalVerificationStatus: 'VERIFIED',
+      credentialId: 'credential-expired', linkRepresentation: 'https://winwin.example.invalid/invite/DEMO-EXPIRED', codeRepresentation: 'DEMO-EXPIRED'
+    }
+  ],
+  workspaceCases: [
+    { id: 'demo-case', displayName: '林奶奶', relationshipLabel: '家屬／家庭照顧者', serviceSource: '家庭照顧', serviceStartsAt: '2026-08-01', serviceEndsAt: null, accessStatus: 'ACTIVE', visibleActionCount: 2, lastVisibleUpdateLabel: '今天 11:35' },
+    { id: 'river-case', displayName: '吳爺爺', relationshipLabel: '居家護理師', serviceSource: '安心居家護理所（虛構）', serviceStartsAt: '2026-08-15', serviceEndsAt: '2026-09-05', accessStatus: 'EXPIRING', visibleActionCount: 1, lastVisibleUpdateLabel: '昨天 16:20' },
+    { id: 'future-case', displayName: '許奶奶', relationshipLabel: '護理師', serviceSource: '安心日照（虛構）', serviceStartsAt: '2026-09-01', serviceEndsAt: '2026-11-30', accessStatus: 'WAITING_START', visibleActionCount: 0, lastVisibleUpdateLabel: '' }
+  ],
+  privateTags: [
+    { id: 'tag-day-care', label: '安心日照', color: 'MIST' },
+    { id: 'tag-this-week', label: '本週追蹤', color: 'SUN' },
+    { id: 'tag-home-nursing', label: '居家護理', color: 'SAGE' }
+  ],
+  privateTagAssignments: [
+    { caseId: 'demo-case', tagId: 'tag-this-week' },
+    { caseId: 'river-case', tagId: 'tag-home-nursing' },
+    { caseId: 'river-case', tagId: 'tag-this-week' }
+  ],
+  responsibilityHistory: [
+    {
+      id: 'responsibility-history-river', caseId: 'river-case', actionId: 'action-river-followup', formerAssigneeName: '前任護理師',
+      endedAt: '2026-08-24T17:00:00+08:00', reason: 'SERVICE_EXPIRED', summary: '原負責人因服務到期而結束責任週期'
+    }
+  ],
   timeline: [
     {
       id: 'update-observation-original',
+      caseId: 'demo-case',
       kind: 'OBSERVATION',
       summary: '沐浴時注意到右手臂有一小片泛紅，長輩表示沒有疼痛',
       occurredAt: '2026-08-24T10:10:00+08:00',
@@ -71,6 +132,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'update-observation-current',
+      caseId: 'demo-case',
       kind: 'OBSERVATION',
       summary: '更正：沐浴時注意到左手臂有一小片泛紅，長輩表示沒有疼痛',
       occurredAt: '2026-08-24T10:10:00+08:00',
@@ -85,6 +147,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'question-skin',
+      caseId: 'demo-case',
       kind: 'QUESTION',
       summary: '家裡昨晚沒有注意到泛紅，想請護理人員協助看看是否需要持續觀察',
       occurredAt: '2026-08-24T11:05:00+08:00',
@@ -99,6 +162,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'answer-skin',
+      caseId: 'demo-case',
       kind: 'ANSWER',
       summary: '已收到，下午服務時會依目前可見狀況協助觀察並回覆家屬',
       occurredAt: '2026-08-24T11:30:00+08:00',
@@ -113,6 +177,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'action-assigned',
+      caseId: 'demo-case',
       kind: 'ACTION_EVENT',
       summary: '已指派「服務時協助觀察手臂泛紅情況」給護理人員，等待本人接受',
       occurredAt: '2026-08-24T11:35:00+08:00',
@@ -127,6 +192,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'family-private-note',
+      caseId: 'demo-case',
       kind: 'OBSERVATION',
       summary: '週末將由家人陪同，先確認是否需要調整接送時間',
       occurredAt: '2026-08-24T19:00:00+08:00',
@@ -142,6 +208,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   actions: [
     {
       id: 'action-skin-check',
+      caseId: 'demo-case',
       title: '服務時協助觀察手臂泛紅情況',
       detail: '依現場可見狀況回覆家屬，不作診斷或醫囑',
       assigneeRole: 'NURSE',
@@ -152,6 +219,7 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
     },
     {
       id: 'action-meal-followup',
+      caseId: 'demo-case',
       title: '整理下週餐點取得方式',
       detail: '與家人確認送餐日後更新共同照顧摘要',
       assigneeRole: 'FAMILY',
@@ -159,6 +227,17 @@ export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
       dueAt: '2026-08-28T18:00:00+08:00',
       status: 'IN_PROGRESS',
       linkedQuestionId: 'meal-question'
+    },
+    {
+      id: 'action-river-followup',
+      caseId: 'river-case',
+      title: '確認下次護理服務交接窗口',
+      detail: '原負責人的服務期間已結束，等待協作管理者重新指派',
+      assigneeRole: 'NURSE',
+      assigneeName: '前任護理師',
+      dueAt: '2026-08-29T17:00:00+08:00',
+      status: 'NEEDS_REASSIGNMENT',
+      linkedQuestionId: 'skin-question'
     }
   ],
   questions: [

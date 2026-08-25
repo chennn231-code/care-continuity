@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { DEMO_ROLE_LABELS } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
 import { visibleTimelineEntries } from '../state/prototypeState';
@@ -6,9 +6,10 @@ import { StatusPill } from '../components/PrototypeShell';
 
 export function PrototypeCaseHomePage() {
   const { state } = usePrototype();
-  const latest = visibleTimelineEntries(state)[0];
-  const waiting = state.actions.filter((item) => item.assigneeRole === state.activeRole && item.status === 'PENDING_ACCEPTANCE');
-  const active = state.actions.filter((item) => item.assigneeRole === state.activeRole && ['ACCEPTED', 'IN_PROGRESS'].includes(item.status));
+  const { caseId = 'demo-case' } = useParams();
+  const latest = visibleTimelineEntries(state, state.activeRole, caseId)[0];
+  const waiting = state.actions.filter((item) => item.caseId === caseId && item.assigneeRole === state.activeRole && item.status === 'PENDING_ACCEPTANCE');
+  const active = state.actions.filter((item) => item.caseId === caseId && item.assigneeRole === state.activeRole && ['ACCEPTED', 'IN_PROGRESS'].includes(item.status));
   const unresolved = state.questions.filter((item) => item.status !== 'RESOLVED');
   return (
     <section className="v2-page">

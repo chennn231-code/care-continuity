@@ -2,6 +2,7 @@ import { DEMO_ROLE_LABELS } from '../data/mockData';
 import { StatusPill } from '../components/PrototypeShell';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { ActionStatus } from '../types/prototype';
+import { useParams } from 'react-router-dom';
 
 const statusLabels: Record<ActionStatus, string> = {
   PENDING_ACCEPTANCE: '等待接受', ACCEPTED: '已接受', IN_PROGRESS: '處理中', COMPLETED: '已完成',
@@ -15,12 +16,14 @@ const nextStep: Partial<Record<ActionStatus, { status: ActionStatus; label: stri
 
 export function PrototypeActionsPage() {
   const { state, moveAction, markQuestionResolved, clearSuccess } = usePrototype();
+  const { caseId = 'demo-case' } = useParams();
+  const caseActions = state.actions.filter((action) => action.caseId === caseId);
   return (
     <section className="v2-page">
       <header className="v2-page-heading"><p className="eyebrow">責任與進度</p><h1>處理事項</h1><p>指派、接受、開始處理與完成是不同階段</p></header>
       {state.successMessage && <div className="v2-toast" role="status"><span>{state.successMessage}</span><button type="button" onClick={clearSuccess}>關閉提示</button></div>}
       <div className="v2-principles"><span>指派不等於接受</span><span>接受不等於開始處理</span><span>事項完成不會自動解決問題</span></div>
-      <div className="v2-action-list">{state.actions.map((action) => {
+      <div className="v2-action-list">{caseActions.map((action) => {
         const step = nextStep[action.status];
         const canAct = action.assigneeRole === state.activeRole && step;
         const question = state.questions.find((item) => item.id === action.linkedQuestionId);

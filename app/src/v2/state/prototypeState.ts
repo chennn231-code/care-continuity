@@ -122,8 +122,8 @@ export function canRoleViewEntry(entry: TimelineEntry, role: DemoRole) {
   return entry.participantRoles?.includes(role) ?? entry.authorRole === role;
 }
 
-export function visibleTimelineEntries(state: PrototypeState, role = state.activeRole) {
-  return state.timeline.filter((entry) => canRoleViewEntry(entry, role));
+export function visibleTimelineEntries(state: PrototypeState, role = state.activeRole, caseId?: string) {
+  return state.timeline.filter((entry) => (!caseId || entry.caseId === caseId) && canRoleViewEntry(entry, role));
 }
 
 function rolesForScope(scope: SharingScope, authorRole: DemoRole, assigneeRole?: DemoRole): DemoRole[] | undefined {
@@ -136,6 +136,7 @@ export function addCareUpdate(state: PrototypeState, input: NewUpdateInput, now 
   const occurredAt = `${input.occurredDate}T${input.occurredTime}:00+08:00`;
   const entry: TimelineEntry = {
     id,
+    caseId: 'demo-case',
     kind: input.kind,
     summary: input.content.trim(),
     occurredAt,
@@ -151,6 +152,7 @@ export function addCareUpdate(state: PrototypeState, input: NewUpdateInput, now 
   const nextActions = input.needsAction && input.assigneeRole && input.dueAt
     ? [...state.actions, {
         id: `demo-action-${state.actions.length + 1}`,
+        caseId: 'demo-case',
         title: `跟進：${input.content.trim().slice(0, 24)}`,
         detail: '由新增照顧變化時建立的虛構處理事項',
         assigneeRole: input.assigneeRole,

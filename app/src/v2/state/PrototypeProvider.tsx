@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, type PropsWithChildren } from 'react';
 import { addCareUpdate, beginIdentityRegistration, completeIdentityRegistration, createInitialPrototypeState, resolveQuestion, selectIdentityType, selectProfessionalType, transitionAction } from './prototypeState';
-import type { ActionStatus, DemoRole, IdentityRegistrationMode, NewUpdateInput, PrimaryIdentityType, ProfessionalType, PrototypeState } from '../types/prototype';
+import { acceptPrototypeInvitation, createPrototypeInvitation, declinePrototypeInvitation, removeWorkspaceCaseAccess, resendPrototypeInvitation, revokePrototypeInvitation, setProfessionalVerification, simulateInvitationLogin, togglePrivateTag } from './invitationWorkspaceState';
+import type { ActionStatus, DemoRole, IdentityRegistrationMode, NewUpdateInput, PrimaryIdentityType, ProfessionalType, PrototypeInvitationInput, PrototypeState } from '../types/prototype';
 
 interface PrototypeContextValue {
   state: PrototypeState;
@@ -12,6 +13,15 @@ interface PrototypeContextValue {
   addUpdate: (input: NewUpdateInput) => void;
   moveAction: (actionId: string, status: ActionStatus) => void;
   markQuestionResolved: (questionId: string) => void;
+  createInvitation: (input: PrototypeInvitationInput) => void;
+  acceptInvitation: (invitationId: string) => void;
+  declineInvitation: (invitationId: string) => void;
+  revokeInvitation: (invitationId: string) => void;
+  resendInvitation: (invitationId: string) => void;
+  simulateInvitationLogin: (invitationId: string) => void;
+  setInvitationVerification: (invitationId: string, status: 'VERIFIED' | 'REJECTED') => void;
+  toggleCaseTag: (caseId: string, tagId: string) => void;
+  removeCaseAccess: (caseId: string, reason: 'EXPIRED' | 'REVOKED') => void;
   clearSuccess: () => void;
 }
 
@@ -29,6 +39,15 @@ export function PrototypeProvider({ children }: PropsWithChildren) {
     addUpdate: (input) => setState((current) => addCareUpdate(current, input)),
     moveAction: (actionId, status) => setState((current) => transitionAction(current, actionId, status, current.activeRole)),
     markQuestionResolved: (questionId) => setState((current) => resolveQuestion(current, questionId)),
+    createInvitation: (input) => setState((current) => createPrototypeInvitation(current, input)),
+    acceptInvitation: (invitationId) => setState((current) => acceptPrototypeInvitation(current, invitationId)),
+    declineInvitation: (invitationId) => setState((current) => declinePrototypeInvitation(current, invitationId)),
+    revokeInvitation: (invitationId) => setState((current) => revokePrototypeInvitation(current, invitationId)),
+    resendInvitation: (invitationId) => setState((current) => resendPrototypeInvitation(current, invitationId)),
+    simulateInvitationLogin: (invitationId) => setState((current) => simulateInvitationLogin(current, invitationId)),
+    setInvitationVerification: (invitationId, status) => setState((current) => setProfessionalVerification(current, invitationId, status)),
+    toggleCaseTag: (caseId, tagId) => setState((current) => togglePrivateTag(current, caseId, tagId)),
+    removeCaseAccess: (caseId, reason) => setState((current) => removeWorkspaceCaseAccess(current, caseId, reason)),
     clearSuccess: () => setState((current) => ({ ...current, successMessage: null }))
   }), [state]);
   return <PrototypeContext.Provider value={value}>{children}</PrototypeContext.Provider>;
