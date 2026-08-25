@@ -18,8 +18,8 @@ WinWin v2 由「備份心」v1 的照顧中斷與備援研究基線演進而來�
 
 目前狀態應區分為：
 
-- **已完成：** v2 治理、Domain／Logical Model、Migration 007 本機驗證，以及純前端身分、照顧協作、Invitation 與 Multi-case Workspace Prototype。
-- **已完成前端展示、尚未接後端：** Invitation & Multi-case Workspace 已完成 in-memory clickable slice 與 Prototype 範圍的 access guard。
+- **已完成：** v2 治理、Domain／Logical Model、Migration 007 本機驗證，以及純前端身分、照顧協作、Invitation、Multi-case Workspace 與 Professional Care Record Prototype。
+- **已完成前端展示、尚未接後端：** Invitation & Multi-case Workspace 及護理師專業照顧紀錄流程已完成 in-memory clickable slice 與 Prototype 範圍的 access guard。
 - **尚未部署：** Migration 007 remote apply、正式專業身分驗證、正式邀請後端補充契約及 v2 Production routes。
 
 ## WinWin v2 核心問題
@@ -73,6 +73,9 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 - 「我的個案」多個案工作區、安全搜尋與只有本人可見的私人標籤。
 - 到期或撤銷後從可見集合與私人標籤移除，未完成事項標示為需要重新指派。
 - 集中式 access selector 與共用個案 route guard；此 guard 僅供 Prototype 流程展示。
+- 護理師展示情境的專業照顧紀錄長表單，包含服務資訊、客觀觀察、評估、處置、後續追蹤與分享範圍。
+- 發布前家屬分享預覽，以及發布後的家屬最小必要資訊投影。
+- 已發布專業紀錄不可直接覆寫；更正以新版本追加，並保留原作者、時間與版本關係。
 - in-memory state；重新整理後重置。
 
 ### Prototype 限制
@@ -81,9 +84,31 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 - 不收集真實證照、身分證、機構文件或法律授權文件。
 - v2 Frontend Prototype 不連線 Supabase。
 - 不使用 `localStorage`、IndexedDB 或正式後端持久化。
+- 專業照顧紀錄不提供假的自動儲存；未發布內容離開頁面可能遺失。
 - 畫面中的角色、驗證、Membership 與 Grant 都是流程展示，不代表正式權限 enforcement。
+- 專業照顧紀錄目前只完成護理師展示情境，不代表其他專業職類已有正式紀錄模板。
+- 專業照顧紀錄 Prototype 不是正式病歷、護理紀錄或機構法定紀錄。
 - 使用者聲明授權不代表已完成身分代理、意思能力、電子簽章或法律效力驗證。
 - Prototype 不代表已符合所有個資、醫療或長照法規。
+
+## Professional Care Record Frontend Prototype 狀態
+
+**狀態：in-memory Frontend Prototype implemented／正式持久化與後端權限尚未完成。**
+
+目前已在護理師虛構展示情境中完成：
+
+- 從「我的個案」進入有效個案並建立專業照顧紀錄。
+- 明確顯示 acting role、服務目的與分享範圍。
+- 填寫客觀觀察、評估、實際處置與後續追蹤。
+- 發布前預覽家屬會看到與不會看到的資訊類型，不顯示隱藏內容數量。
+- 發布後保留作者、發生時間、紀錄時間、身分、目的與分享範圍。
+- 家屬只看到獲授權且不改寫原意的最小投影；專業限定內容不會出現在家屬畫面。
+- 已發布內容只能追加更正，原始版本不會被覆寫或消失。
+- 所有專業紀錄 routes 共用既有個案 access guard。
+
+此流程仍只使用 React in-memory 虛構資料，重新整理後重置；未連接 Supabase，也未完成正式自動儲存、資料持久化、後端內容授權或 Production 部署。前端 guard 只用於 Prototype 流程展示，正式安全邊界仍須由後端授權與 RLS 強制執行。
+
+目前可驗證的前端測試基線為 **214/214 PASS**。此數字代表 Repository 測試結果，不代表正式病歷、機構紀錄、法律授權或 Production 能力已驗證。
 
 ## Invitation & Multi-case Workspace 狀態
 
