@@ -1,10 +1,14 @@
 import { Link } from 'react-router-dom';
+import { V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PRODUCT_TAGLINE } from '../data/branding';
 
 export function PrototypeLandingPage() {
   return (
     <section className="v2-page v2-landing-page">
       <header className="v2-page-heading">
-        <p className="eyebrow">WinWin v2 Prototype</p>
+        <div className="v2-landing-brand">
+          <img src={V2_PRODUCT_LOGO} alt={V2_PRODUCT_LOGO_ALT} width={V2_PRODUCT_LOGO_WIDTH} height={V2_PRODUCT_LOGO_HEIGHT} />
+          <p>{V2_PRODUCT_TAGLINE}</p>
+        </div>
         <h1>選擇你想體驗的流程</h1>
         <p>所有內容都是虛構展示，不會建立帳號、連線資料庫或保存輸入內容</p>
       </header>

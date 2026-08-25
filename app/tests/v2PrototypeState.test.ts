@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { V2_DOCUMENT_TITLE, V2_PRODUCT_DESCRIPTION, V2_PRODUCT_NAME, V2_PROTOTYPE_NOTICE } from '../src/v2/data/branding';
+import { V2_DOCUMENT_TITLE, V2_PRODUCT_DESCRIPTION, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PRODUCT_NAME, V2_PRODUCT_TAGLINE, V2_PROTOTYPE_NOTICE } from '../src/v2/data/branding';
 import {
   addCareUpdate,
   createInitialPrototypeState,
@@ -74,6 +74,10 @@ describe('v2 frontend prototype state', () => {
 
   it('exposes the required prototype and fictional-data notice', () => {
     expect(V2_PRODUCT_NAME).toBe('WinWin');
+    expect(V2_PRODUCT_LOGO).toMatch(/winwin-wordmark\.png$/);
+    expect(V2_PRODUCT_LOGO_ALT).toBe('WinWin');
+    expect([V2_PRODUCT_LOGO_WIDTH, V2_PRODUCT_LOGO_HEIGHT]).toEqual([1916, 386]);
+    expect(V2_PRODUCT_TAGLINE).toBe('跨角色照顧協作 Prototype');
     expect(V2_DOCUMENT_TITLE).toBe('WinWin v2 流程展示');
     expect(V2_PROTOTYPE_NOTICE).toContain('WinWin v2 流程展示');
     expect(V2_PROTOTYPE_NOTICE).toContain('虛構資料');

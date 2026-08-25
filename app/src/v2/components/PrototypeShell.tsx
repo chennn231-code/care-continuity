@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { V2_DOCUMENT_TITLE, V2_PRODUCT_NAME, V2_PROTOTYPE_NOTICE } from '../data/branding';
+import { V2_DOCUMENT_TITLE, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PROTOTYPE_NOTICE } from '../data/branding';
 import { DEMO_ROLE_LABELS, IDENTITY_TYPE_LABELS, VERIFICATION_STATUS_LABELS } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { DemoRole } from '../types/prototype';
@@ -30,7 +30,7 @@ export function PrototypeShell() {
     <div className="v2-prototype">
       <a className="v2-skip-link" href="#v2-main">跳到主要內容</a>
       <header className="v2-topbar">
-        <Link className="v2-brand" to="/v2/prototype"><span aria-hidden="true">W</span><strong>{V2_PRODUCT_NAME}</strong></Link>
+        <Link className="v2-brand" to="/v2/prototype" aria-label="返回 WinWin v2 流程展示首頁"><img src={V2_PRODUCT_LOGO} alt={V2_PRODUCT_LOGO_ALT} width={V2_PRODUCT_LOGO_WIDTH} height={V2_PRODUCT_LOGO_HEIGHT} /></Link>
         {showAccountSummary && <Link className="v2-account-summary" to="/v2/prototype/profile/identities"><span>主要身分</span><strong>{primaryIdentity ? IDENTITY_TYPE_LABELS[primaryIdentity.identityType] : '尚未登錄'}</strong><small>{primaryIdentity ? VERIFICATION_STATUS_LABELS[primaryIdentity.verificationStatus] : '前往體驗註冊'}</small></Link>}
       </header>
       <div className="v2-prototype-notice" role="note"><strong>{V2_PROTOTYPE_NOTICE}</strong><small>本 Prototype 不代表正式身分、個案關係或權限驗證</small></div>
