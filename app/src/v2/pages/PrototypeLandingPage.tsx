@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PRODUCT_TAGLINE } from '../data/branding';
+import { V2_PRODUCT_TAGLINE } from '../data/branding';
 import { canCurrentActorAccessCase, prototypeDemoCaseEntryPath } from '../state/invitationWorkspaceState';
 import { usePrototype } from '../state/PrototypeProvider';
 
@@ -10,7 +10,6 @@ export function PrototypeLandingPage() {
     <section className="v2-page v2-landing-page">
       <header className="v2-page-heading">
         <div className="v2-landing-brand">
-          <img src={V2_PRODUCT_LOGO} alt={V2_PRODUCT_LOGO_ALT} width={V2_PRODUCT_LOGO_WIDTH} height={V2_PRODUCT_LOGO_HEIGHT} />
           <p>{V2_PRODUCT_TAGLINE}</p>
         </div>
         <h1>選擇你想體驗的流程</h1>

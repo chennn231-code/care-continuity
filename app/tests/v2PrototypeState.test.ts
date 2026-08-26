@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { V2_DOCUMENT_TITLE, V2_PRODUCT_DESCRIPTION, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PRODUCT_NAME, V2_PRODUCT_TAGLINE, V2_PROTOTYPE_NOTICE } from '../src/v2/data/branding';
+import { PrototypeShell } from '../src/v2/components/PrototypeShell';
+import { PrototypeLandingPage } from '../src/v2/pages/PrototypeLandingPage';
+import { PrototypeProvider } from '../src/v2/state/PrototypeProvider';
 import {
   addCareUpdate,
   createInitialPrototypeState,
@@ -109,6 +115,25 @@ describe('v2 frontend prototype state', () => {
     expect(V2_PROTOTYPE_NOTICE).toContain('虛構資料');
     expect(V2_PROTOTYPE_NOTICE).toContain('重新整理後會重置');
     expect(V2_PRODUCT_DESCRIPTION).toContain(V2_PRODUCT_NAME);
+  });
+
+  it('keeps the wordmark in the shared header without repeating it in the landing hero', () => {
+    const landingMarkup = renderToStaticMarkup(createElement(
+      MemoryRouter,
+      { initialEntries: ['/v2/prototype'] },
+      createElement(PrototypeProvider, null, createElement(PrototypeLandingPage))
+    ));
+    const shellMarkup = renderToStaticMarkup(createElement(
+      MemoryRouter,
+      { initialEntries: ['/v2/prototype'] },
+      createElement(PrototypeProvider, null, createElement(PrototypeShell))
+    ));
+
+    expect(landingMarkup).toContain(V2_PRODUCT_TAGLINE);
+    expect(landingMarkup).toContain('選擇你想體驗的流程');
+    expect(landingMarkup).not.toContain('winwin-wordmark.png');
+    expect(shellMarkup).toContain('winwin-wordmark.png');
+    expect(shellMarkup).toContain('返回 WinWin v2 流程展示首頁');
   });
 
   it('keeps a newly created question and action linked through one immutable id', () => {
