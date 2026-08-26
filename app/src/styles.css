@@ -472,12 +472,19 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .v2-identity-card small { color: var(--muted); }
 .v2-identity-card strong { font-size: clamp(1.5rem, 4vw, 2.15rem); }
 .v2-identity-card > span:last-child { color: var(--muted); line-height: 1.7; }
-.v2-identity-icon { display: grid; width: 4.5rem; height: 4.5rem; place-items: center; border-radius: 1.5rem; color: #fff; background: var(--mist-600); font-size: 1.35rem; font-weight: 800; }
+.v2-identity-illustration { display: grid; width: 100%; height: 10.5rem; place-items: end center; overflow: hidden; }
+.v2-identity-illustration img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .v2-carousel-dots { display: flex; justify-content: center; gap: 0.45rem; margin: 0.4rem 0 1.4rem; }
 .v2-carousel-dots span { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--mist-300); }
 .v2-carousel-dots span.active { width: 1.5rem; border-radius: 999px; background: var(--mist-700); }
 .v2-carousel-hint { margin: -0.75rem 0 1.25rem; color: var(--muted); font-size: 0.88rem; font-weight: 700; text-align: center; }
 .v2-wide-action { width: 100%; margin-top: 0.4rem; }
+
+@media (min-width: 721px) {
+  .v2-identity-illustration { height: 11.25rem; }
+  .v2-identity-illustration img { width: 11.25rem; height: 11.25rem; max-width: 100%; max-height: 100%; }
+}
+
 .v2-profession-groups { display: grid; gap: 1.3rem; }
 .v2-profession-groups fieldset { margin: 0; padding: 1rem; border: 1px solid rgba(88, 118, 134, 0.2); border-radius: 1.2rem; }
 .v2-profession-groups legend { padding: 0 0.45rem; color: var(--mist-700); font-weight: 800; }
@@ -610,6 +617,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .v2-landing-brand img { width: 82%; max-height: 6.5rem; margin: 0 auto 0.35rem; }
   .v2-identity-carousel { margin-inline: -0.5rem; padding-inline: 1rem; scroll-padding-inline: 1rem; }
   .v2-identity-card { flex-basis: min(82vw, 340px); min-height: 23rem; }
+  .v2-identity-illustration { height: 9rem; }
   .v2-credential-grid .v2-card { min-height: 0; }
   .v2-mock-qr { width: 6.5rem; }
   .v2-professional-record-form-page { width: min(100% - 0.75rem, 1080px); }

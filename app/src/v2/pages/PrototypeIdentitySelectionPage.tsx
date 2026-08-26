@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { IDENTITY_CARD_ILLUSTRATIONS } from '../data/identityCardIllustrations';
 import { IDENTITY_TYPE_LABELS } from '../data/mockData';
 import { IDENTITY_CAROUSEL_HINT } from '../data/registrationCopy';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { PrimaryIdentityType } from '../types/prototype';
 
-const identityOptions: Array<{ value: PrimaryIdentityType; icon: string; description: string }> = [
-  { value: 'SELF', icon: '人', description: '我是接受照顧服務或希望管理自己照顧資訊的人' },
-  { value: 'FAMILY', icon: '家', description: '我協助家中長者處理生活照顧、服務安排或健康相關事項' },
-  { value: 'PROFESSIONAL', icon: '照', description: '我以長照、醫療、復能、營養、心理或社會工作專業參與照顧' }
+const identityOptions: Array<{ value: PrimaryIdentityType; description: string }> = [
+  { value: 'SELF', description: '我是接受照顧服務或希望管理自己照顧資訊的人' },
+  { value: 'FAMILY', description: '我協助家中長者處理生活照顧、服務安排或健康相關事項' },
+  { value: 'PROFESSIONAL', description: '我以長照、醫療、復能、營養、心理或社會工作專業參與照顧' }
 ];
 
 const actionLabels: Record<PrimaryIdentityType, string> = {
@@ -56,7 +57,9 @@ export function PrototypeIdentitySelectionPage() {
             onClick={() => chooseIdentityType(option.value)}
             key={option.value}
           >
-            <span className="v2-identity-icon" aria-hidden="true">{option.icon}</span>
+            <span className="v2-identity-illustration" aria-hidden="true">
+              <img src={IDENTITY_CARD_ILLUSTRATIONS[option.value]} alt="" />
+            </span>
             <small>{index + 1}／{identityOptions.length}</small>
             <strong>{IDENTITY_TYPE_LABELS[option.value]}</strong>
             <span>{option.description}</span>
