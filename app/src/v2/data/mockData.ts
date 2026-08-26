@@ -40,19 +40,20 @@ export const PROFESSIONAL_TYPE_OPTIONS: Array<{
   value: ProfessionalType;
   category: string;
   label: string;
-  description: string;
 }> = [
-  { value: 'CASE_MANAGER', category: '個案協調與資源連結', label: '個案管理員／A單位個管員', description: '協調服務、連結資源並追蹤個案照顧安排' },
-  { value: 'CARE_WORKER', category: '第一線生活照顧', label: '照顧服務員', description: '依服務內容提供日常生活照顧與支持' },
-  { value: 'NURSE', category: '醫療與護理', label: '護理師', description: '依專業職責提供護理評估、照護與衛教' },
-  { value: 'PHYSICIAN', category: '醫療與護理', label: '醫師', description: '依專業職責提供診療與醫療建議' },
-  { value: 'PHYSICAL_THERAPIST', category: '復能與功能維持', label: '物理治療師', description: '協助動作、移動與身體功能的評估及訓練' },
-  { value: 'OCCUPATIONAL_THERAPIST', category: '復能與功能維持', label: '職能治療師', description: '協助日常活動能力、環境與輔具調整' },
-  { value: 'SPEECH_THERAPIST', category: '復能與功能維持', label: '語言治療師', description: '協助溝通、語言及吞嚥相關功能' },
-  { value: 'DIETITIAN', category: '營養、心理與社會支持', label: '營養師', description: '依專業評估提供飲食與營養支持' },
-  { value: 'PSYCHOLOGIST', category: '營養、心理與社會支持', label: '心理師', description: '提供心理評估與心理支持服務' },
-  { value: 'SOCIAL_WORKER', category: '營養、心理與社會支持', label: '社會工作人員', description: '協助社會資源、家庭支持與服務協調' }
+  { value: 'CASE_MANAGER', category: '個案協調與資源連結', label: '個案管理員／A單位個管員' },
+  { value: 'CARE_WORKER', category: '第一線生活照顧', label: '照顧服務員' },
+  { value: 'NURSE', category: '醫療與護理', label: '護理師' },
+  { value: 'PHYSICIAN', category: '醫療與護理', label: '醫師' },
+  { value: 'PHYSICAL_THERAPIST', category: '復能與功能維持', label: '物理治療師' },
+  { value: 'OCCUPATIONAL_THERAPIST', category: '復能與功能維持', label: '職能治療師' },
+  { value: 'SPEECH_THERAPIST', category: '復能與功能維持', label: '語言治療師' },
+  { value: 'DIETITIAN', category: '營養、心理與社會支持', label: '營養師' },
+  { value: 'PSYCHOLOGIST', category: '營養、心理與社會支持', label: '心理師' },
+  { value: 'SOCIAL_WORKER', category: '營養、心理與社會支持', label: '社會工作人員' }
 ];
+
+export const PROFESSIONAL_VERIFICATION_HINT = '需完成相應身分及資格驗證後才能開通相關權限';
 
 export const INITIAL_PROTOTYPE_STATE: PrototypeState = {
   currentAccountId: 'demo-account',

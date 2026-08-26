@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { PROFESSIONAL_TYPE_OPTIONS } from '../data/mockData';
+import { PROFESSIONAL_TYPE_OPTIONS, PROFESSIONAL_VERIFICATION_HINT } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
 
 export function PrototypeProfessionPage() {
@@ -15,7 +15,7 @@ export function PrototypeProfessionPage() {
         {categories.map((category) => <fieldset key={category}><legend>{category}</legend><div className="v2-profession-grid">
           {PROFESSIONAL_TYPE_OPTIONS.filter((option) => option.category === category).map((option) => <label className={`v2-profession-card ${selected === option.value ? 'selected' : ''}`} key={option.value}>
             <input type="radio" name="profession" value={option.value} checked={selected === option.value} onChange={() => chooseProfessionalType(option.value)} />
-            <strong>{option.label}</strong><span>{option.description}</span><small>需完成相應身分及資格驗證後才能開通相關權限</small>
+            <strong>{option.label}</strong><small>{PROFESSIONAL_VERIFICATION_HINT}</small>
           </label>)}
         </div></fieldset>)}
       </div>

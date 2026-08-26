@@ -487,12 +487,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .v2-profession-groups { display: grid; gap: 1.3rem; }
 .v2-profession-groups fieldset { margin: 0; padding: 1rem; border: 1px solid rgba(88, 118, 134, 0.2); border-radius: 1.2rem; }
-.v2-profession-groups legend { padding: 0 0.45rem; color: var(--mist-700); font-weight: 800; }
+.v2-profession-groups legend { padding: 0 0.45rem; color: var(--mist-700); font-size: 1.125rem; font-weight: 800; line-height: 1.4; }
 .v2-profession-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
-.v2-profession-card { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.7rem; padding: 1rem; border: 2px solid transparent; border-radius: 1rem; background: rgba(255, 253, 248, 0.9); cursor: pointer; }
+.v2-profession-card { display: grid; grid-template-columns: auto 1fr; align-content: start; gap: 0.4rem 0.7rem; padding: 1rem; border: 2px solid transparent; border-radius: 1rem; background: rgba(255, 253, 248, 0.9); cursor: pointer; }
 .v2-profession-card.selected { border-color: var(--mist-600); background: var(--mist-100); }
-.v2-profession-card input { grid-row: 1 / span 3; margin-top: 0.25rem; }
-.v2-profession-card span, .v2-profession-card small { color: var(--muted); line-height: 1.5; }
+.v2-profession-card input { grid-row: 1 / span 2; margin-top: 0.25rem; }
+.v2-profession-card strong { font-size: 1.125rem; font-weight: 700; line-height: 1.4; }
+.v2-profession-card small { color: var(--muted); font-size: 0.9375rem; line-height: 1.55; }
 .v2-verification-card { display: grid; gap: 1rem; }
 .v2-verification-card > div { display: grid; gap: 0.25rem; }
 .v2-verification-card > div span, .v2-complete-card > span { color: var(--muted); font-size: 0.8rem; }
