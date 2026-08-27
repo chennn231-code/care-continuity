@@ -94,20 +94,25 @@ Environment Start Gate重新確認：CLI versions、daemon、disk、containers�
 
 Environment Start前必須以byte-aware方式驗證ASCII-only、regex與byte count精確為35；不得只使用字元數或肉眼判斷。去敏evidence只可保存requested byte count、regex PASS／FAIL及uniqueness PASS／FAIL，不得保存suffix生成來源或其他private recovery material。
 
-Start後必須立即驗證以下完整八方ownership equality：
+Start後必須立即驗證以下Ownership Integrity Contract；它不是把多筆資產聚合成固定數量的單值，也不保留任何未被證明存在且獨立的第三個CLI ownership來源：
 
 ```text
 requested project ID
-= config project_id
-= Supabase CLI reported ownership ID
-= com.supabase.cli.project label
-= com.docker.compose.project label
-= candidate container ownership
-= candidate volume ownership
-= candidate network ownership
+= exact config project_id
+AND for every observed candidate container accepted into the runtime set:
+    raw com.supabase.cli.project = requested project ID
+    raw com.docker.compose.project = requested project ID
+AND for every observed candidate volume accepted into the runtime set:
+    raw com.supabase.cli.project = requested project ID
+    raw com.docker.compose.project = requested project ID
+AND for every observed candidate network accepted into the runtime set:
+    raw com.supabase.cli.project = requested project ID
+    raw com.docker.compose.project = requested project ID
 ```
 
-上述比較必須涵蓋本次manifest預期的每一個candidate container、volume與network，並確認沒有混入其他ownership值。任何missing label、missing resource、mixed ownership、截斷、大小寫正規化、unexpected additional ownership value或其他不一致均須立即停止並保留現場；不得自動修正、換ID或重試。
+每個resource assertion都必須保存exact resource identity及兩個raw label values，逐列與requested ID做byte-for-byte comparison。禁止先聚合成unique ownership set、以`sort -u`消除差異、trim、case-fold、Unicode normalization、prefix／substring match、以resource name推論ownership，或以config值替代Docker observable。
+
+任何missing／malformed label、truncated或normalized-only match、mixed／foreign ownership、unexpected candidate、ambiguous identity或其他不一致均須立即停止並保留現場；不得自動修正、換ID、換port或重試。Missing label不得轉成空值後繼續。只有Section 4.3的resource acceptance全部通過，該批資產才可形成`verified runtime resource set`。
 
 #### Historical project ID denylist
 
@@ -149,6 +154,46 @@ care-continuity-mvp-engine-implementatio
 | Database pooler | `[db.pooler].port` | 59329 | Optional connection pooler | config parse；若disabled仍保留並驗證無listener | 同上 |
 
 Auth、Realtime、Storage及S3 protocol目前經API gateway而沒有獨立host-port config key；Environment Start仍須以實際Docker published-port inventory確認CLI版本沒有增加未列出的host listener。任何新增listener均視為mapping mismatch並立即停止，而非臨時挑選其他port。
+
+### 4.3 Resource Expectation, discovery, and acceptance contract
+
+Supabase CLI `2.115.0`目前沒有經本設計建立的pre-start dry-run／resource-plan observable，可在Environment Start前可靠列出所有exact runtime container、volume與network names。因此本設計不得假裝已知這些exact names，也不得從歷史stack猜測、複製，或在start後以actual資產倒填pre-start expected truth。
+
+#### A. Pre-start Resource Expectation Contract
+
+Environment Start前必須凍結當時可被可靠證明的constraint whitelist：
+
+- requested 35-byte project／session identity及exact config `project_id`；
+- frozen Supabase CLI version、exact workdir／session root及remote identity absent；
+- allowed resource classes：container、volume、network，以及各類允許的service／purpose categories；
+- Section 4.2完整allowed host-port set及每個service的port relationship；
+- 每個candidate都必須具備的兩個raw ownership labels及byte-exact expected value；
+- 只有經reviewed static evidence證明的naming derivation rule、required class或cardinality；無法靜態證明者須明列`unknown-until-discovery`，不得填入推測值；
+- frozen discovery parser、resource acceptance comparator、evidence schema及checksums；
+- foreign／mixed ownership、missing／additional／ambiguous resource及unexpected port的fail-closed rules。
+
+Expectation Contract不得包含placeholder，亦不得聲稱unknown runtime exact names已知。任何required class／cardinality若無可靠static evidence，必須保留unknown並由下述acceptance rule判定；若因此無法排除不安全或不完整stack，Gate 7必須FAIL。
+
+#### B. Post-start Candidate Resource Discovery
+
+Environment Start成功只代表CLI process完成，不代表任何新資產已被接受。第一次inspection-only Docker discovery只產生`observed candidate resources`：逐一保存exact resource ID／name、resource class、allowlisted published ports，以及兩個allowlisted ownership labels；不得擷取all-label metadata或把discovery結果寫回Expectation Contract。
+
+Discovery必須同時偵測：candidate scope內所有資產、指向candidate ownership的資產、使用allowed ports的資產，以及與frozen workdir／compose scope相關的資產。Parser crash、partial output、missing label、duplicate／ambiguous identity或無法完成全量inspection均FAIL，不得把未觀測到視為不存在。
+
+#### C. Post-start Resource Acceptance
+
+每個observed candidate必須逐項通過：
+
+1. resource class與service／purpose category屬Expectation Contract allowlist；
+2. resource位於核准session／workdir／project scope，沒有foreign或mixed ownership；
+3. Section 4.1兩個raw ownership labels都與requested ID byte-for-byte相等；
+4. published ports是Section 4.2允許的exact mapping，且沒有額外host listener／mapping；
+5. resource relationship符合已review的static naming／service contract；
+6. required class／cardinality若已被static evidence凍結，實際集合必須精確符合；
+7. unknown-until-discovery項目仍須由明確allowlist、ownership、scope、port及relationship assertions驗證，不能因「已被找到」而被接受；
+8. absence、additional、ambiguous或無法分類的resource一律fail closed。
+
+只有全部候選及集合層assertions通過，才形成不可倒填Expectation Contract的`verified runtime resource set`。明確禁止`actual = expected because actual was discovered`的循環驗證。Gate 7仍為inspection-only；失敗後保存現場，不修改candidate、不rename／repair、不換ID／port、不retry／cleanup，等待新授權。
 
 ## 5. Minimal disposable proof objects
 
@@ -369,7 +414,7 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 ## 12. Stack stop and cleanup strategy
 
 - Spike成功或失敗後只可考慮對精確workdir執行一般`supabase stop`。執行stop前必須重新核對exact temp root、exact workdir、exact project ID、Section 4.2完整service-port mapping、對應containers、對應volumes，以及它們不屬於Round 1、Round 2或其他歷史stack。
-- Stop preflight必須再次證明沒有remote link／remote identity，project ID與ports和本次frozen manifest一致；任何一項不一致即不得執行stop，須停止回報並等待精確授權。
+- Stop preflight必須再次證明沒有remote link／remote identity，project ID與ports符合本次frozen Resource Expectation Contract，且待停止的containers、volumes、network逐一屬於Gate 7形成的verified runtime resource set；任何一項不一致即不得執行stop，須停止回報並等待精確授權。
 - 不使用`--no-backup`，不直接刪除Docker container／volume。
 - 不使用`--all`。
 - Stop後保留專用volumes、temp root與sanitized evidence供審查。
@@ -385,10 +430,10 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 1. **Spike Design Correction Gate** — 修正本文件的project ID ownership邊界；設計而不執行。
 2. **Final Read-only Design Correction Review** — 唯讀確認格式、byte-count、denylist、既有隔離與stop規則無退步。
 3. **Design Correction Checkpoint** — 只保存本設計文件；不構成任何執行授權。
-4. **New Session Identity Reservation Gate** — 另經授權後只產生一個35-byte候選ID與全新temp root，完成歷史唯一性、ports及資產baseline核對；不得啟動stack。
-5. **Environment Start Authorization Review** — 凍結exact ID、workdir、ports、commands、fixtures、evidence與cleanup exclusions。
-6. **Environment Start Execution Gate** — operator明確授權後才可啟動指定隔離stack；不得同時執行SQL、Auth或Spike tests。
-7. **Post-start Ownership Verification Gate** — 立即驗證Section 4.1的完整八方ownership equality；任何不一致立即停止並保留現場。
+4. **New Session Identity Reservation Gate** — 另經授權後只產生一個35-byte候選ID與全新temp root，完成歷史唯一性、ports及資產baseline核對，並凍結Section 4.3的Pre-start Resource Expectation Contract；不得啟動stack，不要求或猜測無法事前證明的runtime exact resource names。
+5. **Environment Start Authorization Review** — 唯讀審查exact ID、workdir、ports、Expectation Contract、candidate discovery／resource acceptance procedure、commands、parsers／comparators／checksums、fixtures、evidence與cleanup exclusions。PASS仍不授權Environment Start。
+6. **Environment Start Execution Gate** — operator另行明確授權後才可執行已核准的exact start commands；不得同時執行SQL、Auth或Spike tests，也不得把新發現resource自動接受為trusted。
+7. **Post-start Resource Discovery／Ownership Integrity Verification Gate** — inspection-only依Section 4.3執行candidate discovery、exact identity capture、Section 4.1逐資產Ownership Integrity Contract、resource acceptance及verified runtime resource set formation。只有所有required assertions成立才PASS；任何不一致立即停止並保留現場。
 8. **Spike Test Execution Authorization Gate** — ownership驗證PASS後，才可另行授權SQL、Auth與20項tests。
 9. **Technical Evidence Gate** — 執行20 tests、核對sanitized evidence與stop state。
 10. **Decision Revision Gate** — 將證據回填Migration Draft Design的SEC／PD dispositions。
@@ -400,6 +445,10 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 - Git／hash／target preflight mismatch或既有非目標working-tree change。
 - Docker／Supabase環境不符合凍結版本、disk不足或candidate port collision。
 - Temp project包含remote identity、link、`.env`、`.temp`、existing seed／volume。
+- Resource Expectation Contract含未知exact names的推測值、placeholder或未經review的naming／cardinality assertion。
+- Candidate discovery不完整、parser failure，或將observed actual倒填成expected truth。
+- Candidate resource class／scope／port／relationship不在allowlist，或存在missing、additional、ambiguous、foreign／mixed ownership。
+- 任一required ownership label missing／malformed／truncated／normalized-only match，或未與requested ID逐資產byte-exact相等。
 - Credential、token、connection string或unredacted fixture identity寫入evidence。
 - Dedicated NOLOGIN non-BYPASSRLS owner不可行或需過度privileges。
 - Auth delete無法fail closed或只靠App cleanup。
@@ -413,11 +462,13 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 
 ## 14. Output decision and proof backfill
 
-**READY FOR FINAL READ-ONLY REVIEW FOR SPIKE DESIGN CHECKPOINT — EXECUTION NOT AUTHORIZED**
+**READY FOR TARGETED NORMATIVE DESIGN CORRECTION HUMAN REVIEW — EXECUTION NOT AUTHORIZED**
 
 Gate狀態：
 
-- Spike Design checkpoint：仍須Final Read-only Review。
+- Existing Spike Design checkpoint：`e2b5f24bf164d8ddc10139bf175f27ed9b776920`；本次targeted correction尚未checkpoint。
+- Targeted Normative Design Correction：**READY FOR HUMAN REVIEW**。
+- Runbook cross-document consistency：**PENDING**；須在本次correction通過後另行同步，不能以目前Runbook作execution procedure。
 - Execution Authorization：**NOT GRANTED**。
 - Environment Start：**NOT AUTHORIZED**。
 - Local Spike execution：**NOT AUTHORIZED**。
