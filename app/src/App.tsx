@@ -1,18 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import type { ReactNode } from 'react';
-import { RequireAuth } from './auth/RequireAuth';
-import { AuthPage } from './pages/AuthPage';
-import { ConfirmEmailPage } from './pages/ConfirmEmailPage';
-import { ProtectedHomePage } from './pages/ProtectedHomePage';
-import { ReceiverSetupPage } from './pages/ReceiverSetupPage';
-import { TaskSetupPage } from './pages/TaskSetupPage';
-import { SourceSetupPage } from './pages/SourceSetupPage';
-import { AssignmentSetupPage } from './pages/AssignmentSetupPage';
-import { ScenarioPage } from './pages/ScenarioPage';
-import { BackupSetupPage } from './pages/BackupSetupPage';
-import { HandoffSetupPage } from './pages/HandoffSetupPage';
-import { HandoffPrintPage } from './pages/HandoffPrintPage';
-import { LegacyBoundary } from './components/LegacyBoundary';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { RootEntryRoute } from './auth/RootEntryRoute';
+import { LegacyLoadBoundary, LegacyLoading } from './auth/LegacyLoadBoundary';
 import { PrototypeProvider } from './v2/state/PrototypeProvider';
 import { PrototypeShell } from './v2/components/PrototypeShell';
 import { PrototypeCasesPage } from './v2/pages/PrototypeCasesPage';
@@ -40,6 +29,26 @@ import { PrototypeProfessionalRecordNewPage } from './v2/pages/PrototypeProfessi
 import { PrototypeProfessionalRecordDetailPage } from './v2/pages/PrototypeProfessionalRecordDetailPage';
 import { PrototypeProfessionalRecordCorrectionPage } from './v2/pages/PrototypeProfessionalRecordCorrectionPage';
 
+// Only matched Legacy routes import this module. Its AuthProvider and pages
+// share the existing Supabase singleton; WinWin never loads that import chain.
+function lazyLegacy(name: keyof typeof import('./auth/LegacyRoutes')) {
+  return lazy(async () => ({ default: (await import('./auth/LegacyRoutes'))[name] }));
+}
+
+const LegacyLayout = lazyLegacy('LegacyLayout');
+const RequireAuth = lazyLegacy('RequireAuth');
+const AuthPage = lazyLegacy('AuthPage');
+const ConfirmEmailPage = lazyLegacy('ConfirmEmailPage');
+const ProtectedHomePage = lazyLegacy('ProtectedHomePage');
+const ReceiverSetupPage = lazyLegacy('ReceiverSetupPage');
+const TaskSetupPage = lazyLegacy('TaskSetupPage');
+const SourceSetupPage = lazyLegacy('SourceSetupPage');
+const AssignmentSetupPage = lazyLegacy('AssignmentSetupPage');
+const ScenarioPage = lazyLegacy('ScenarioPage');
+const BackupSetupPage = lazyLegacy('BackupSetupPage');
+const HandoffSetupPage = lazyLegacy('HandoffSetupPage');
+const HandoffPrintPage = lazyLegacy('HandoffPrintPage');
+
 const v2CaseRouteElements: Record<V2GuardedCaseRouteSuffix, ReactNode> = {
   '': <PrototypeCaseHomePage />,
   timeline: <PrototypeTimelinePage />,
@@ -57,7 +66,7 @@ export const DEFAULT_PRODUCT_PATH = '/v2/prototype';
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to={DEFAULT_PRODUCT_PATH} replace />} />
+      <Route path="/" element={<RootEntryRoute />} />
       <Route path="/v2/prototype" element={<PrototypeProvider><PrototypeShell /></PrototypeProvider>}>
         <Route index element={<PrototypeLandingPage />} />
         <Route path="register" element={<PrototypeRegisterIntroPage />} />
@@ -78,7 +87,7 @@ export function App() {
             : <Route index element={v2CaseRouteElements[path]} key="index" />)}
         </Route>
       </Route>
-      <Route element={<LegacyBoundary />}>
+      <Route element={<LegacyLoadBoundary><Suspense fallback={<LegacyLoading />}><LegacyLayout /></Suspense></LegacyLoadBoundary>}>
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/auth/confirm" element={<ConfirmEmailPage />} />
         <Route element={<RequireAuth />}>
