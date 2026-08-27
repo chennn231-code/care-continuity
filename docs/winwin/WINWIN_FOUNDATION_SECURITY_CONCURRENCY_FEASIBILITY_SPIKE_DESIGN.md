@@ -57,8 +57,8 @@ Docker daemon unavailable使container／volume inventory為**未確認**，不�
 未來執行前須凍結以下配置，但本輪不建立：
 
 - 使用`mktemp -d`產生全新session root；不得重用先前目錄。
-- 建立無Production語意的新local `project_id`，格式候選為`winwin-fnd-spike-<UTC>-<opaque-suffix>`；隨機性本身不構成唯一性證據。
-- 將project ID與Repository、existing containers／volumes、temp roots及evidence中的全部歷史IDs逐一比較；已知`care-continuity-v2-007-dryrun-r2`固定禁止重用。
+- 建立無Production語意的新local `project_id`；必須符合Section 4.1的固定ASCII格式、精確byte-count與歷史禁止重用規則，隨機性本身不構成唯一性證據。
+- 將project ID與Repository、existing containers／volumes、temp roots及evidence中的全部歷史IDs逐一進行完整字串比較；不得只比較prefix。
 - 任一project ID命中歷史紀錄或既有資產即停止；Environment Start前保存只含symbolic結果的去敏比對摘要，且stop前再次核對。
 - 使用完整且固定的候選service-port mapping 59320–59329；543xx、563xx、573xx、583xx全部禁止作candidate或fallback。
 - 設定`SUPABASE_TELEMETRY_DISABLED=1`及`umask 077`。
@@ -72,7 +72,68 @@ Docker daemon unavailable使container／volume inventory為**未確認**，不�
 
 Environment Start Gate重新確認：CLI versions、daemon、disk、containers、volumes、ports、workdir real path、remote link absent、Repository Git clean與Migration 001–008 hashes。
 
-### 4.1 Frozen candidate service-port mapping
+### 4.1 Project ID ownership boundary and frozen candidate format
+
+#### Observed technical fact
+
+在Supabase CLI `2.115.0`的本次Local環境實測中，requested project ID為42 ASCII bytes，但CLI／Docker ownership只採用前40 bytes，最後2 bytes遭截斷。Requested ID與實際ownership不一致，因此該次Environment Start判定失敗。這是本次版本與環境的實測邊界，不是所有Supabase版本永久不變的公開保證；未來CLI版本改變時仍須重新驗證，不得假設限制已消失。
+
+本文件只保存上述去敏後的byte-count與ownership結果，不保存raw bootstrap內容、credential、JWT、URL key、password、connection string、完整Auth ID或raw log內容。
+
+#### Frozen candidate ID rule
+
+未來Foundation Spike project ID必須同時符合：
+
+- 僅使用ASCII，且符合`^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$`。
+- 固定長度為35 ASCII bytes，絕對不得超過40 bytes，保留5 bytes安全餘裕。
+- UTC timestamp精確到秒；suffix為12個小寫hex字元。
+- 不允許空格、底線、大寫、Unicode或regex未允許的其他標點。
+- 每一個新session只產生一個候選ID；不得保留fallback ID。
+- 不得在啟動中自動縮短、重新產生或更換ID重試。
+- 本設計修正不產生真正的新project ID；候選ID只能在後續獨立Gate取得授權後產生。
+
+Environment Start前必須以byte-aware方式驗證ASCII-only、regex與byte count精確為35；不得只使用字元數或肉眼判斷。去敏evidence只可保存requested byte count、regex PASS／FAIL及uniqueness PASS／FAIL，不得保存suffix生成來源或其他private recovery material。
+
+Start後必須立即驗證以下完整八方ownership equality：
+
+```text
+requested project ID
+= config project_id
+= Supabase CLI reported ownership ID
+= com.supabase.cli.project label
+= com.docker.compose.project label
+= candidate container ownership
+= candidate volume ownership
+= candidate network ownership
+```
+
+上述比較必須涵蓋本次manifest預期的每一個candidate container、volume與network，並確認沒有混入其他ownership值。任何missing label、missing resource、mixed ownership、截斷、大小寫正規化、unexpected additional ownership value或其他不一致均須立即停止並保留現場；不得自動修正、換ID或重試。
+
+#### Historical project ID denylist
+
+下列完整ID均已使用、曾被要求、遭截斷或屬既有Repository identity，永久禁止作為新session ID重用：
+
+```text
+care-continuity-v2-007-dryrun
+care-continuity-v2-007-dryrun-r2
+care-continuity-v2-007-harness-202608241
+cc-v2-007-20260824140240-5706
+cc-v2-007-20260824140414-5979
+cc-v2-007-rc-20260824141640-6608
+cc-v2-007-rc-20260825065419-33765
+cc-v2-007-rc-20260825065713-34084
+cc-v2-007-rc-20260825070351-34976
+cc-v2-008-legacy-34427
+cc-v2-008-legacy-final-35240
+cc-v2-008-rollback-34689
+winwin-fnd-spike-20260827t052047z-645c81
+winwin-fnd-spike-20260827t052047z-645c8132
+care-continuity-mvp-engine-implementatio
+```
+
+此清單是最低禁止集合，不取代每次Environment Start前對Repository、containers、volumes、networks、temp roots、evidence與其他保存紀錄重新取聯集。現有失敗session的temp root及三個retained volumes只作歷史現場，不得attach、清除或供新session重用。
+
+### 4.2 Frozen candidate service-port mapping
 
 | Service | Config key | Candidate host port | Purpose | Environment Start verification | Collision response |
 |---|---|---:|---|---|---|
@@ -307,7 +368,7 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 
 ## 12. Stack stop and cleanup strategy
 
-- Spike成功或失敗後只可考慮對精確workdir執行一般`supabase stop`。執行stop前必須重新核對exact temp root、exact workdir、exact project ID、Section 4.1完整service-port mapping、對應containers、對應volumes，以及它們不屬於Round 1、Round 2或其他歷史stack。
+- Spike成功或失敗後只可考慮對精確workdir執行一般`supabase stop`。執行stop前必須重新核對exact temp root、exact workdir、exact project ID、Section 4.2完整service-port mapping、對應containers、對應volumes，以及它們不屬於Round 1、Round 2或其他歷史stack。
 - Stop preflight必須再次證明沒有remote link／remote identity，project ID與ports和本次frozen manifest一致；任何一項不一致即不得執行stop，須停止回報並等待精確授權。
 - 不使用`--no-backup`，不直接刪除Docker container／volume。
 - 不使用`--all`。
@@ -321,13 +382,18 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 
 ### 13.1 Gate sequence
 
-1. **Spike Design Gate** — 本文件，設計而不執行。
-2. **Execution Authorization Gate** — 凍結commands、temp root policy、ports、fixtures、evidence與cleanup exclusions。
-3. **Environment Start Gate** — operator確認Docker daemon後重做唯讀inventory，才可啟動隔離stack。
-4. **Technical Evidence Gate** — 執行20 tests、核對sanitized evidence與stop state。
-5. **Decision Revision Gate** — 將證據回填Migration Draft Design的SEC／PD dispositions。
-6. **Migration Design Freeze Gate** — 所有blocking proof關閉後才審查。
-7. **SQL Draft Gate** — Freeze checkpoint後仍需獨立授權。
+1. **Spike Design Correction Gate** — 修正本文件的project ID ownership邊界；設計而不執行。
+2. **Final Read-only Design Correction Review** — 唯讀確認格式、byte-count、denylist、既有隔離與stop規則無退步。
+3. **Design Correction Checkpoint** — 只保存本設計文件；不構成任何執行授權。
+4. **New Session Identity Reservation Gate** — 另經授權後只產生一個35-byte候選ID與全新temp root，完成歷史唯一性、ports及資產baseline核對；不得啟動stack。
+5. **Environment Start Authorization Review** — 凍結exact ID、workdir、ports、commands、fixtures、evidence與cleanup exclusions。
+6. **Environment Start Execution Gate** — operator明確授權後才可啟動指定隔離stack；不得同時執行SQL、Auth或Spike tests。
+7. **Post-start Ownership Verification Gate** — 立即驗證Section 4.1的完整八方ownership equality；任何不一致立即停止並保留現場。
+8. **Spike Test Execution Authorization Gate** — ownership驗證PASS後，才可另行授權SQL、Auth與20項tests。
+9. **Technical Evidence Gate** — 執行20 tests、核對sanitized evidence與stop state。
+10. **Decision Revision Gate** — 將證據回填Migration Draft Design的SEC／PD dispositions。
+11. **Migration Design Freeze Gate** — 所有blocking proof關閉後才審查。
+12. **SQL Draft Gate** — Freeze checkpoint後仍需獨立授權。
 
 ### 13.2 Immediate stop conditions
 
