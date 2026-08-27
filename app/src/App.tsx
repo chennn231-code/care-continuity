@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { RequireAuth } from './auth/RequireAuth';
 import { AuthPage } from './pages/AuthPage';
@@ -12,6 +12,7 @@ import { ScenarioPage } from './pages/ScenarioPage';
 import { BackupSetupPage } from './pages/BackupSetupPage';
 import { HandoffSetupPage } from './pages/HandoffSetupPage';
 import { HandoffPrintPage } from './pages/HandoffPrintPage';
+import { LegacyBoundary } from './components/LegacyBoundary';
 import { PrototypeProvider } from './v2/state/PrototypeProvider';
 import { PrototypeShell } from './v2/components/PrototypeShell';
 import { PrototypeCasesPage } from './v2/pages/PrototypeCasesPage';
@@ -51,27 +52,12 @@ const v2CaseRouteElements: Record<V2GuardedCaseRouteSuffix, ReactNode> = {
   'records/:recordId/correct': <PrototypeProfessionalRecordCorrectionPage />
 };
 
-function AuthEntryRoute() {
-  const location = useLocation();
-  const hasAuthCallback =
-    location.search.includes('code=') ||
-    location.search.includes('error=') ||
-    location.hash.includes('access_token=') ||
-    location.hash.includes('error=');
-
-  if (hasAuthCallback) {
-    return <Navigate to={`/auth/confirm${location.search}${location.hash}`} replace />;
-  }
-
-  return <Navigate to="/auth" replace />;
-}
+export const DEFAULT_PRODUCT_PATH = '/v2/prototype';
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<AuthEntryRoute />} />
-      <Route path="/auth" element={<AuthPage />} />
-      <Route path="/auth/confirm" element={<ConfirmEmailPage />} />
+      <Route path="/" element={<Navigate to={DEFAULT_PRODUCT_PATH} replace />} />
       <Route path="/v2/prototype" element={<PrototypeProvider><PrototypeShell /></PrototypeProvider>}>
         <Route index element={<PrototypeLandingPage />} />
         <Route path="register" element={<PrototypeRegisterIntroPage />} />
@@ -92,18 +78,22 @@ export function App() {
             : <Route index element={v2CaseRouteElements[path]} key="index" />)}
         </Route>
       </Route>
-      <Route element={<RequireAuth />}>
-        <Route path="/setup/receiver" element={<ReceiverSetupPage />} />
-        <Route path="/setup/tasks" element={<TaskSetupPage />} />
-        <Route path="/setup/sources" element={<SourceSetupPage />} />
-        <Route path="/setup/assignments" element={<AssignmentSetupPage />} />
-        <Route path="/setup/backups" element={<BackupSetupPage />} />
-        <Route path="/setup/handoffs" element={<HandoffSetupPage />} />
-        <Route path="/handoffs/print" element={<HandoffPrintPage />} />
-        <Route path="/scenario" element={<ScenarioPage />} />
-        <Route path="/app" element={<ProtectedHomePage />} />
+      <Route element={<LegacyBoundary />}>
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="/auth/confirm" element={<ConfirmEmailPage />} />
+        <Route element={<RequireAuth />}>
+          <Route path="/setup/receiver" element={<ReceiverSetupPage />} />
+          <Route path="/setup/tasks" element={<TaskSetupPage />} />
+          <Route path="/setup/sources" element={<SourceSetupPage />} />
+          <Route path="/setup/assignments" element={<AssignmentSetupPage />} />
+          <Route path="/setup/backups" element={<BackupSetupPage />} />
+          <Route path="/setup/handoffs" element={<HandoffSetupPage />} />
+          <Route path="/handoffs/print" element={<HandoffPrintPage />} />
+          <Route path="/scenario" element={<ScenarioPage />} />
+          <Route path="/app" element={<ProtectedHomePage />} />
+        </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={DEFAULT_PRODUCT_PATH} replace />} />
     </Routes>
   );
 }

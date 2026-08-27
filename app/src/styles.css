@@ -37,6 +37,25 @@ h1, h2, h3 {
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 
+.legacy-boundary { min-height: 100vh; }
+.legacy-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem clamp(1rem, 4vw, 2rem);
+  border-bottom: 1px solid rgba(88, 118, 134, 0.24);
+  color: var(--mist-700);
+  background: #edf3f3;
+  line-height: 1.5;
+}
+.legacy-notice > div { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.legacy-notice span { color: var(--muted); }
+.legacy-notice a { flex: 0 0 auto; color: var(--mist-700); font-weight: 750; }
+.legacy-notice a:focus-visible { outline: 3px solid var(--mist-700); outline-offset: 3px; }
+.legacy-page-label { width: fit-content; margin: 0 0 0.8rem; padding: 0.35rem 0.65rem; border-radius: 999px; color: var(--mist-700); background: var(--mist-100); font-weight: 750; }
+.legacy-context-copy { margin: 0 0 1rem; color: var(--muted); font-size: 0.88rem; line-height: 1.6; }
+
 .auth-layout {
   min-height: 100vh;
   display: grid;
@@ -320,6 +339,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .offline-print-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 2rem; padding: 1rem; border-radius: 0.9rem; color: var(--muted); background: var(--mist-100); }
 .offline-print-actions p { margin: 0; }
 .offline-document-header { padding-bottom: 1.5rem; border-bottom: 3px solid #171717; }
+.offline-legacy-format-note { margin: 0 0 1rem; font-weight: 700; line-height: 1.6; }
 .offline-document-header h1 { color: #171717; font-size: clamp(2rem, 6vw, 3rem); }
 .offline-document-header dl, .offline-task-summary dl { display: grid; gap: 0.65rem; }
 .offline-document-header dl div, .offline-task-summary dl div { display: grid; grid-template-columns: minmax(8rem, 0.35fr) 1fr; gap: 1rem; }
@@ -341,6 +361,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .offline-document-footer { margin-top: 1.5rem; padding-top: 1rem; border-top: 2px solid #171717; font-size: 0.9rem; line-height: 1.6; }
 
 @media (max-width: 760px) {
+  .legacy-notice { align-items: flex-start; flex-direction: column; }
   .offline-print-actions { align-items: stretch; flex-direction: column; }
   .offline-print-actions button { width: 100%; }
   .offline-handoff-preview { padding: 1rem; }
@@ -351,6 +372,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
   @page { margin: 14mm; }
   body { color: #000; background: #fff; font-size: 14pt; }
   .no-print { display: none !important; }
+  .legacy-notice { display: block; padding: 0 0 8mm; border-bottom: 1px solid #000; color: #000; background: #fff; }
+  .legacy-notice a { display: none; }
   .offline-handoff-layout { width: auto; max-width: none; margin: 0; padding: 0; }
   .offline-handoff-preview { margin: 0; padding: 0; box-shadow: none; }
   .offline-document-header h1 { font-size: 24pt; }

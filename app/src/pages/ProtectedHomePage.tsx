@@ -125,7 +125,7 @@ export function ProtectedHomePage() {
     <main className="centered-page app-home">
       <section className="status-card care-summary-card">
         <div className="brand-mark small" aria-hidden="true">心</div>
-        <p className="eyebrow">備份心 MVP</p>
+        <p className="eyebrow">備份心舊版 MVP</p>
         <h1>你的照顧空間</h1>
         {receiver && (
           <div className="receiver-summary">

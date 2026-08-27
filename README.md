@@ -1,20 +1,22 @@
-# WinWin v2 — 跨角色照顧協作 Prototype
+# WinWin（高齡支持照顧系統）
 
 > 讓不同時間、不同照顧者留下的變化，可以被下一位理解、接受並追蹤到完成
 
-WinWin v2 由「備份心」v1 的照顧中斷與備援研究基線演進而來。目前產品聚焦於以長者個案為中心，讓家庭與不同專業照顧人員在受控權限下回報變化、提出問題、釐清責任並完成交接，同時只開放完成當次照顧協作所需的最低必要資訊。
+WinWin 以長者／個案為中心，連結家屬與專業照護團隊，在受控權限下支援照顧更新、交接與行動協作，並保留作者、時間與責任狀態，降低跨人員、跨班次與跨服務的資訊斷裂。
 
-本 Repository 同時保存 v1 歷史基線與 v2 Proposed Prototype。v1 並非錯誤方向，也未被刪除；其 Coverage、Scenario、Backup 與 Offline Handoff 成果仍是研究及 regression baseline。
+目前主要展示入口為 `/v2/prototype`；啟動本機前端後，開啟根路徑 `/` 也會導向此入口。
+
+本 Repository 另行保存「備份心」舊專題／歷史原型及其研究與 regression assets。備份心不是 WinWin 的舊名稱或產品定義來源，也不界定 WinWin 現行產品邊界；其 Coverage、Scenario、Backup 與 Offline Handoff 僅按歷史脈絡保留，相關舊版 routes 不是目前 WinWin 主流程。
 
 ## 產品現況
 
 | 範圍 | 狀態 | 說明 |
 |---|---|---|
-| v1 Current / Historical Baseline | 保留於 `main` | 聚焦照顧中斷、備援安排、Coverage、Scenario 與 Task Handoff |
-| v2 Proposed Prototype | 開發中 | 聚焦跨角色照顧協作、來源、問題、責任狀態與服務期間權限 |
+| 備份心 Historical Baseline | 保留舊版 routes 與歷史資產 | 聚焦照顧中斷、備援安排、Coverage、Scenario 與 Task Handoff；不作為現行入口 |
+| WinWin Frontend Prototype | 開發中 | 聚焦跨角色照顧協作、來源、問題、責任狀態與服務期間權限；主要入口為 `/v2/prototype` |
 | 目前工作分支 | `codex/v2-frontend-prototype` | 包含 v2 文件、Migration 007 release candidate 與純前端 Prototype |
 | v2 Production | 尚未上線 | Prototype 與本機資料庫驗證不代表遠端或 Production 已具備 v2 能力 |
-| `main` | 尚未被 v2 取代 | v2 尚未 merge 至 `main`，也未全面更名 Repository 或 package |
+| `main` | 尚未包含本分支最新 WinWin 內容 | merge 與 Production deployment 必須經獨立審查；Repository 與 package 技術名稱暫時保留 |
 
 目前狀態應區分為：
 
@@ -108,7 +110,7 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 
 此流程仍只使用 React in-memory 虛構資料，重新整理後重置；未連接 Supabase，也未完成正式自動儲存、資料持久化、後端內容授權或 Production 部署。前端 guard 只用於 Prototype 流程展示，正式安全邊界仍須由後端授權與 RLS 強制執行。
 
-目前可驗證的前端測試基線為 **214/214 PASS**。此數字代表 Repository 測試結果，不代表正式病歷、機構紀錄、法律授權或 Production 能力已驗證。
+前端測試基線以每次 checkpoint 實際執行結果為準；測試通過不代表正式病歷、機構紀錄、法律授權或 Production 能力已驗證。
 
 ## Invitation & Multi-case Workspace 狀態
 
@@ -147,7 +149,7 @@ Repository 可確認的狀態：
 
 ## v1 的保留方式
 
-- `main` 繼續保留「備份心」v1 基線。
+- Repository 繼續保留「備份心」舊專題／歷史原型及其 regression baseline。
 - v1 Coverage Engine、Scenario、Backup、Task Handoff、首頁 freshness reminder 與 Offline Handoff 保留為歷史研究及 regression baseline。
 - v2 採 additive evolution，不改寫 Migration 001–006。
 - v1 與 v2 可以在研究與 Prototype 階段並存。

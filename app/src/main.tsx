@@ -5,7 +5,7 @@ import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
 import './styles.css';
 
-const isV2Prototype = window.location.pathname.startsWith('/v2/prototype');
+const isV2Prototype = window.location.pathname === '/' || window.location.pathname.startsWith('/v2/prototype');
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

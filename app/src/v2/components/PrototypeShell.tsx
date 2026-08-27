@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { V2_DOCUMENT_TITLE, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PROTOTYPE_NOTICE } from '../data/branding';
+import { BASE_DOCUMENT_TITLE, V2_DOCUMENT_TITLE, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PROTOTYPE_NOTICE } from '../data/branding';
 import { DEMO_ROLE_LABELS, IDENTITY_TYPE_LABELS, VERIFICATION_STATUS_LABELS } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
 import type { DemoRole } from '../types/prototype';
@@ -24,10 +24,9 @@ export function PrototypeShell() {
   const primaryIdentity = state.identities.find((identity) => identity.accountId === state.currentAccountId && identity.isPrimary);
 
   useEffect(() => {
-    const previousTitle = document.title;
     document.title = V2_DOCUMENT_TITLE;
     return () => {
-      document.title = previousTitle;
+      document.title = BASE_DOCUMENT_TITLE;
     };
   }, []);
 

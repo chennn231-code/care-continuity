@@ -1,6 +1,8 @@
 import winwinWordmark from '../assets/winwin-wordmark.png';
 
 export const V2_PRODUCT_NAME = 'WinWin';
+export const BASE_DOCUMENT_TITLE = 'WinWin｜高齡支持照顧系統';
+export const BASE_META_DESCRIPTION = 'WinWin以長者為中心，連結家屬與專業照護團隊，支援照顧更新、交接與行動協作。';
 
 export const V2_PRODUCT_LOGO = winwinWordmark;
 

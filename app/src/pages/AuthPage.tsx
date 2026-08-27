@@ -57,6 +57,7 @@ export function AuthPage() {
     <main className="auth-layout">
       <section className="brand-panel" aria-labelledby="brand-title">
         <div className="brand-mark" aria-hidden="true">心</div>
+        <p className="legacy-page-label">備份心舊版流程</p>
         <p className="eyebrow">看得完整，才接得住</p>
         <h1 id="brand-title">備份心</h1>
         <p className="brand-copy">
@@ -65,6 +66,7 @@ export function AuthPage() {
       </section>
 
       <section className="auth-card" aria-labelledby="auth-title">
+        <p className="legacy-context-copy">此登入只供備份心舊版測試，不是 WinWin 現行登入流程。</p>
         <div className="auth-tabs" role="tablist" aria-label="帳號操作">
           <button
             type="button"
