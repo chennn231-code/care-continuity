@@ -1,6 +1,6 @@
 # WinWin Foundation Security／Concurrency Feasibility Spike Design
 
-> **狀態：DRAFT — Disposable Local Technical Proof Design Only; Execution Not Authorized**
+> **狀態：INTRINSIC SIDE-EFFECTS NORMATIVE CORRECTION — Design Only; Execution Not Authorized**
 >
 > 本文件只規劃隔離 Local Supabase／PostgreSQL 技術可行性驗證。Spike objects 不是正式 WinWin table、function、trigger、policy、Migration、RLS、RPC 或 API；任何 Spike 結果都不能自動升格為 Production 設計或 Remote Apply 授權。
 
@@ -21,15 +21,15 @@
 - Fixture Email 只使用保留測試網域 `.invalid`，所有名稱與識別資料均為合成值。
 - 不讀取或複製 Repository `.env`、Supabase `.temp`、remote link 或既有 Local data／volumes。
 - Spike object 必須使用明確 `spike_*` 名稱並位於隔離 temp project；不得使用正式 `winwin_*` 名稱冒充候選 schema。
-- Spike execution、Local stack start、SQL execution與cleanup均需要後續各自明確授權。
+- Spike execution、operator SQL與manual stop／cleanup均需要後續各自明確授權；未來Local stack start僅能按Section 4.4的compound contract授權，其中可包含經review的SQL-A／條件式SQL-B，不能包含未授權SQL-C／SQL-D。
 
 ## 2. Read-only environment inventory
 
-本輪只執行唯讀盤點，未啟動或停止服務：
+以下是原始設計時的歷史唯讀盤點，不是本次correction的即時環境證據；本輪未查詢或啟動／停止Docker／Supabase：
 
 | Item | Read-only finding | Design consequence |
 |---|---|---|
-| Supabase CLI | `2.115.0`；必須設定 `SUPABASE_TELEMETRY_DISABLED=1` 才不嘗試寫入使用者telemetry state | Execution command freeze必須固定此環境變數並重新記錄版本 |
+| Supabase CLI | `2.115.0`；已接受的source研究證明`SUPABASE_TELEMETRY_DISABLED=1`不保證沒有home／telemetry state write | Section 4.4須分別限制傳輸、state、traces與home；不能把disabled當成zero-write證據 |
 | Docker CLI | `29.6.2` | CLI存在，但不代表daemon ready |
 | Docker daemon | 本輪查詢結果為not running／unreachable | Environment Start Gate前須由operator確認daemon；本文件不得啟動Docker Desktop |
 | Host `psql` | 未安裝／不在PATH | 未來查詢須使用隔離stack內受控client或另經核准的tool；不得臨時安裝 |
@@ -61,11 +61,11 @@ Docker daemon unavailable使container／volume inventory為**未確認**，不�
 - 將project ID與Repository、existing containers／volumes、temp roots及evidence中的全部歷史IDs逐一進行完整字串比較；不得只比較prefix。
 - 任一project ID命中歷史紀錄或既有資產即停止；Environment Start前保存只含symbolic結果的去敏比對摘要，且stop前再次核對。
 - 使用完整且固定的候選service-port mapping 59320–59329；543xx、563xx、573xx、583xx全部禁止作candidate或fallback。
-- 設定`SUPABASE_TELEMETRY_DISABLED=1`及`umask 077`。
+- 固定telemetry transmission disabled、update notifier disabled及`umask 077`；有效機制、home state與其他寫入仍須按Section 4.4逐項證明，不因設定一個環境變數而視為已隔離。
 - 使用`supabase --workdir <isolated-root>`，不得從Repository root啟動。
-- Seed disabled；不複製`.temp`、remote link、`.env`、config secrets或既有migration chain。
+- Seed disabled只是必要條件之一；SQL-C與bucket／object／function等project inputs須逐支證明absent或provably disabled。不複製既有`.temp`、remote link、`.env`、config secrets或migration chain；新CLI intrinsic `.temp`採Section 4.4 allowlist，不是一律禁止。
 - Temp root與evidence directory權限0700；evidence files建立後驗證0600。
-- Spike SQL、test harness、test／session scripts、generated config、raw logs、sanitized evidence、manifest、checksums及temporary fixtures全部只能存在專用temp root；Repository只保留本設計文件。
+- Operator建立的Spike SQL、test harness、session scripts、generated config、sanitized evidence、manifest、checksums與fixtures只可位於專用temp root；secret-capable raw output不得落盤。CLI intrinsic OS-temp、home與Docker storage另受Section 4.4四區contract約束，不再宣稱所有start寫入都在session root。Repository只保存獲授權文件，不保存execution material。
 - Evidence destination必須是全新不存在路徑；禁止覆寫既有evidence。
 - 不清除、attach或修改先前Local dry-run data、containers或volumes。
 - Bootstrap輸出進log前必須先過濾credentials payload；若無法安全過濾，停止而不是記錄raw output。
@@ -153,7 +153,7 @@ care-continuity-mvp-engine-implementatio
 | Edge Runtime inspector | `[edge_runtime].inspector_port` | 59328 | Optional debugger listener | config parse；若未啟用仍確認無其他listener／mapping | 同上 |
 | Database pooler | `[db.pooler].port` | 59329 | Optional connection pooler | config parse；若disabled仍保留並驗證無listener | 同上 |
 
-Auth、Realtime、Storage及S3 protocol目前經API gateway而沒有獨立host-port config key；Environment Start仍須以實際Docker published-port inventory確認CLI版本沒有增加未列出的host listener。任何新增listener均視為mapping mismatch並立即停止，而非臨時挑選其他port。
+Auth、Realtime、Storage及S3 protocol目前經API gateway而沒有獨立host-port config key。此10項是frozen service published-port set，不是所有start intrinsic network／port universe。Optional auxiliary／ephemeral port只有在Gate 5另有明確branch contract時才可存在；沒有contract或出現額外service mapping即FAIL，不臨時換port。必須逐筆驗證HostIP、host port、container port及protocol；localhost-only不可僅由port number推定，`0.0.0.0`／`::`不等於loopback。
 
 ### 4.3 Resource Expectation, discovery, and acceptance contract
 
@@ -172,13 +172,13 @@ Environment Start前必須凍結當時可被可靠證明的constraint whitelist�
 - frozen discovery parser、resource acceptance comparator、evidence schema及checksums；
 - foreign／mixed ownership、missing／additional／ambiguous resource及unexpected port的fail-closed rules。
 
-Expectation Contract不得包含placeholder，亦不得聲稱unknown runtime exact names已知。任何required class／cardinality若無可靠static evidence，必須保留unknown並由下述acceptance rule判定；若因此無法排除不安全或不完整stack，Gate 7必須FAIL。
+Expectation Contract不得包含placeholder，亦不得聲稱unknown runtime exact names已知。只有具足夠independent constraints控制的runtime identity可為unknown-until-discovery；required class／cardinality或其他required acceptance證據缺失時，Gate 5即BLOCKED，不能先start再交Gate 7補證據。Gate 7仍須重驗完整性，不得接受缺失證據。
 
 #### B. Post-start Candidate Resource Discovery
 
 Environment Start成功只代表CLI process完成，不代表任何新資產已被接受。第一次inspection-only Docker discovery只產生`observed candidate resources`：逐一保存exact resource ID／name、resource class、allowlisted published ports，以及兩個allowlisted ownership labels；不得擷取all-label metadata或把discovery結果寫回Expectation Contract。
 
-Discovery必須同時偵測：candidate scope內所有資產、指向candidate ownership的資產、使用allowed ports的資產，以及與frozen workdir／compose scope相關的資產。Parser crash、partial output、missing label、duplicate／ambiguous identity或無法完成全量inspection均FAIL，不得把未觀測到視為不存在。
+Discovery必須同時偵測：candidate scope內所有資產、指向candidate ownership的資產、使用allowed ports的資產，以及frozen native Docker CLI workdir／service／mount／attachment scope相關資產。CLI 2.115.0穩定start路徑不是Compose；label名稱含compose不構成Compose provenance。Parser crash、partial output、missing label、duplicate／ambiguous identity或無法完成全量inspection均FAIL，不得把未觀測到視為不存在。
 
 #### C. Post-start Resource Acceptance
 
@@ -187,13 +187,96 @@ Discovery必須同時偵測：candidate scope內所有資產、指向candidate o
 1. resource class與service／purpose category屬Expectation Contract allowlist；
 2. resource位於核准session／workdir／project scope，沒有foreign或mixed ownership；
 3. Section 4.1兩個raw ownership labels都與requested ID byte-for-byte相等；
-4. published ports是Section 4.2允許的exact mapping，且沒有額外host listener／mapping；
+4. service published ports及HostIP是Section 4.2與Gate 5允許的exact mapping；任何auxiliary／ephemeral exposure另有已授權contract，否則拒絕；
 5. resource relationship符合已review的static naming／service contract；
 6. required class／cardinality若已被static evidence凍結，實際集合必須精確符合；
 7. unknown-until-discovery項目仍須由明確allowlist、ownership、scope、port及relationship assertions驗證，不能因「已被找到」而被接受；
 8. absence、additional、ambiguous或無法分類的resource一律fail closed。
 
-只有全部候選及集合層assertions通過，才形成不可倒填Expectation Contract的`verified runtime resource set`。明確禁止`actual = expected because actual was discovered`的循環驗證。Gate 7仍為inspection-only；失敗後保存現場，不修改candidate、不rename／repair、不換ID／port、不retry／cleanup，等待新授權。
+只有全部候選及集合層assertions通過，才形成不可倒填Expectation Contract的`verified runtime resource set`。明確禁止`actual = expected because actual was discovered`的循環驗證。Gate 7環境觀測為inspection-only；evidence持久化另需精確寫入授權。失敗後operator不修改candidate、不rename／repair、不換ID／port、不retry／cleanup，保留CLI返回後仍存在的現場並等待新授權；這不保證Section 4.4所述CLI intrinsic rollback尚未移除任何資產。
+
+### 4.4 Environment Start intrinsic side-effects authorization contract
+
+#### Compound model and source boundary
+
+未來Environment Start必須被精確授權為 **AUTHORIZED COMPOUND CLI TRANSACTION**。這是授權範圍的集合，不是PostgreSQL atomic transaction，亦不是all-or-nothing filesystem／Docker rollback承諾。只有Frozen Gate 5 Compound Transaction Contract列出的CLI intrinsic branches可包含在S-06；文件完成本身不授權任何branch執行。
+
+已接受的研究A結論足以修正舊規範，不等於installed binary與source完全對應或runtime acceptance已證明。[Correction artifact](WINWIN_FOUNDATION_ENVIRONMENT_START_INTRINSIC_SIDE_EFFECTS_CORRECTION.md)保存固定source provenance、已觀察行為與remaining blockers；本Design為normative authority，Runbook負責程序。版本變更必須重驗，不能把2.115.0行為當成永久API保證。
+
+#### SQL taxonomy
+
+| Class | Meaning／reachable branch | Future authorization boundary |
+|---|---|---|
+| SQL-A | CLI／platform intrinsic globals、roles、schema、API privileges、Auth／Storage／Realtime等platform service migrations及internal metadata bootstrap；須有固定source、trigger與local DB target | 可在S-06逐支明確接受；不是WinWin SQL，不授權operator psql或自製bootstrap |
+| SQL-B | CONDITIONAL-INTRINSIC：existing-volume convergence，例如webhooks／pg_net與platform metadata調整 | Existing-volume branch不是read-only。此Foundation採fresh-only，B須證明不可達；未來改用existing需新設計與新授權，不能沿用本次contract |
+| SQL-C | User／project migrations、roles.sql、declarative schema、seed SQL、vault values或其他project SQL inputs | 預設NOT AUTHORIZED；逐項absent或provably disabled，不能只靠seed／migration單一flag。無法排除即Gate 5 BLOCKED；獨立核准也須重新審scope，不能偷偷併入S-06 |
+| SQL-D | Spike fixture、RLS／concurrency tests及任意operator SQL | 只能由Gate 8後獨立精確授權；start PASS、SQL-A授權或platform health check均不授權D |
+
+Fresh／existing branch必須在start前freeze；fresh DB仍可執行SQL-A。不得reuse歷史volume；若觀測到existing DB／stopped-stack recovery branch或branch無法確定，停止，不接受CLI自行恢復舊stack。排除long-running service不等於排除其fresh platform migration。
+
+#### Filesystem containment: four distinct zones
+
+| Zone | Allowed only under reviewed contract | Required bounds／failure |
+|---|---|---|
+| Session／workdir | isolated config、operator scripts、sanitized evidence與明確CLI intrinsic paths | exact resolved root／relative path allowlist、symlink escape拒絕、0700／0600、writer與lifecycle、create-new evidence；禁止Repository／historical inputs |
+| OS temporary storage | SQL staging等CLI／dependency scoped temp：`supabase-start-db-setup-`、`supabase-start-db-webhooks-`等已證明prefix | 保存API、實際temp parent解析方式、prefix、umask／file mode、normal finalizer、crash residue與secret risk。未證明redirect時標記 **NOT SESSION-CONTAINED BUT EXPLICITLY BOUNDED**；parent或permissions未能界定仍BLOCKED，不能憑標籤接受 |
+| Supabase home／state／traces | 經review的telemetry state／cache寫入，不能因disabled而假定不存在 | 查明每個writer實際home解析方式、檔名／atomic temp、mode、retention；若使用`SUPABASE_HOME`須證明所有相關writer遵守，不重設系統HOME；不能界定時 **HOME-WRITE CONTAINMENT BLOCKER** |
+| Docker storage | 指定local daemon內images、layers、container logs、volumes、network metadata | 不在session root；固定daemon/context endpoint、image／cache與storage scope、secret-bearing logs政策、retention與後續cleanup授權；不得聲稱stop可還原host |
+
+`.temp`按artifact class管理：required／conditional intrinsic（例如Edge `start-secrets`及main script staging）、disabled／forbidden input或cache（例如未核准pgdelta、update cache、copied link pins）、secret-bearing artifact（只可記錄存在性、mode、size、lifecycle，禁止讀內容進evidence）。`.branches/_current_branch`是獨立非`.temp`metadata write，亦須列allowlist。Unknown file／writer或symlink escape即FAIL；不是整個`.temp`目錄必然FAIL，也不是任意CLI寫入皆允許。
+
+Edge secrets可能成功後留存、失敗best-effort清除，main script mode另受umask／驗證；container內tar/copy配置與daemon logs可能含秘密，須與evidence分開管理，不能宣稱CLI從不產生credentials。Host bind mount的來源若不存在可能被Docker建立；rw mount、SELinux relabel與Docker socket mount均要獨立審查，read-only socket mount不代表API只讀。
+
+#### Docker images, network, telemetry and auxiliary jobs
+
+- 固定CLI version／binary hash與source correspondence status。既有tag/source映射不是reproducible-build證明；不補造缺失證據。
+- 固定Docker client context、daemon實際endpoint與local／remote歸屬；禁止remote daemon或不明context，不能只驗證version／reachable。
+- Image policy逐項freeze image refs、registry allowlist、tag／digest政策、cached-image acceptance、registry fallback、credential-helper使用邊界、pull/cache mutation與caller deadline。Cached tag不能證明digest；必要digest／provenance缺失為 **SUPPLY-CHAIN / IMAGE PROVENANCE BLOCKER**。不讀credential-helper值、不繼承未知registry authorization。
+- CLI image retry／backoff／registry fallback與operator retry分開：只接受source已知且在contract內的branch；caller timeout／signal可能觸發rollback，須預先界定而不是事後kill保留現場。不得發明CLI retry或deadline flags。
+- Telemetry transmission、consent／identity state、trace persistence與pruning分別審查。`SUPABASE_TELEMETRY_DISABLED=1`不保證legacy state不落盤，也不保證其他network activity不存在。Update notifier採 **DISABLED**，固定`SUPABASE_NO_UPDATE_NOTIFIER=1`機制並驗證適用路徑；不能讓successful start後的notifier偷偷新增GitHub request／cache write。
+- Optional pgdelta採 **NOT IMPLICITLY ALLOWED**；預設須證明disabled。若未來要啟用，另審host-network branch、ephemeral loopback allocation、temporary container、package download／cache volume／CA與labels。Unknown reachability或未核准auxiliary port即Gate 5 BLOCKED。
+- Network contract分ALLOWED／DISABLED／CONDITIONAL：image registries、telemetry、update request、service egress、SMTP、Auth hooks、GCP／external metadata、Edge dependency downloads及pgdelta等逐支審查。Local stack不等於zero egress；不能操作Remote Supabase／Production，也不得讀token。只允許明確local service topology及經授權registry egress，其他分支須證明disabled或另經精確審查。
+- Project input audit涵蓋roles.sql、migrations、seed、experimental declarative schema、vault、Storage bucket／object seeds、functions／import dependencies及其他config driven inputs，須逐項證明absent或provably disabled。後置bucket seed不等於SQL seed，不能用SQL-A掩蓋；不把`migration.enabled`視為所有分支開關。
+- Health/status可能輸出credentials或service logs。拒絕未審查的ignore-health-check選項；exit 0不代表healthy、所有service存在或resource accepted。必須以source-bound health criteria及Gate 7獨立驗證。
+
+#### Intrinsic rollback, operator retry, and preservation
+
+未來S-06可以只在已審查failure branches內包含CLI intrinsic stop、container prune、conditional volume prune、network prune及temporary secret cleanup。它們不是operator自動cleanup授權。Source研究顯示rollback可依`com.supabase.cli.project`篩選，而非只依本次新建ID清單；故pre-start collision必須排除舊資產落入該selector。Intrinsic volume prune的API行為不能被manual `supabase stop --all`禁令誤判為不存在。
+
+不承諾失敗時完整保留所有containers／volumes／network。CLI可能在返回前或signal handling中已移除部分資產，cleanup可能部分失敗，image/cache/home殘留也不自動回復。需保存pre-start frozen inventory／contract、invocation、去敏CLI結果、post-return inventory、known rollback path與remaining／disappeared／unknown disposition；只有受核准的evidence write可持久化。
+
+失敗後operator只可做已授權inspection與sanitized evidence保存，不得新start、換ID／port、manual stop／cleanup、recreate、repair或retry。CLI內建image pull retry不是第二次operator invocation；Spike transaction retry仍由Test 19及未來Gate 8的獨立scope約束。保存現場指不再改動CLI返回後的剩餘狀態，不聲稱能阻止已開始的CLI intrinsic rollback。
+
+#### Frozen Gate 5 Compound Transaction Contract
+
+Gate 5名稱為 **Environment Start Compound Transaction Authorization Review**。Runbook Section 5.2的20項逐一建立observable、expected value、branch status、evidence與reviewed helper checksum；任何required `NOT ESTABLISHED`／`NOT YET ESTABLISHED`／`CONFLICTING`／`BLOCKED`或unknown reachability均阻擋PASS。Contract包含以下不可省略項目：
+
+| ID | Required review |
+|---|---|
+| CT-01 | CLI version／binary／source correspondence |
+| CT-02 | Docker daemon／context／local endpoint |
+| CT-03 | Planned config、writer與generated-config lifecycle |
+| CT-04 | Fresh／existing branch及collision exclusion |
+| CT-05 | SQL-A／conditional SQL-B intrinsic allowlist |
+| CT-06 | SQL-C／project inputs與SQL-D exclusion |
+| CT-07 | Images／digest／registry／cache／fallback policy |
+| CT-08 | Update notifier disabled proof |
+| CT-09 | Telemetry transmission、home／state／traces bounds |
+| CT-10 | OS-temp API／parent／permissions／cleanup／residue |
+| CT-11 | `.temp`及branch-marker artifact lifecycle |
+| CT-12 | Edge staging／secrets／mounts／dependencies |
+| CT-13 | Optional pgdelta branch disabled或完整獨立contract |
+| CT-14 | Service HostIP／ports及auxiliary exposure |
+| CT-15 | Registry／service／external network boundaries |
+| CT-16 | Intrinsic rollback選取範圍與post-return preservation |
+| CT-17 | Intrinsic retry與operator禁止retry／deadline |
+| CT-18 | Output／health／status redaction與evidence persistence |
+| CT-19 | Independent resource acceptance constraints |
+| CT-20 | Required inspection／writer／redactor／comparator implementations與checksums |
+
+Gate 5 PASS仍不授權執行。Gate 6維持6A config materialization、6B actual verification、6C獨立授權S-06；6C授權必須引用Frozen Gate 5 Compound Transaction Contract checksum及有效6B證據，不可只引用start字串hash。6A／6B不一致立即停止，不改config續跑。
+
+Resource Acceptance Evidence Research在本次normative correction PASS前維持 **PAUSED UNTIL NORMATIVE CORRECTION PASS**。PASS後只能另開research，納入native Docker（不是Compose）、daemon/context、images／digest、rollback selector、auxiliary資產以及container→service、volume→mount、network→attachment第二層證據；不得以labels alone或discovery倒填expected。Gate 5仍BLOCKED，Environment Start仍須獨立授權。
 
 ## 5. Minimal disposable proof objects
 
@@ -403,9 +486,9 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 ### 11.1 Mandatory evidence scan gate
 
 - 本Gate只適用於未來Local Spike execution產生的raw output與technical evidence；目前這份純設計文件不包含execution evidence。
-- Raw output只能先寫入private temp root並維持0600；不得直接輸出至Repository、公開report或一般共享位置。
+- Secret-capable raw output不得先寫入private temp、quarantine、terminal transcript或Repository；只能在記憶體經已review的allowlist parser／redactor處理。只有已證明不含秘密且欄位在allowlist內的raw output才可依精確evidence-write授權保存，0600不構成先寫raw的例外。
 - Credential／identifier redaction scan未PASS時：不得建立sanitized evidence bundle、不得建立該次Spike execution的Technical Evidence checkpoint、不得產生或發布公開技術報告、不得複製任何結果進Repository，也不得進入Technical Evidence Gate。
-- Scan失敗立即停止後續tests，只建立不含matching content、權限0600的minimum private failure marker。
+- Scan失敗立即停止後續tests；只有預先取得精確evidence-write授權才可建立不含matching content、權限0600的minimum private failure marker，否則不建立檔案。
 - 修正redaction流程並重新掃描成功前，該次execution不得判定PARTIAL或PASS。
 - 該次Spike execution的Technical Evidence checkpoint及公開技術報告只能引用已通過scan且checksums已固定的sanitized artifacts。
 - 尚未執行Spike並不會阻止本設計文件在Final Read-only Review通過後建立獨立Design checkpoint。Design checkpoint不構成Execution Authorization、Environment Start Authorization或Technical Evidence checkpoint。
@@ -413,11 +496,11 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 
 ## 12. Stack stop and cleanup strategy
 
-- Spike成功或失敗後只可考慮對精確workdir執行一般`supabase stop`。執行stop前必須重新核對exact temp root、exact workdir、exact project ID、Section 4.2完整service-port mapping、對應containers、對應volumes，以及它們不屬於Round 1、Round 2或其他歷史stack。
+- 本節規範operator發起的stop／cleanup，不限制或否認Section 4.4已另行審查授權的S-06 intrinsic rollback。Spike成功或失敗後只可提出對精確workdir執行一般`supabase stop`的獨立授權請求。執行stop前必須重新核對exact temp root、exact workdir、exact project ID、Section 4.2 service-port／HostIP mapping、對應containers／volumes，以及它們不屬於其他歷史stack。
 - Stop preflight必須再次證明沒有remote link／remote identity，project ID與ports符合本次frozen Resource Expectation Contract，且待停止的containers、volumes、network逐一屬於Gate 7形成的verified runtime resource set；任何一項不一致即不得執行stop，須停止回報並等待精確授權。
 - 不使用`--no-backup`，不直接刪除Docker container／volume。
 - 不使用`--all`。
-- Stop後保留專用volumes、temp root與sanitized evidence供審查。
+- Operator一般stop採保留專用volumes與sanitized evidence的策略，但CLI已執行的intrinsic cleanup不得被報成完整保留。Stop後須觀測剩餘temp root／volumes及artifact disposition；stop不等於host rollback，不保證刪除image cache、OS-temp residue、home state或daemon logs。未形成Gate 7 verified set時不得套用一般pre-stop PASS，須另審精確故障處置。
 - 不清除既有evidence或其他project資產。
 - Destructive cleanup須另取得精確target授權；本Gate與Execution Gate均不自動授權。
 - 若stop失敗，停止並回報該isolated project狀態；禁止廣泛Docker cleanup或手動刪其他volumes。
@@ -427,14 +510,14 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 
 ### 13.1 Gate sequence
 
-1. **Spike Design Correction Gate** — 修正本文件的project ID ownership邊界；設計而不執行。
+1. **Spike Design Correction Gate** — 修正project ID／ownership與intrinsic compound authorization邊界；設計而不執行。
 2. **Final Read-only Design Correction Review** — 唯讀確認格式、byte-count、denylist、既有隔離與stop規則無退步。
-3. **Design Correction Checkpoint** — 只保存本設計文件；不構成任何執行授權。
+3. **Design Correction Checkpoint** — 只保存當次明確授權的設計文件集合；原單檔checkpoint不授權其他檔。本次獨立授權僅在review PASS後保存Design、Runbook與correction artifact三檔，不構成任何執行授權。
 4. **New Session Identity Reservation Gate** — 另經授權後只產生一個35-byte候選ID與全新temp root，完成歷史唯一性、ports及資產baseline核對，並凍結Section 4.3的Pre-start Resource Expectation Contract；不得啟動stack，不要求或猜測無法事前證明的runtime exact resource names。
-5. **Environment Start Authorization Review** — 唯讀審查exact ID、workdir、ports、Expectation Contract、candidate discovery／resource acceptance procedure、commands、parsers／comparators／checksums、fixtures、evidence與cleanup exclusions。PASS仍不授權Environment Start。
-6. **Environment Start Execution Gate** — operator另行明確授權後才可執行已核准的exact start commands；不得同時執行SQL、Auth或Spike tests，也不得把新發現resource自動接受為trusted。
+5. **Environment Start Compound Transaction Authorization Review** — 依Section 4.4與Runbook CT-01至CT-20審查完整compound contract，而非只審start命令。Required evidence缺失即BLOCKED；PASS仍不授權Environment Start。
+6. **Environment Start Execution Gate** — 6A materialize、6B verify、6C獨立授權S-06；只包含Frozen Gate 5 Compound Transaction Contract已審intrinsic SQL-A與Docker／filesystem／network／rollback分支；本Foundation fresh-only排除SQL-B，亦不包含SQL-C、SQL-D、Auth fixtures或Spike tests，不自動接受runtime資產。
 7. **Post-start Resource Discovery／Ownership Integrity Verification Gate** — inspection-only依Section 4.3執行candidate discovery、exact identity capture、Section 4.1逐資產Ownership Integrity Contract、resource acceptance及verified runtime resource set formation。只有所有required assertions成立才PASS；任何不一致立即停止並保留現場。
-8. **Spike Test Execution Authorization Gate** — ownership驗證PASS後，才可另行授權SQL、Auth與20項tests。
+8. **Spike Test Execution Authorization Gate** — 完整resource acceptance／ownership／persistent evidence PASS後，才可另行授權SQL-D、Auth fixtures與20項tests。
 9. **Technical Evidence Gate** — 執行20 tests、核對sanitized evidence與stop state。
 10. **Decision Revision Gate** — 將證據回填Migration Draft Design的SEC／PD dispositions。
 11. **Migration Design Freeze Gate** — 所有blocking proof關閉後才審查。
@@ -444,7 +527,8 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 
 - Git／hash／target preflight mismatch或既有非目標working-tree change。
 - Docker／Supabase環境不符合凍結版本、disk不足或candidate port collision。
-- Temp project包含remote identity、link、`.env`、`.temp`、existing seed／volume。
+- Temp project包含remote identity、link、copied `.env`、未allowlist的`.temp`／branch metadata、未排除的project inputs／seed／existing volume；required intrinsic `.temp`依Section 4.4治理而非一律禁止。
+- Compound contract出現未審branch／SQL-C／SQL-D、source correspondence／daemon／image provenance／home／OS-temp／HostIP／network／retry／rollback／redaction必要證據缺失。
 - Resource Expectation Contract含未知exact names的推測值、placeholder或未經review的naming／cardinality assertion。
 - Candidate discovery不完整、parser failure，或將observed actual倒填成expected truth。
 - Candidate resource class／scope／port／relationship不在allowlist，或存在missing、additional、ambiguous、foreign／mixed ownership。
@@ -457,18 +541,19 @@ Evidence directory為0700，files為0600且不得覆寫。預定artifacts：
 - Concurrent publication／Decision產生multiple heads／duplicate orders。
 - Abandonment留下partial Decisions、current Role、Person payload或valid prerequisite。
 - DDL rollback不完整、deadlock無安全retry或transaction留partial state。
-- Migration 001–008或任何Repository file發生變更。
+- 執行環境階段Migration 001–008或任何Repository file發生變更；本次明確授權的純文件correction及本機checkpoint不屬於環境執行。
 - Remote Supabase connection／mutation跡象。
 
 ## 14. Output decision and proof backfill
 
-**READY FOR TARGETED NORMATIVE DESIGN CORRECTION HUMAN REVIEW — EXECUTION NOT AUTHORIZED**
+**NORMATIVE CORRECTION DOCUMENTATION — EXECUTION NOT AUTHORIZED**
 
 Gate狀態：
 
-- Existing Spike Design checkpoint：`e2b5f24bf164d8ddc10139bf175f27ed9b776920`；本次targeted correction尚未checkpoint。
-- Targeted Normative Design Correction：**READY FOR HUMAN REVIEW**。
-- Runbook cross-document consistency：**PENDING**；須在本次correction通過後另行同步，不能以目前Runbook作execution procedure。
+- 本次pre-correction基線：`e4084d82838bb00f805d4e542bb1abdeecdaef01`；當次checkpoint是否完成以Git metadata為準，不自我嵌入commit hash。
+- Normative correction／Runbook／correction artifact：**STATIC CROSS-DOCUMENT REVIEW PASS — READY FOR LOCAL CHECKPOINT**；mechanical validation仍必須全PASS才可commit。這不是runtime evidence、新Human批准或execution授權。
+- Resource Acceptance Evidence Research：**PAUSED UNTIL NORMATIVE CORRECTION PASS**；PASS後為另行授權的NEXT research，不在本輪執行。
+- Gate 5：**BLOCKED pending compound contract and resource acceptance evidence**。
 - Execution Authorization：**NOT GRANTED**。
 - Environment Start：**NOT AUTHORIZED**。
 - Local Spike execution：**NOT AUTHORIZED**。
@@ -504,4 +589,4 @@ Spike failure回退路徑：
 
 ## 15. Explicit next step
 
-下一步只能做本文件的Final Read-only Spike Design Review。Review PASS並建立獨立design-document checkpoint後，才可提出精確的Execution Authorization Gate；Execution仍不自動成立。
+本次cross-document review與mechanical validation全PASS後，只可依本輪精確授權建立Design＋Runbook＋correction artifact的local checkpoint，不push。之後依序為另行授權Resource Acceptance Evidence Research → Gate 5重新審查 → 獨立Environment Start授權 → post-start verification → 獨立Spike execution授權；不是下一步就start。若发现不可界定的intrinsic branch／remote mutation、不能排除project SQL、不能區分platform／WinWin SQL、不能界定daemon，或必須先start才能證明基本模型自洽，判定C並停止，不以更寬allowlist掩蓋。
