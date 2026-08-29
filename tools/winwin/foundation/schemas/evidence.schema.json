@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation reviewed pre-start evidence envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "helper_id", "helper_sha256", "timestamp", "phase", "subject", "result", "findings", "error"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "helper_id": {"const": "FOUNDATION-PRESTART-1"},
+    "helper_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "phase": {"const": "READ_ONLY_PRESTART"},
+    "subject": {"const": "LOCAL_METADATA_NOT_EXECUTION_SESSION"},
+    "result": {"enum": ["PARTIAL", "BLOCKED"]},
+    "findings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["kind", "data"], "properties": {"kind": {"type": "string"}, "data": {"type": "object"}}}},
+    "error": {"type": ["string", "null"]}
+  }
+}
