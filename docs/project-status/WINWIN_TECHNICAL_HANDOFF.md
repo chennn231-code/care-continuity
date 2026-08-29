@@ -1,5 +1,20 @@
 # WinWin Technical Handoff
 
+## Current handoff overlay — 2026-08-29
+
+Current Repository baseline at the start of Product Batch 0 is `codex/foundation-spike-design-correction` at `8c361eb8786b1ce78d31d398b7b38e848f939404`, with a clean working tree and byte-identical Migration 001–008 fingerprints.
+
+- Foundation Pre-start Helper Final Closure：PASS，294/294 synthetic tests。
+- Gate 5：ready for pre-authorization review；Gate 5 itself has not passed。
+- Gate 6A／6B／6C、Environment Start、Supabase／Docker mutation、SQL／Migration execution：not authorized。
+- Earlier Docker diagnostic and intermediate helper blockers：historical evidence，**SUPERSEDED BY FOUNDATION FINAL CLOSURE CHECKPOINT** as current interpretation。
+- Product Full Workspace Audit and Post-Foundation Reconciliation：complete。
+- Product authority work：Batch 0＋1 authorized；Batch 2、repository migration file and runtime persistence are not authorized。
+- Migration 007／008：existing v2 candidate references，not approved as future WinWin content authority。
+- New `winwin_*` Foundation：future authoritative direction only；formal cutover has not occurred。
+
+The original handoff below is a preserved snapshot of the v2 Prototype and Migration 007／008 evidence at `f87f21d`. It remains useful historical context but does not override this overlay.
+
 ## Purpose and boundaries
 
 This handoff describes the committed WinWin v2 Prototype and database migration candidates as of branch `codex/v2-frontend-prototype` at baseline commit `f87f21dc14d7ae2d4909d5474cf7829870464e33`.

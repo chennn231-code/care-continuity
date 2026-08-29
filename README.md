@@ -8,13 +8,25 @@ WinWin 以長者／個案為中心，連結家屬與專業照護團隊，在受�
 
 本 Repository 另行保存「備份心」舊專題／歷史原型及其研究與 regression assets。備份心不是 WinWin 的舊名稱或產品定義來源，也不界定 WinWin 現行產品邊界；其 Coverage、Scenario、Backup 與 Offline Handoff 僅按歷史脈絡保留，相關舊版 routes 不是目前 WinWin 主流程。
 
+## Current truth snapshot（2026-08-29）
+
+- Current branch：`codex/foundation-spike-design-correction`。
+- Snapshot baseline：`8c361eb8786b1ce78d31d398b7b38e848f939404`；working tree 在 Batch 0 開始時為 clean。
+- Foundation Pre-start Helper：**FINAL CLOSURE PASS — READY FOR GATE 5 PRE-AUTHORIZATION REVIEW**。
+- Gate 5 本身：**NOT PASSED**；Gate 6A／6B／6C、Environment Start、Supabase、Docker mutation、SQL／Migration execution仍未授權。
+- Product Workspace Audit與Post-Foundation Reconciliation已完成；產品線目前進入 authority／domain authorization contract階段。
+- Migration 007／008是existing v2 candidate references；新`winwin_*` Foundation是future authoritative direction，但正式cutover尚未執行。Migration 001–008不得修改。
+- WinWin frontend仍是虛構in-memory Prototype；正式Care Update、Question、Action、Responsibility Cycle、Read Cursor、Audit Event持久化與record-level RLS尚未實作。
+
+Foundation Final Closure supersedes earlier helper／Docker blockers only as the **current interpretation**；historical diagnostic與逐次closure evidence仍保留原文，不得當作目前 blocker或刪除。
+
 ## 產品現況
 
 | 範圍 | 狀態 | 說明 |
 |---|---|---|
 | 備份心 Historical Baseline | 保留舊版 routes 與歷史資產 | 聚焦照顧中斷、備援安排、Coverage、Scenario 與 Task Handoff；不作為現行入口 |
 | WinWin Frontend Prototype | 開發中 | 聚焦跨角色照顧協作、來源、問題、責任狀態與服務期間權限；主要入口為 `/v2/prototype` |
-| 目前工作分支 | `codex/v2-frontend-prototype` | 包含 v2 文件、Migration 007 release candidate 與純前端 Prototype |
+| 目前工作分支 | `codex/foundation-spike-design-correction` | Foundation helper已完成Final Closure；產品Batch 0＋1在同一已核對baseline進行，兩條授權線仍分離 |
 | v2 Production | 尚未上線 | Prototype 與本機資料庫驗證不代表遠端或 Production 已具備 v2 能力 |
 | `main` | 尚未包含本分支最新 WinWin 內容 | merge 與 Production deployment 必須經獨立審查；Repository 與 package 技術名稱暫時保留 |
 
@@ -63,7 +75,7 @@ WinWin v2 嘗試把不同參與者留下的照顧變化，轉成下一位看得�
 - `DECLARED`、`PENDING_VERIFICATION`、`VERIFIED`、`REJECTED`、`EXPIRED` 身分驗證狀態展示。
 - 「我的身分」、主要身分與新增第二身分概念。
 - 虛構個案列表與個案首頁。
-- 上次查看後的新變化呈現。
+- 個案首頁呈現目前可見活動摘要；正式「上次查看後的新變化」Read Cursor尚未實作。
 - 照顧變化時間軸與來源資訊。
 - Observation、Arrangement 與 Question 的畫面語意。
 - Action 的等待接受、已接受、處理中與已完成流程。
@@ -214,7 +226,7 @@ care-continuity/
 │   └── verification/           # Migration 007 本機與 release verification
 ├── scripts/verification/       # 可重跑的本機 migration verification harness
 └── supabase/
-    ├── migrations/             # Migration 001–007
+    ├── migrations/             # Migration 001–008；既有檔案受保護
     └── tests/                  # Access Foundation verification SQL
 ```
 

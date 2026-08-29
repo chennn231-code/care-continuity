@@ -1,5 +1,24 @@
 # WinWin Current Project Status
 
+## Current truth reconciliation overlay — 2026-08-29
+
+This overlay is the current interpretation at branch `codex/foundation-spike-design-correction`, starting baseline `8c361eb8786b1ce78d31d398b7b38e848f939404`. The 2026-08-25 snapshot below remains historical evidence and is not rewritten as if it were rerun.
+
+| Area | Current truth |
+|---|---|
+| Git baseline | `8c361eb`; clean at Batch 0 start; Migration 001–008 fingerprints unchanged |
+| Foundation helper | Final Closure PASS; 294/294 synthetic tests; legal pre-start collection boundary complete |
+| Gate 5 | `READY FOR PRE-AUTHORIZATION REVIEW`; Gate 5 itself is `NOT PASSED` |
+| Gate 6／Environment Start | `NOT AUTHORIZED` |
+| Earlier Docker diagnostic／helper blockers | Historical evidence; **SUPERSEDED BY FOUNDATION FINAL CLOSURE CHECKPOINT** as current interpretation |
+| Product Audit | Full Workspace Audit and Post-Foundation Reconciliation complete |
+| Product implementation | Batch 0＋1 authority/domain contract authorized; Batch 2 and migration-file creation not authorized |
+| Frontend | Fictional in-memory Prototype; not a Production authorization boundary |
+| Production content model | Care Update、Question、Action、Responsibility Cycle、Read Cursor、Audit Event persistence and record-level RLS are not implemented |
+| Migration authority | 007／008 remain existing v2 candidate references; new `winwin_*` Foundation is the future direction; formal cutover has not occurred |
+
+The Foundation Final Closure does not validate Product authorization, content persistence or Production RLS. Product design may proceed in parallel with Gate 5 review, while Supabase-dependent runtime verification remains gated.
+
 ## Snapshot identity
 
 - Snapshot date: 2026-08-25 (Asia/Taipei)
@@ -69,7 +88,7 @@ Status vocabulary in this table is limited to `VERIFIED`, `IMPLEMENTED BUT NOT V
 | Migration 007 fresh isolated apply/harness | Repository reports and harness | 71/71 PASS | No |
 | Migration 008 empty/legacy/rollback harness | commit `f87f21d`; current harness contract | 35/35 PASS | No |
 
-`README.md` still states 214/214 and is stale relative to the later 236/236 Browser UX evidence. This snapshot records the discrepancy rather than rewriting README in the same checkpoint.
+At the time of this historical snapshot, `README.md` stated an older result. A later read-only Product Workspace Audit recorded 275/275 frontend tests, typecheck PASS and a temp-output build PASS; those checks were not rerun by this 2026-08-25 document and remain separately scoped evidence.
 
 ## Migration status summary
 

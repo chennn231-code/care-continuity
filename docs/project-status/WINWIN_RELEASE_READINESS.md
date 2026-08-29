@@ -1,5 +1,22 @@
 # WinWin Release Readiness
 
+## Current reconciliation overlay — 2026-08-29
+
+This overlay records current Repository truth without rewriting the dated release evidence below.
+
+| Gate／area | Current status |
+|---|---|
+| Repository baseline | `codex/foundation-spike-design-correction` at starting HEAD `8c361eb8786b1ce78d31d398b7b38e848f939404` |
+| Foundation Pre-start Helper | `FINAL CLOSURE PASS` — 294/294 tests; pre-start collectors reached their legal boundary |
+| Gate 5 | `READY FOR PRE-AUTHORIZATION REVIEW` — **NOT PASSED** |
+| Gate 6A／6B／6C and Environment Start | `NOT AUTHORIZED` |
+| Product Audit／Reconciliation | `COMPLETE` |
+| Product Batch 0＋1 | Authorized for current-truth and pure domain-contract work only |
+| Product Batch 2／migration file | `NOT AUTHORIZED` |
+| WinWin v2 Production | `BLOCKED / NOT DEPLOYED` |
+
+Earlier Docker-access and intermediate helper defects remain chronological evidence but are **SUPERSEDED BY FOUNDATION FINAL CLOSURE CHECKPOINT** as present blockers. Required images, digest approval, session reservation and runtime evidence remain later-phase items rather than helper defects.
+
 ## Decision summary
 
 | Gate | Current status |
@@ -27,7 +44,7 @@
 - Browser validation: `PASS — UX SUFFICIENT FOR MVP`.
 - Rerun during this documentation session: No.
 
-The committed frontend after `4ec30e4` changed only through database/documentation commits, so no later committed frontend diff is known. This is evidence continuity, not a new test run.
+This 236/236 result remains the dated Browser UX checkpoint evidence. A later read-only Product Workspace Audit recorded 275/275 frontend tests, typecheck PASS and a temp-output build PASS; the current document does not misrepresent either snapshot as a Production verification.
 
 ### Migration 007
 
