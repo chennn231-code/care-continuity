@@ -49,7 +49,7 @@ The first UI slice remains A creates/publishes/assigns, B accepts/starts/complet
 
 ## D. `RECORD_VIEW` semantics
 
-`RECORD_VIEW` is an operation capability ceiling, not a visibility policy. `CASE`/`RECORD` scope is a target boundary, not a capability. Typed Record Visibility is the final record-specific audience decision, not a Grant.
+`RECORD_VIEW` is an operation capability ceiling, not a visibility policy. `CASE` and `RECORD` are distinct target-boundary scopes, not capabilities; first-slice record reads require `RECORD` scope. Typed Record Visibility is the final record-specific audience decision, not a Grant.
 
 Read is allowed if and only if all predicates are satisfied at one authoritative database/server time:
 
@@ -59,7 +59,7 @@ Read is allowed if and only if all predicates are satisfied at one authoritative
 4. the exact Relationship lifecycle instance is valid and same-Identity/same-Case;
 5. one candidate Grant is active, current, unrevoked and attached to those exact instances;
 6. that same Grant contains `RECORD_VIEW`;
-7. that same Grant has `CASE` scope for the Case or `RECORD` scope covering the exact typed target;
+7. that same Grant has `RECORD` scope covering the exact typed target record;
 8. the typed record's visibility policy admits the exact Identity+Membership under its approved participant source;
 9. all purpose, expiry, revocation and object-lifecycle predicates pass.
 
@@ -112,13 +112,13 @@ An Action's current responsibility and workflow projection is derived from its u
 | Operation | Current state | Capability | Identity/responsibility condition | Single Grant Path | Server validation and authoritative result | Audit |
 |---|---|---|---|---|---|---|
 | create + initial assign | none | `ACTION_CREATE` + `ACTION_ASSIGN` | creator current for Case/source; target eligible concrete Identity+Membership | The same Grant carries both capabilities + `CASE` scope | Atomically create stable Action and first `ASSIGNED` cycle; no visible partial unassigned result | distinct `ACTION_CREATED` + `ACTION_ASSIGNED` facts under one correlation |
-| standalone assign | unassigned/nonterminal | `ACTION_ASSIGN` | target eligible; no effective cycle; operation separately authorized | Same Grant carries capability + `CASE` or exact `RECORD` scope | Lock Action and create an `ASSIGNED` cycle | `ACTION_ASSIGNED` |
+| standalone assign | unassigned/nonterminal | `ACTION_ASSIGN` | target eligible; no effective cycle; operation separately authorized | Same Grant carries capability + `CASE` scope | Lock Action and create an `ASSIGNED` cycle | `ACTION_ASSIGNED` |
 | accept | `ASSIGNED` | `ACTION_ACCEPT` | exact assignee of effective cycle | Assignee's same Grant carries capability + `RECORD` scope | Expected version/state; set cycle accepted/server time | `ACTION_ACCEPTED` |
 | start | `ACCEPTED` | `ACTION_START` | exact accepted assignee | Same Grant + `RECORD` | Expected version/state; set started/server time | `ACTION_STARTED` |
 | complete | `IN_PROGRESS` | `ACTION_COMPLETE` | exact in-progress assignee | Same Grant + `RECORD` | Expected version/state; complete cycle; Action completion derived | `ACTION_COMPLETED` |
 | decline | `ASSIGNED` | `ACTION_DECLINE` | exact unaccepted assignee | Same Grant + `RECORD` | End cycle `DECLINED`; derive continuity gap | `ACTION_DECLINED` |
 | relinquish | `ACCEPTED` or `IN_PROGRESS` | `ACTION_RELINQUISH` | exact current assignee | Same Grant + `RECORD` | End with reviewed reason; preserve accepted/started facts; derive gap | `ACTION_RELINQUISHED` |
-| reassign | effective nonterminal cycle or approved gap | `ACTION_REASSIGN` | authorized actor; eligible concrete successor | Same Grant + target scope | End old cycle `REASSIGNED` when present; create new `ASSIGNED` cycle | `ACTION_REASSIGNED` |
+| reassign | effective nonterminal cycle or approved gap | `ACTION_REASSIGN` | authorized actor; eligible concrete successor | Same Grant + `RECORD` scope | End old cycle `REASSIGNED` when present; create new `ASSIGNED` cycle | `ACTION_REASSIGNED` |
 | revoke interaction | any noncompleted effective cycle whose required path is lost | `ACCESS_REVOKE` on access target | issuer authority; affected assignee loses every independently complete required path | Revoker's same Grant + `CASE`; revoked actor proof immediately denied | End affected cycle `ACCESS_REVOKED`; derive gap; no successor | access + cycle/gap correlated events |
 
 The core sequence stays `ASSIGNED → ACCEPTED → IN_PROGRESS → COMPLETED`. Decline, relinquish, reassignment and revocation end/replace a cycle; they do not become shortcuts to completion. Frontend state never writes these facts directly.
