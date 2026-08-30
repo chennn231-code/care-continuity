@@ -24,6 +24,21 @@ Normative source：
 
 本Runbook只能規範未來經獨立授權的隔離Local execution。Runbook完成、審查或checkpoint均不構成任何state-changing authorization。
 
+### 1.1 Adopted post-Gate 6B implementation-status reconciliation（2026-08-30）
+
+本節只修正本Runbook早於後續Foundation checkpoints所留下的implementation-status敘述，不改變Design的normative ownership、resource acceptance、image/digest或Environment Start授權邊界。語意規範仍以Normative Design為最高依據；已採用且fingerprint frozen的Gate 6A／6B closure與其對應implementation，優先於本文件下文較早的「尚未建立」或`<REVIEWED_...>` readiness敘述。歷史research／closure只保存當時狀態，不可覆寫現行Design。
+
+截至本節日期，現行狀態為：
+
+- I-17 exact parser已由`tools/winwin/foundation/lib/configuration.mjs`實作、測試並在真實reserved config上PASS；下文「I-17 implementation尚未建立」已被此adopted checkpoint取代。
+- I-24中「generated materialized projection／independent effective projection／frozen static Config Contract／exact project identity」的bounded subset已由同一module實作、測試並PASS。原I-24文字另含SQL-C／project-input、remote-link及`.temp`完整start-boundary inspection；那些較廣scope不得因bounded Gate 6B comparator PASS而宣稱完成，仍屬pre-start blocker。
+- I-25 fixed-scope reservation metadata reader已由`tools/winwin/foundation/lib/reservations.mjs`實作、測試並在唯一ACTIVE reservation上PASS；production caller不能替換index root。
+- S-05 reviewed config materializer已由`foundationConfigService().materialize(requestedId)`實作，並只對reserved ID `wwfnd-20260830t060320z-b10f6599de24`成功執行一次。其後不得rematerialize、覆寫或以placeholder／alternate writer替代。
+- I-21 retirement維持不變：不存在可被重新加入equality chain的獨立「Supabase CLI reported ownership ID」。Ownership authority仍只有exact requested／config identity與每個accepted container、volume、network的兩個raw labels。
+- 尚無已freeze的instance Resource Expectation artifact、approved image manifest／platform／config digest records或image-preparation implementation；完整I-30 start-boundary closure、C-01至C-05 instance orchestration／inputs、S-06 launcher、stream redactor及S-12 evidence writer亦未完成。這些缺口維持Gate 5／Environment Start BLOCKED；Gate 6B PASS不授權image preparation或Environment Start。
+
+因此，下文registry中的placeholder只可按本節區分為「已被adopted implementation取代的歷史template」或「仍未實作的runtime blocker」；不得把所有placeholder一律視為未完成，也不得把已完成的bounded subset擴張為完整start-boundary PASS。
+
 ## 2. Command classification contract
 
 ### 2.1 Classes
