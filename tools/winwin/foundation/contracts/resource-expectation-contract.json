@@ -1,0 +1,318 @@
+{
+  "schema_version": "1",
+  "contract_type": "FOUNDATION_RESOURCE_EXPECTATION_MODEL",
+  "purpose": "IA-3A_SCHEMA_RUNTIME_VALIDATION",
+  "source_binding": {
+    "supabase_cli_version": "2.115.0",
+    "source_commit": "18ae43a34a2257458197b62f74e2a97e2b5cf7f9",
+    "installed_binary_sha256": "06179215a136f183ed24841e177e605fe15bf3e1ac1b6edac8312da71e835014",
+    "normative_design_sha256": "2d72a26ebbe799fd6e5d830f8e352ab1f306402888a8fc019e074cd5f5ce92c6",
+    "source_research_sha256": "a0a693664ad689bb3cfca404f5e2c5cd57bb4dda0be61fb167675bc13aada331"
+  },
+  "identity_policy": {
+    "project_id_format": "FROZEN_35_BYTE_ASCII",
+    "production_project_id": "wwfnd-20260830t060320z-b10f6599de24",
+    "required_labels": ["com.supabase.cli.project", "com.docker.compose.project"],
+    "comparison": "BYTE_EXACT",
+    "names_are_authority": false
+  },
+  "candidate_policy": {
+    "complete_disposition_required": true,
+    "unexpected_candidate": "FAIL",
+    "ambiguous_role": "FAIL",
+    "unclassified_candidate": "FAIL",
+    "foreign_or_mixed_ownership": "FAIL",
+    "unrelated_preexisting": "OUTSIDE_UNLESS_COLLISION_OR_CANDIDATE_SCOPE"
+  },
+  "port_policy": {
+    "allowed_host_ports": [59320, 59321, 59322, 59323, 59324, 59325, 59326, 59327, 59328, 59329],
+    "host_ip_policy": "LOOPBACK_ONLY",
+    "protocol": "tcp",
+    "unexpected_binding": "FAIL"
+  },
+  "roles": [
+    {
+      "role_id": "POSTGRES",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_db_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "ALWAYS_FRESH", "evidence": "Research v2 Section 6: PostgreSQL always participates in the approved fresh-start source path"},
+      "image_role": "POSTGRES",
+      "image_reference": "supabase/postgres:17.6.1.159",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": ["DB_VOLUME"], "explicit_mount_destinations": ["/var/lib/postgresql/data"]},
+      "ports": [{"config_key": "db.port", "container_port": 5432, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"}],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "ANALYTICS",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_analytics_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "CONFIG_BOOLEAN_TRUE", "config_key": "analytics.enabled", "evidence": "Research v2 Sections 6 and SC-07"},
+      "image_role": "ANALYTICS",
+      "image_reference": "supabase/logflare:1.50.2",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [{"config_key": "analytics.port", "container_port": 4000, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"}],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "VECTOR",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_vector_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "CONFIG_BOOLEAN_TRUE", "config_key": "analytics.enabled", "evidence": "Research v2 Sections 6 and SC-07"},
+      "image_role": "VECTOR",
+      "image_reference": "timberio/vector:0.53.0-alpine",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "KONG",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_kong_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["service exclude set", "API effective gate", "TLS branch"], "evidence": "Research v2 Section 6: not-excluded is required and api.enabled alone is insufficient"},
+      "image_role": "KONG",
+      "image_reference": "library/kong:2.8.1",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [{"config_key": "api.port", "container_port": 8000, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"}],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "MAILPIT",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_inbucket_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["local_smtp.enabled", "service exclude set"], "evidence": "Research v2 Section 6"},
+      "image_role": "MAILPIT",
+      "image_reference": "axllent/mailpit:v1.30.2",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [
+        {"config_key": "local_smtp.port", "container_port": 8025, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"},
+        {"config_key": "local_smtp.smtp_port", "container_port": 1025, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"},
+        {"config_key": "local_smtp.pop3_port", "container_port": 1110, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"}
+      ],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "REST",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_rest_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["api.enabled", "service exclude set", "major-dependent REST version"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "REST",
+      "image_reference": "postgrest/postgrest:v16.1",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "PG_META",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_pg_meta_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["studio.enabled", "service exclude set", "pgmeta version pin"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "PG_META",
+      "image_reference": "supabase/postgres-meta:v0.98.0",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "STUDIO",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_studio_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["studio.enabled", "service exclude set", "studio version pin", "function bind set"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "STUDIO",
+      "image_reference": "supabase/studio:2026.08.17-sha-0c1da8f",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [{"config_key": "studio.port", "container_port": 3000, "protocol": "tcp", "host_ip_policy": "LOOPBACK_ONLY"}],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "IMGPROXY",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_imgproxy_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["storage.enabled", "image transformation gate", "service exclude set"], "evidence": "Research v2 Section 6"},
+      "image_role": "IMGPROXY",
+      "image_reference": "darthsim/imgproxy:v3.8.0",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": ["STORAGE_VOLUME"], "explicit_mount_destinations": ["/mnt"]},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "EDGE",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_edge_runtime_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["edge_runtime.enabled", "service exclude set", "edge version pin", "empty workload proof"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "EDGE",
+      "image_reference": "supabase/edge-runtime:v1.74.3",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": ["EDGE_VOLUME"], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "POOLER",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_pooler_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["db.pooler.enabled", "pooler mode", "service exclude set", "pooler version pin"], "evidence": "Research v2 Sections 6, 18 and 21"},
+      "image_role": "POOLER",
+      "image_reference": "supabase/supavisor:2.9.7",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "AUTH",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_auth_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["auth.enabled", "service exclude set", "provider and hook effective gates", "gotrue version pin"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "AUTH",
+      "image_reference": "supabase/gotrue:v2.195.0",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "REALTIME",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_realtime_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["realtime.enabled", "service exclude set", "realtime version pin"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "REALTIME",
+      "image_reference": "supabase/realtime:v2.129.0",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    },
+    {
+      "role_id": "STORAGE",
+      "resource_class": "CONTAINER",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_storage_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["storage.enabled", "service exclude set", "storage version pin", "local backend proof"], "evidence": "Research v2 Sections 6 and 18"},
+      "image_role": "STORAGE",
+      "image_reference": "supabase/storage-api:v1.69.11",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": ["STORAGE_VOLUME"], "explicit_mount_destinations": ["/mnt"]},
+      "ports": [],
+      "health_policy": "RUNNING_HEALTHY"
+    }
+  ],
+  "volumes": [
+    {
+      "role_id": "DB_VOLUME",
+      "resource_class": "VOLUME",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_db_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "ALWAYS_FRESH", "evidence": "Research v2 Sections 8 and 10"},
+      "image_role": null,
+      "image_reference": null,
+      "relationships": {"network_roles": [], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "PRESENT"
+    },
+    {
+      "role_id": "STORAGE_VOLUME",
+      "resource_class": "VOLUME",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_storage_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["storage.enabled", "image declared-volume coverage"], "evidence": "Research v2 Sections 8, 9 and SC-02"},
+      "image_role": null,
+      "image_reference": null,
+      "relationships": {"network_roles": [], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "PRESENT"
+    },
+    {
+      "role_id": "EDGE_VOLUME",
+      "resource_class": "VOLUME",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 0, "maximum": 1},
+      "discovery_hint": "supabase_edge_runtime_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "UNRESOLVED_EFFECTIVE_INPUT", "missing_inputs": ["edge_runtime.enabled", "function bind set", "image declared-volume coverage"], "evidence": "Research v2 Sections 8 and SC-02"},
+      "image_role": null,
+      "image_reference": null,
+      "relationships": {"network_roles": [], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "PRESENT"
+    }
+  ],
+  "networks": [
+    {
+      "role_id": "FOUNDATION_NETWORK",
+      "resource_class": "NETWORK",
+      "lifecycle": "PERSISTENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "supabase_network_<PROJECT_ID>; hint only",
+      "reachability": {"kind": "ALWAYS_FRESH", "evidence": "Research v2 Sections 12 and 13: one generated user-defined network for the normal fresh model"},
+      "image_role": null,
+      "image_reference": null,
+      "relationships": {"network_roles": [], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "PRESENT"
+    }
+  ],
+  "transient_jobs": [
+    {
+      "role_id": "REALTIME_BOOTSTRAP_JOB",
+      "resource_class": "TRANSIENT_JOB",
+      "lifecycle": "TRANSIENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "unnamed run --rm event; name is not authority",
+      "reachability": {"kind": "DEPENDENT_PLATFORM_JOB", "parent_role": "REALTIME", "fresh_pg_minimum_major": 15, "evidence": "Research v2 Sections 6 and SC-05"},
+      "image_role": "REALTIME",
+      "image_reference": "supabase/realtime:v2.129.0",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "TRANSIENT_EXIT_ZERO_REMOVED"
+    },
+    {
+      "role_id": "STORAGE_MIGRATION_JOB",
+      "resource_class": "TRANSIENT_JOB",
+      "lifecycle": "TRANSIENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "unnamed run --rm event; name is not authority",
+      "reachability": {"kind": "DEPENDENT_PLATFORM_JOB", "parent_role": "STORAGE", "fresh_pg_minimum_major": 15, "evidence": "Research v2 Sections 6 and SC-05"},
+      "image_role": "STORAGE",
+      "image_reference": "supabase/storage-api:v1.69.11",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "TRANSIENT_EXIT_ZERO_REMOVED"
+    },
+    {
+      "role_id": "AUTH_MIGRATION_JOB",
+      "resource_class": "TRANSIENT_JOB",
+      "lifecycle": "TRANSIENT",
+      "cardinality_when_reachable": {"minimum": 1, "maximum": 1},
+      "discovery_hint": "unnamed run --rm event; name is not authority",
+      "reachability": {"kind": "DEPENDENT_PLATFORM_JOB", "parent_role": "AUTH", "fresh_pg_minimum_major": 15, "evidence": "Research v2 Sections 6 and SC-05"},
+      "image_role": "AUTH",
+      "image_reference": "supabase/gotrue:v2.195.0",
+      "relationships": {"network_roles": ["FOUNDATION_NETWORK"], "volume_roles": [], "explicit_mount_destinations": []},
+      "ports": [],
+      "health_policy": "TRANSIENT_EXIT_ZERO_REMOVED"
+    }
+  ]
+}

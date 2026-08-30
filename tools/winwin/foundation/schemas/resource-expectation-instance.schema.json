@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winwin.invalid/schemas/foundation-resource-expectation-instance-v1.json",
+  "title": "Foundation frozen resource expectation instance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_type", "purpose", "project_id", "config_sha256", "resource_contract_sha256", "producer_sha256", "profile_sha256", "image_approval_set_sha256", "expectations", "candidate_policy", "generated_at", "instance_sha256"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "contract_type": {"const": "FOUNDATION_RESOURCE_EXPECTATION_INSTANCE"},
+    "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "project_id": {"$ref": "#/$defs/projectId"},
+    "config_sha256": {"$ref": "#/$defs/sha256"},
+    "resource_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "producer_sha256": {"$ref": "#/$defs/sha256"},
+    "profile_sha256": {"$ref": "#/$defs/sha256"},
+    "image_approval_set_sha256": {"$ref": "#/$defs/sha256"},
+    "expectations": {"type": "array", "items": {"$ref": "#/$defs/expectation"}},
+    "candidate_policy": {"$ref": "#/$defs/candidatePolicy"},
+    "generated_at": {"const": "NON_AUTHORITATIVE_OMITTED_FOR_DETERMINISM"},
+    "instance_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "projectId": {"type": "string", "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$"},
+    "roleId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+    "cardinality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {"minimum": {"type": "integer", "minimum": 0}, "maximum": {"type": "integer", "minimum": 0}}
+    },
+    "relationships": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_roles", "volume_roles", "explicit_mount_destinations"],
+      "properties": {
+        "network_roles": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/roleId"}},
+        "volume_roles": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/roleId"}},
+        "explicit_mount_destinations": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}}
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config_key", "container_port", "protocol", "host_ip_policy", "host_port"],
+      "properties": {
+        "config_key": {"type": "string", "pattern": "^[a-z_][a-z0-9_]*(?:\\.[a-z_][a-z0-9_]*)*$"},
+        "container_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "protocol": {"const": "tcp"},
+        "host_ip_policy": {"const": "LOOPBACK_ONLY"},
+        "host_port": {"type": "integer", "minimum": 59320, "maximum": 59329}
+      }
+    },
+    "candidatePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete_disposition_required", "unexpected_candidate", "ambiguous_role", "unclassified_candidate", "foreign_or_mixed_ownership", "unrelated_preexisting"],
+      "properties": {
+        "complete_disposition_required": {"const": true},
+        "unexpected_candidate": {"const": "FAIL"},
+        "ambiguous_role": {"const": "FAIL"},
+        "unclassified_candidate": {"const": "FAIL"},
+        "foreign_or_mixed_ownership": {"const": "FAIL"},
+        "unrelated_preexisting": {"const": "OUTSIDE_UNLESS_COLLISION_OR_CANDIDATE_SCOPE"}
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectation_id", "role_id", "resource_class", "lifecycle", "cardinality", "discovery_hint", "required_labels", "image_role", "relationships", "ports", "health_policy"],
+      "properties": {
+        "expectation_id": {"$ref": "#/$defs/roleId"},
+        "role_id": {"$ref": "#/$defs/roleId"},
+        "resource_class": {"enum": ["CONTAINER", "VOLUME", "NETWORK", "TRANSIENT_JOB"]},
+        "lifecycle": {"enum": ["PERSISTENT", "TRANSIENT"]},
+        "cardinality": {"$ref": "#/$defs/cardinality"},
+        "discovery_hint": {"type": "string", "minLength": 1},
+        "required_labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["com.supabase.cli.project", "com.docker.compose.project"],
+          "properties": {
+            "com.supabase.cli.project": {"$ref": "#/$defs/projectId"},
+            "com.docker.compose.project": {"$ref": "#/$defs/projectId"}
+          }
+        },
+        "image_role": {"oneOf": [{"$ref": "#/$defs/roleId"}, {"type": "null"}]},
+        "relationships": {"$ref": "#/$defs/relationships"},
+        "ports": {"type": "array", "items": {"$ref": "#/$defs/port"}},
+        "health_policy": {"enum": ["RUNNING_HEALTHY", "TRANSIENT_EXIT_ZERO_REMOVED", "PRESENT", "NOT_APPLICABLE"]}
+      }
+    }
+  }
+}

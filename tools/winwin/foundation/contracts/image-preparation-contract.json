@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "contract_type": "FOUNDATION_IMAGE_PREPARATION_CONTRACT",
+  "purpose": "IA-3A_SCHEMA_RUNTIME_VALIDATION",
+  "mode": "PRE_CACHED_APPROVED_DIGEST_ONLY",
+  "required_inputs": [
+    "PASS_EFFECTIVE_PROFILE",
+    "FROZEN_RESOURCE_EXPECTATION_INSTANCE",
+    "COMPLETE_INDEPENDENT_IMAGE_APPROVAL_SET"
+  ],
+  "attempt_policy": {
+    "attempts_per_image": 1,
+    "retry": "FORBIDDEN",
+    "ordering": "ROLE_ID_ASCENDING",
+    "stop_on_first_failure": true
+  },
+  "failure_policy": {
+    "partial_acquisition": "PRESERVE_AND_STOP",
+    "evidence": "SANITIZED_IN_MEMORY_UNLESS_SEPARATELY_AUTHORIZED"
+  },
+  "drift_policy": {
+    "tag_to_digest_change": "FAIL",
+    "digest_unavailable": "FAIL",
+    "approval_mismatch": "FAIL"
+  },
+  "cleanup_policy": {
+    "remove_partial": "FORBIDDEN",
+    "remove_unapproved_local": "FORBIDDEN"
+  },
+  "acceptance_policy": {
+    "tag_only": "REJECTED",
+    "local_match": "EXACT_APPROVED_IMMUTABLE_IDENTITY"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winwin.invalid/schemas/foundation-image-approval-v1.json",
+  "title": "Foundation immutable image approval set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_set_type", "purpose", "profile_sha256", "independent_source_policy", "approvals"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "approval_set_type": {"const": "FOUNDATION_IMAGE_APPROVAL_SET"},
+    "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "profile_sha256": {"$ref": "#/$defs/sha256"},
+    "independent_source_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["resolver_id", "source_class", "credentials", "layer_download"],
+      "properties": {"resolver_id": {"type": "string", "pattern": "^[A-Z0-9_-]+$"}, "source_class": {"const": "REVIEWED_REGISTRY_METADATA"}, "credentials": {"const": "FORBIDDEN"}, "layer_download": {"const": "FORBIDDEN"}}
+    },
+    "approvals": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/approval"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "source_reference", "approved_registry_manifest_digest", "approved_platform_child_digest", "approved_config_digest", "required_repo_digest", "platform", "selected_config_sha256", "declared_volumes", "entrypoint_policy", "provenance", "schema_version"],
+      "properties": {
+        "role": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+        "source_reference": {"type": "string"},
+        "approved_registry_manifest_digest": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$"},
+        "approved_platform_child_digest": {"$ref": "#/$defs/digest"},
+        "approved_config_digest": {"$ref": "#/$defs/digest"},
+        "required_repo_digest": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$"},
+        "platform": {"type": "object", "additionalProperties": false, "required": ["os", "architecture", "variant"], "properties": {"os": {"type": "string"}, "architecture": {"type": "string"}, "variant": {"type": "string"}}},
+        "selected_config_sha256": {"$ref": "#/$defs/sha256"},
+        "declared_volumes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+        "entrypoint_policy": {"enum": ["NO_NETWORK_BOOTSTRAP", "REVIEWED_STRUCTURAL_ENTRYPOINT"]},
+        "provenance": {"type": "object", "additionalProperties": false, "required": ["independent", "source_class", "source_record_sha256", "resolver_id", "approved_at_utc"], "properties": {"independent": {"const": true}, "source_class": {"const": "REVIEWED_REGISTRY_METADATA"}, "source_record_sha256": {"$ref": "#/$defs/sha256"}, "resolver_id": {"type": "string", "pattern": "^[A-Z0-9_-]+$"}, "approved_at_utc": {"type": "string", "format": "date-time"}}},
+        "schema_version": {"const": "1"}
+      }
+    }
+  }
+}

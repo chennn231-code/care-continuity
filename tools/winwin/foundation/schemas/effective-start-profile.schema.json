@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winwin.invalid/schemas/foundation-effective-start-profile-v1.json",
+  "title": "Foundation effective start profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_type", "purpose", "result", "project_id", "config_sha256", "config_contract_sha256", "resource_contract_sha256", "source_binding", "decisions", "reachable_roles", "unreachable_roles", "unresolved_roles", "reachable_image_roles", "unresolved_image_roles", "project_inputs", "generated_at", "profile_sha256"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "profile_type": {"const": "FOUNDATION_EFFECTIVE_START_PROFILE"},
+    "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "result": {"enum": ["PASS", "BLOCKED"]},
+    "project_id": {"type": "string", "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$"},
+    "config_sha256": {"$ref": "#/$defs/sha256"},
+    "config_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "resource_contract_sha256": {"$ref": "#/$defs/sha256"},
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supabase_cli_version", "source_commit", "installed_binary_sha256", "normative_design_sha256", "source_research_sha256"],
+      "properties": {
+        "supabase_cli_version": {"const": "2.115.0"},
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "installed_binary_sha256": {"$ref": "#/$defs/sha256"},
+        "normative_design_sha256": {"$ref": "#/$defs/sha256"},
+        "source_research_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role_id", "state", "reason", "evidence", "resource_class", "lifecycle", "image_role", "image_reference", "source_rule"],
+        "properties": {
+          "role_id": {"$ref": "#/$defs/roleId"},
+          "state": {"enum": ["REACHABLE", "UNREACHABLE", "UNRESOLVED"]},
+          "reason": {"type": "string", "minLength": 1},
+          "evidence": {"type": "string", "minLength": 1},
+          "resource_class": {"enum": ["CONTAINER", "VOLUME", "NETWORK", "TRANSIENT_JOB"]},
+          "lifecycle": {"enum": ["PERSISTENT", "TRANSIENT"]},
+          "image_role": {"oneOf": [{"$ref": "#/$defs/roleId"}, {"type": "null"}]},
+          "image_reference": {"oneOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+          "source_rule": {"enum": ["ALWAYS_FRESH", "CONFIG_BOOLEAN_TRUE", "UNRESOLVED_EFFECTIVE_INPUT", "DEPENDENT_PLATFORM_JOB"]}
+        }
+      }
+    },
+    "reachable_roles": {"$ref": "#/$defs/roles"},
+    "unreachable_roles": {"$ref": "#/$defs/roles"},
+    "unresolved_roles": {"$ref": "#/$defs/roles"},
+    "reachable_image_roles": {"$ref": "#/$defs/roles"},
+    "unresolved_image_roles": {"$ref": "#/$defs/roles"},
+    "project_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["migrations", "seed", "analytics", "vector", "pgdelta"],
+      "properties": {
+        "migrations": {"const": "DISABLED"},
+        "seed": {"const": "DISABLED"},
+        "analytics": {"const": "DISABLED"},
+        "vector": {"const": "DISABLED"},
+        "pgdelta": {"const": "DISABLED"}
+      }
+    },
+    "generated_at": {"const": "NON_AUTHORITATIVE_OMITTED_FOR_DETERMINISM"},
+    "profile_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "roleId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+    "roles": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/roleId"}}
+  }
+}
