@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winwin.invalid/schemas/foundation-session-reservation-v1.json",
+  "title": "Foundation session reservation evidence and metadata index",
+  "oneOf": [
+    { "$ref": "#/$defs/sessionIdentity" },
+    { "$ref": "#/$defs/sessionReservation" },
+    { "$ref": "#/$defs/collision" },
+    { "$ref": "#/$defs/indexManifest" },
+    { "$ref": "#/$defs/activeReservation" },
+    { "$ref": "#/$defs/endedReservation" }
+  ],
+  "$defs": {
+    "projectId": {
+      "type": "string",
+      "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$",
+      "minLength": 35,
+      "maxLength": 35
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "purpose": {
+      "const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"
+    },
+    "evidenceHashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_identity_sha256", "session_reservation_sha256", "collision_sha256"],
+      "properties": {
+        "session_identity_sha256": { "$ref": "#/$defs/digest" },
+        "session_reservation_sha256": { "$ref": "#/$defs/digest" },
+        "collision_sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "sessionIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "evidence_type", "purpose", "project_id", "generated_at_utc", "byte_count", "ascii", "format", "candidate_state"],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "evidence_type": { "const": "FOUNDATION_SESSION_IDENTITY" },
+        "purpose": { "$ref": "#/$defs/purpose" },
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "generated_at_utc": { "$ref": "#/$defs/timestamp" },
+        "byte_count": { "const": 35 },
+        "ascii": { "const": true },
+        "format": { "const": "FROZEN_35_BYTE_ASCII" },
+        "candidate_state": { "const": "VALIDATED_NOT_RESERVED" }
+      }
+    },
+    "sessionReservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "evidence_type", "purpose", "project_id", "session_root", "created_at_utc", "requested_state", "acceptance_authority"],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "evidence_type": { "const": "FOUNDATION_SESSION_RESERVATION" },
+        "purpose": { "$ref": "#/$defs/purpose" },
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "session_root": { "type": "string", "pattern": "^/" },
+        "created_at_utc": { "$ref": "#/$defs/timestamp" },
+        "requested_state": { "const": "ACTIVE" },
+        "acceptance_authority": { "const": "ACTIVE_INDEX_ENTRY_REQUIRED" }
+      }
+    },
+    "collision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "evidence_type", "purpose", "project_id", "checked_at_utc", "freshness_result", "collision_result", "metadata_index_sha256", "metadata_entry_count", "decision"],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "evidence_type": { "const": "FOUNDATION_SESSION_COLLISION" },
+        "purpose": { "$ref": "#/$defs/purpose" },
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "checked_at_utc": { "$ref": "#/$defs/timestamp" },
+        "freshness_result": { "const": "FRESH-QUALIFIED" },
+        "collision_result": { "const": "PASS" },
+        "metadata_index_sha256": { "$ref": "#/$defs/digest" },
+        "metadata_entry_count": { "type": "integer", "minimum": 0 },
+        "decision": { "const": "RESERVATION_ALLOWED" }
+      }
+    },
+    "indexManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "index_type", "purpose", "created_at_utc"],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "index_type": { "const": "FOUNDATION_SESSION_RESERVATION_INDEX" },
+        "purpose": { "$ref": "#/$defs/purpose" },
+        "created_at_utc": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "activeReservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "record_type", "purpose", "project_id", "session_root", "created_at_utc", "reservation_state", "evidence"],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "record_type": { "const": "FOUNDATION_ACTIVE_SESSION_RESERVATION" },
+        "purpose": { "$ref": "#/$defs/purpose" },
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "session_root": { "type": "string", "pattern": "^/" },
+        "created_at_utc": { "$ref": "#/$defs/timestamp" },
+        "reservation_state": { "const": "ACTIVE" },
+        "evidence": { "$ref": "#/$defs/evidenceHashes" }
+      }
+    },
+    "endedReservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "record_type", "purpose", "project_id", "session_root", "created_at_utc", "ended_at_utc", "end_reason", "reservation_state"],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "record_type": { "const": "FOUNDATION_ENDED_SESSION_RESERVATION" },
+        "purpose": { "$ref": "#/$defs/purpose" },
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "session_root": { "type": "string", "pattern": "^/" },
+        "created_at_utc": { "$ref": "#/$defs/timestamp" },
+        "ended_at_utc": { "$ref": "#/$defs/timestamp" },
+        "end_reason": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,99}$" },
+        "reservation_state": { "const": "ENDED" }
+      }
+    }
+  }
+}
