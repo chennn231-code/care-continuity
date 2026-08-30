@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 import { hash } from '../lib/contracts.mjs';
 import {
-  canonicalizeProtectedHeaders, parseAnonymousBearerChallenge, parseApprovedSourceReference, resolveRegistryDigest,
+  canonicalizeProtectedHeaders, fetchImmutableConfigBlob, parseAnonymousBearerChallenge, parseApprovedSourceReference, projectConfigBlobRedirect, resolveRegistryDigest,
   parseRegistryTokenResponse, platformCompatible, projectIndexPlatformDescriptors, projectProtectedResponseHeaders,
   selectCompatiblePlatform, validateRegistryResolverContract, validateResponseCookieNonParticipation,
 } from '../lib/registry-digest-resolver.mjs';
@@ -47,6 +47,42 @@ function anonymousQueue(a = artifacts()) {
     { status:200,headers:{'content-type':'application/json'},body:json({token:'safe.synthetic.token'}) },
     a.indexResponse, a.childResponse, a.configResponse,
   ];
+}
+
+const redirectLocation = 'https://cdn.example.test/registry/blobs/config?X-Signature=secret-value&X-Expires=60';
+function redirectedQueue(a = artifacts(), location = redirectLocation, status = 307) {
+  const queue = anonymousQueue(a);
+  queue[4] = { status, headers: { location }, body: Buffer.alloc(0) };
+  queue.push(a.configResponse);
+  return queue;
+}
+
+function redirectProjection(overrides = {}) {
+  const contract = load(), approvedSource = source(), requestedDigest = `sha256:${H('a')}`;
+  return projectConfigBlobRedirect({ contract, source: approvedSource, requestedDigest,
+    sourcePath: `/v2/${approvedSource.repository}/blobs/${requestedDigest}`,
+    response: { status: 307, headers: { location: redirectLocation }, body: Buffer.alloc(0) }, ...overrides });
+}
+
+function replaceConfigBytes(a, bytes) {
+  a.configBytes = bytes; a.configDigest = digest(bytes);
+  a.child.config.size = bytes.length; a.child.config.digest = a.configDigest;
+  a.childBytes = json(a.child); a.childDigest = digest(a.childBytes);
+  a.index.manifests[0].size = a.childBytes.length; a.index.manifests[0].digest = a.childDigest;
+  a.indexBytes = json(a.index);
+  a.indexResponse = response(a.indexBytes, a.index.mediaType);
+  a.childResponse = response(a.childBytes, a.child.mediaType);
+  a.configResponse = { status: 200, headers: { 'content-type': 'application/octet-stream' }, body: bytes };
+  return a;
+}
+
+async function fetchConfigWith(a, responses, overrides = {}) {
+  const calls = [], queue = [...responses];
+  const request = async spec => { calls.push(clone(spec)); assert.ok(queue.length > 0); return queue.shift(); };
+  const result = await fetchImmutableConfigBlob({ contract: load(), source: source(), configDescriptor: a.child.config,
+    layerDigests: a.child.layers.map(layer => layer.digest), requestedDigest: a.child.config.digest,
+    authorization: 'Bearer safe.synthetic.token', request, ...overrides });
+  return { result, calls };
 }
 
 async function resolveWith(queue, contract = load()) {
@@ -162,7 +198,7 @@ test('anonymous token remains absent from result and evidence', async () => { co
 test('timeout is surfaced without retry', async () => { let calls=0; await assert.rejects(()=>resolveRegistryDigest({contract:load(),role:'AUTH',sourceReference:'supabase/gotrue:v2.195.0',resolverSha256:H('a'),request:async()=>{calls+=1;throw Object.assign(new Error('timeout'),{code:'REGISTRY_TIMEOUT'});}})); assert.equal(calls,1); });
 test('rate limit fails without retry', async () => { let calls=0; await assert.rejects(()=>resolveRegistryDigest({contract:load(),role:'AUTH',sourceReference:'supabase/gotrue:v2.195.0',resolverSha256:H('a'),request:async()=>{calls+=1;return{status:429,headers:{},body:Buffer.from('rate')};}}),code('REGISTRY_RATE_LIMIT')); assert.equal(calls,1); });
 test('config body bound is enforced', async () => { const queue=anonymousQueue(); queue[4]={status:200,headers:{},body:Buffer.alloc(load().bounds.config_body_bytes+1)}; await assert.rejects(()=>resolveWith(queue),code('REGISTRY_CONFIG_BODY')); });
-test('config descriptor digest relationship is exact', async () => { const queue=anonymousQueue(); queue[4].body=Buffer.from('{}'); await assert.rejects(()=>resolveWith(queue),code('REGISTRY_CONFIG_DIGEST_MISMATCH')); });
+test('config descriptor digest relationship is exact', async () => { const queue=anonymousQueue(); queue[4].body=Buffer.alloc(queue[4].body.length,0); await assert.rejects(()=>resolveWith(queue),code('REGISTRY_CONFIG_DIGEST_MISMATCH')); });
 test('tag-only or digest substitution is rejected', () => assert.throws(()=>parseApprovedSourceReference(load(),'AUTH',`supabase/gotrue@sha256:${H('1')}`),code('REGISTRY_UNAPPROVED_SOURCE')));
 test('registry host drift is rejected by contract', () => { const value=load(); value.approved_sources[0].registry_host='registry.example'; assert.throws(()=>validateRegistryResolverContract(value),code('REGISTRY_SOURCE_VALUE')); });
 test('repository mismatch is rejected', () => assert.throws(()=>parseApprovedSourceReference(load(),'AUTH','other/gotrue:v2.195.0'),code('REGISTRY_UNAPPROVED_SOURCE')));
@@ -171,3 +207,49 @@ test('uppercase or malformed digest is rejected', () => { const a=artifacts(); a
 test('duplicate role approval source is rejected', () => { const value=load(); value.approved_sources.push(clone(value.approved_sources[0])); assert.throws(()=>validateRegistryResolverContract(value),code('REGISTRY_SOURCE_DUPLICATE')); });
 test('safe config projection excludes environment values and records volumes structurally', async () => { const a=artifacts({configValue:{architecture:'arm64',os:'linux',config:{Env:['SECRET=value'],Volumes:{'/safe':{}},Entrypoint:['run']}}}); const {result}=await resolveWith(anonymousQueue(a)); assert.deepEqual(result.declared_volumes,['/safe']); assert.doesNotMatch(JSON.stringify(result),/SECRET|value/); });
 test('resolver module has no Docker, credential-file, environment, layer-download, shell, or writer path', () => { const text=fs.readFileSync(new URL('../lib/registry-digest-resolver.mjs',import.meta.url),'utf8'); assert.doesNotMatch(text,/node:child_process|execFile|spawn\(|process\.env|\.docker\/config|credentialHelper|docker\s+pull|writeFile|appendFile|createWriteStream|\/layers\//i); });
+test('config redirect contract is exact and config-only', () => { const policy=validateRegistryResolverContract(load()).config_blob_redirect_policy; assert.equal(policy.mode,'CONFIG_BLOB_ONE_HOP_CAPABILITY_REDIRECT'); assert.equal(policy.object_type,'EXACT_CHILD_CONFIG_DESCRIPTOR_ONLY'); assert.deepEqual(policy.accepted_statuses,[307]); });
+test('immutable config blob direct 200 remains accepted without redirect callback', async () => { const a=artifacts(); let redirects=0; const {result,calls}=await fetchConfigWith(a,[a.configResponse],{onRedirect:()=>{redirects+=1;}}); assert.equal(result.computed_digest,a.configDigest); assert.equal(result.redirect,null); assert.equal(redirects,0); assert.equal(calls.length,1); });
+test('approved config-only 307 redirect is followed once', async () => { const a=artifacts(), origin={status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)}; const {result,calls}=await fetchConfigWith(a,[origin,a.configResponse]); assert.equal(result.computed_digest,a.configDigest); assert.equal(result.redirect.redirect_hop_count,1); assert.equal(calls.length,2); });
+test('approved redirect is HTTPS to HTTPS', () => assert.equal(redirectProjection().target_scheme,'https'));
+test('HTTP config Location is rejected before redirected network activity', async () => { const a=artifacts(), calls=[]; await assert.rejects(()=>fetchImmutableConfigBlob({contract:load(),source:source(),configDescriptor:a.child.config,layerDigests:a.child.layers.map(x=>x.digest),requestedDigest:a.configDigest,authorization:null,request:async spec=>{calls.push(spec);return{status:307,headers:{location:'http://cdn.example.test/blob'},body:Buffer.alloc(0)};}}),code('REGISTRY_CONFIG_REDIRECT_TARGET')); assert.equal(calls.length,1); });
+test('missing config redirect Location is rejected', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_LOCATION')));
+test('malformed config redirect Location is rejected', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{location:'not a URL'},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_LOCATION')));
+test('302 config redirect status is rejected', async () => { const a=artifacts(); await assert.rejects(()=>fetchConfigWith(a,[{status:302,headers:{location:redirectLocation},body:Buffer.alloc(0)}]),code('REGISTRY_CONFIG_REDIRECT_STATUS')); });
+test('308 config redirect status is rejected', async () => { const a=artifacts(); await assert.rejects(()=>fetchConfigWith(a,[{status:308,headers:{location:redirectLocation},body:Buffer.alloc(0)}]),code('REGISTRY_CONFIG_REDIRECT_STATUS')); });
+test('second config redirect is rejected', async () => { const a=artifacts(); await assert.rejects(()=>fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},{status:307,headers:{location:'https://second.example.test/blob'},body:Buffer.alloc(0)}]),code('REGISTRY_CONFIG_REDIRECT_HOP')); });
+test('config redirect loop is rejected as the forbidden second hop', async () => { const a=artifacts(); await assert.rejects(()=>fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)}]),code('REGISTRY_CONFIG_REDIRECT_HOP')); });
+test('Authorization is absent from fresh cross-host redirect request', async () => { const a=artifacts(), {calls}=await fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},a.configResponse]); assert.equal(Object.hasOwn(calls[1].headers,'authorization'),false); });
+test('Cookie is absent from fresh cross-host redirect request', async () => { const a=artifacts(), {calls}=await fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},a.configResponse]); assert.equal(Object.hasOwn(calls[1].headers,'cookie'),false); });
+test('registry bearer token is not forwarded to redirect host', async () => { const a=artifacts(), {calls}=await fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},a.configResponse]); assert.doesNotMatch(JSON.stringify(calls[1]),/safe\.synthetic\.token|Bearer/); });
+test('redirect query values are absent from safe projection', () => { const projection=redirectProjection(); assert.doesNotMatch(JSON.stringify(projection),/secret-value|60/); assert.deepEqual(projection.query_parameter_names,['X-Signature','X-Expires']); });
+test('complete redirect URL is absent from retained projection', () => assert.equal(JSON.stringify(redirectProjection()).includes(redirectLocation),false));
+test('redirect URL is passed byte-for-byte without reconstruction', async () => { const a=artifacts(), exactLocation='https://cdn.example.test/a%2Fb//c?X-Signature=a%2Bb%3D&X-Order=2'; const {calls}=await fetchConfigWith(a,[{status:307,headers:{location:exactLocation},body:Buffer.alloc(0)},a.configResponse]); assert.equal(calls[1].url,exactLocation); });
+test('redirected config raw bytes matching descriptor digest pass', async () => { const a=artifacts(), {result}=await fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},a.configResponse]); assert.equal(result.computed_digest,a.child.config.digest); });
+test('redirected config digest mismatch fails closed', async () => { const a=artifacts(), bad={status:200,headers:{},body:Buffer.alloc(a.configBytes.length,0)}; await assert.rejects(()=>fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},bad]),code('REGISTRY_CONFIG_DIGEST_MISMATCH')); });
+test('redirected config declared descriptor size mismatch fails closed', async () => { const a=artifacts(), bad={status:200,headers:{},body:Buffer.concat([a.configBytes,Buffer.from(' ')])}; await assert.rejects(()=>fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},bad]),code('REGISTRY_CONFIG_SIZE_MISMATCH')); });
+test('redirected oversized config body is rejected', async () => { const a=artifacts(), bad={status:200,headers:{},body:Buffer.alloc(load().bounds.config_body_bytes+1)}; await assert.rejects(()=>fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},bad]),code('REGISTRY_CONFIG_BODY')); });
+test('redirected malformed config JSON is rejected after digest verification', async () => { const a=replaceConfigBytes(artifacts(),Buffer.from('{')); await assert.rejects(()=>resolveWith(redirectedQueue(a)),code('REGISTRY_CONFIG_JSON')); });
+test('redirected config duplicate JSON keys are rejected strictly', async () => { const bytes=Buffer.from('{"architecture":"arm64","architecture":"arm64","os":"linux","config":{}}'); const a=replaceConfigBytes(artifacts(),bytes); await assert.rejects(()=>resolveWith(redirectedQueue(a)),code('REGISTRY_CONFIG_JSON')); });
+test('redirected config OS mismatch is rejected', async () => { const a=artifacts({configValue:{architecture:'arm64',os:'windows',config:{}}}); await assert.rejects(()=>resolveWith(redirectedQueue(a)),code('REGISTRY_CONFIG_PLATFORM')); });
+test('redirected config architecture mismatch is rejected', async () => { const a=artifacts({configValue:{architecture:'amd64',os:'linux',config:{}}}); await assert.rejects(()=>resolveWith(redirectedQueue(a)),code('REGISTRY_CONFIG_PLATFORM')); });
+test('redirected config explicit variant mismatch is rejected', async () => { const a=artifacts({configValue:{architecture:'arm64',os:'linux',variant:'v9',config:{}}}); await assert.rejects(()=>resolveWith(redirectedQueue(a)),code('REGISTRY_CONFIG_VARIANT')); });
+test('redirected config omitted variant passes frozen arm64 v8 rule', async () => { const a=artifacts({configValue:{architecture:'arm64',os:'linux',config:{}}}); assert.deepEqual((await resolveWith(redirectedQueue(a))).result.platform,platform); });
+test('redirected config null variant passes OCI config absent-equivalence rule', async () => { const a=artifacts({configValue:{architecture:'arm64',os:'linux',variant:null,config:{}}}); assert.deepEqual((await resolveWith(redirectedQueue(a))).result.platform,platform); });
+test('layer digest cannot enter config redirect flow and causes no network', async () => { const a=artifacts(), calls=[]; await assert.rejects(()=>fetchImmutableConfigBlob({contract:load(),source:source(),configDescriptor:a.child.config,layerDigests:a.child.layers.map(x=>x.digest),requestedDigest:a.child.layers[0].digest,authorization:null,request:async spec=>{calls.push(spec);}}),code('REGISTRY_CONFIG_BLOB_NOT_CONFIG')); assert.equal(calls.length,0); });
+test('manifest redirect remains rejected under global no-redirect policy', async () => { const queue=anonymousQueue(); queue[2]={status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)}; await assert.rejects(()=>resolveWith(queue),code('REGISTRY_UNEXPECTED_REDIRECT')); });
+test('unexpected config redirect source endpoint is rejected', () => assert.throws(()=>redirectProjection({sourcePath:'/v2/supabase/gotrue/blobs/not-the-config-digest'}),code('REGISTRY_CONFIG_REDIRECT_SOURCE_ENDPOINT')));
+test('redirect transport request method remains an explicit GET', () => { const text=fs.readFileSync(new URL('../lib/registry-digest-resolver.mjs',import.meta.url),'utf8'); assert.match(text,/const requestOptions = \{ method: 'GET'/); });
+test('approved redirect makes exactly one target request and no retry', async () => { const a=artifacts(), {calls}=await fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},a.configResponse]); assert.deepEqual(calls.map(x=>x.purpose),['CONFIG_METADATA_BLOB','CONFIG_METADATA_BLOB_REDIRECT']); });
+test('safe redirect reporting contains only query names and structural path data', () => { const projection=redirectProjection(); assert.deepEqual(projection.location_path_structure,{absolute:true,segment_count:3,trailing_slash:false}); assert.deepEqual(Object.keys(projection).sort(),['authorization_sent','cookie_sent','explicit_port','location_byte_length','location_path_structure','location_sha256','query_parameter_count','query_parameter_names','redirect_hop_count','redirect_request_header_names','requested_config_digest','source_host','source_repository','status','target_host','target_scheme'].sort()); });
+test('raw descriptor projection distinguishes omitted variant', () => { const a=artifacts(); delete a.index.manifests[0].platform.variant; const row=projectIndexPlatformDescriptors(a.index,load())[0]; assert.equal(row.variant_present,false); assert.equal(row.variant_json_type,'ABSENT'); });
+test('raw descriptor projection distinguishes explicit null variant', () => { const a=artifacts(); a.index.manifests[0].platform.variant=null; const row=projectIndexPlatformDescriptors(a.index,load())[0]; assert.equal(row.variant_present,true); assert.equal(row.variant_json_type,'null'); });
+test('raw descriptor projection distinguishes explicit v8 variant', () => { const row=projectIndexPlatformDescriptors(artifacts().index,load())[0]; assert.equal(row.variant_present,true); assert.equal(row.variant_json_type,'string'); assert.equal(row.variant_value,'v8'); });
+test('presence-aware multiple compatible executable descriptors still fail ambiguous', () => { const a=artifacts(); const omitted=clone(a.index.manifests[0]); delete omitted.platform.variant; omitted.digest=`sha256:${H('b')}`; a.index.manifests.push(omitted); assert.throws(()=>select(a.index),code('REGISTRY_PLATFORM_AMBIGUOUS')); });
+test('redirect Location length and hash cover the complete secret-capable value', () => { const projection=redirectProjection(); assert.equal(projection.location_byte_length,Buffer.byteLength(redirectLocation)); assert.equal(projection.location_sha256,digest(Buffer.from(redirectLocation))); });
+test('redirect request header allowlist is exactly accept', async () => { const a=artifacts(), {calls}=await fetchConfigWith(a,[{status:307,headers:{location:redirectLocation},body:Buffer.alloc(0)},a.configResponse]); assert.deepEqual(Object.keys(calls[1].headers),['accept']); });
+test('credential-bearing redirect URL is rejected', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{location:'https://user:pass@cdn.example.test/blob'},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_TARGET')));
+test('redirect URL fragment is rejected', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{location:'https://cdn.example.test/blob#fragment'},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_TARGET')));
+test('non-default explicit redirect port is rejected', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{location:'https://cdn.example.test:8443/blob'},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_PORT')));
+test('explicit HTTPS default port is retained in safe projection', () => assert.equal(redirectProjection({response:{status:307,headers:{location:'https://cdn.example.test:443/blob'},body:Buffer.alloc(0)}}).explicit_port,'443'));
+test('IP-literal redirect host is rejected', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{location:'https://127.0.0.1/blob'},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_HOST')));
+test('over-bound Location is rejected before target request', () => assert.throws(()=>redirectProjection({response:{status:307,headers:{location:`https://cdn.example.test/blob?x=${'a'.repeat(8192)}`},body:Buffer.alloc(0)}}),code('REGISTRY_CONFIG_REDIRECT_LOCATION')));

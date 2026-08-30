@@ -2,6 +2,7 @@
 // credentials, credential helpers, environment variables, or filesystem layers.
 import fs from 'node:fs';
 import https from 'node:https';
+import net from 'node:net';
 
 import { ContractError, demand, hash, object, parseJSON, safeText, shape } from './contracts.mjs';
 
@@ -44,7 +45,7 @@ const body = (response, maximum, code) => {
 const mediaType = value => typeof value === 'string' ? value.split(';', 1)[0].trim() : '';
 
 export function validateRegistryResolverContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'platform_selection_policy', 'approved_sources', 'network_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'platform_selection_policy', 'approved_sources', 'network_policy', 'config_blob_redirect_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
   demand(contract.schema_version === '1' && contract.contract_type === REGISTRY_RESOLVER_TYPE && contract.resolver_id === REGISTRY_RESOLVER_ID && contract.resolver_version === '1.0.0', 'REGISTRY_CONTRACT_TYPE');
   exact(contract.target_platform, ['os', 'architecture', 'variant'], 'REGISTRY_PLATFORM');
   demand(contract.target_platform.os === 'linux' && contract.target_platform.architecture === 'arm64' && contract.target_platform.variant === 'v8', 'REGISTRY_PLATFORM_VALUE');
@@ -66,6 +67,14 @@ export function validateRegistryResolverContract(contract) {
   const network = exact(contract.network_policy, ['registry_hosts', 'anonymous_auth_hosts', 'redirects', 'credentials', 'docker_auth_config', 'credential_helpers', 'environment_proxy', 'anonymous_scope'], 'REGISTRY_NETWORK');
   demand(JSON.stringify(network.registry_hosts) === JSON.stringify(['registry-1.docker.io']) && JSON.stringify(network.anonymous_auth_hosts) === JSON.stringify(['auth.docker.io']), 'REGISTRY_HOSTS');
   demand(network.redirects === 'REJECT' && network.credentials === 'FORBIDDEN' && network.docker_auth_config === 'FORBIDDEN' && network.credential_helpers === 'FORBIDDEN' && network.environment_proxy === 'FORBIDDEN' && network.anonymous_scope === 'EXACT_REPOSITORY_PULL_METADATA_ONLY', 'REGISTRY_NETWORK_POLICY');
+  const redirect = exact(contract.config_blob_redirect_policy, ['mode', 'object_type', 'source_host', 'source_endpoint', 'accepted_statuses', 'method', 'maximum_hops', 'target_scheme', 'target_host_policy', 'target_port_policy', 'location_handling', 'location_maximum_bytes', 'redirect_request_headers', 'authorization', 'cookie', 'bearer_token', 'registry_credentials', 'logging', 'query_values', 'body_limit', 'digest_verification', 'json', 'second_redirect', 'filesystem_layers'], 'REGISTRY_CONFIG_REDIRECT_POLICY');
+  demand(redirect.mode === 'CONFIG_BLOB_ONE_HOP_CAPABILITY_REDIRECT' && redirect.object_type === 'EXACT_CHILD_CONFIG_DESCRIPTOR_ONLY' && redirect.source_host === 'registry-1.docker.io' && redirect.source_endpoint === 'EXACT_REPOSITORY_BLOB_DIGEST', 'REGISTRY_CONFIG_REDIRECT_SOURCE');
+  demand(JSON.stringify(redirect.accepted_statuses) === JSON.stringify([307]) && redirect.method === 'GET_PRESERVED' && redirect.maximum_hops === 1, 'REGISTRY_CONFIG_REDIRECT_BOUND');
+  demand(redirect.target_scheme === 'HTTPS_ONLY' && redirect.target_host_policy === 'AUTHENTICATED_REGISTRY_CAPABILITY_URL' && redirect.target_port_policy === 'DEFAULT_OR_443_ONLY', 'REGISTRY_CONFIG_REDIRECT_TARGET');
+  demand(redirect.location_handling === 'BYTE_EXACT_MEMORY_ONLY' && redirect.location_maximum_bytes === 8192 && JSON.stringify(redirect.redirect_request_headers) === JSON.stringify(['accept']), 'REGISTRY_CONFIG_REDIRECT_LOCATION');
+  demand(redirect.authorization === 'STRIP_ALWAYS' && redirect.cookie === 'FORBIDDEN' && redirect.bearer_token === 'FORBIDDEN' && redirect.registry_credentials === 'FORBIDDEN', 'REGISTRY_CONFIG_REDIRECT_CREDENTIALS');
+  demand(redirect.logging === 'SAFE_STRUCTURAL_PROJECTION_ONLY' && redirect.query_values === 'FORBIDDEN' && redirect.body_limit === 'CONFIG_BODY_BYTES' && redirect.digest_verification === 'EXACT_CONFIG_DESCRIPTOR_DIGEST', 'REGISTRY_CONFIG_REDIRECT_CONTENT');
+  demand(redirect.json === 'STRICT_DUPLICATE_KEYS_REJECTED' && redirect.second_redirect === 'REJECT' && redirect.filesystem_layers === 'FORBIDDEN_PRE_NETWORK', 'REGISTRY_CONFIG_REDIRECT_RESULT');
   const protectedHeaders = exact(contract.protected_header_policy, ['multiplicity_authority', 'normalized_headers_object', 'unknown_policy', 'headers'], 'REGISTRY_HEADER_POLICY');
   demand(protectedHeaders.multiplicity_authority === 'NODE_INCOMING_MESSAGE_RAW_HEADERS' && protectedHeaders.normalized_headers_object === 'FORBIDDEN_AS_MULTIPLICITY_AUTHORITY' && protectedHeaders.unknown_policy === 'DUPLICATE_FORBIDDEN', 'REGISTRY_HEADER_POLICY_VALUE');
   exact(protectedHeaders.headers, Object.keys(PROTECTED_HEADER_RULES), 'REGISTRY_HEADER_RULES');
@@ -81,8 +90,8 @@ export function validateRegistryResolverContract(contract) {
   demand(tokens.unknown_fields === 'REJECT' && tokens.token_interpretation === 'OPAQUE_NO_DECODE' && tokens.persistence === 'IN_MEMORY_ONLY', 'REGISTRY_TOKEN_HANDLING_POLICY');
   const layers = exact(contract.layer_policy, ['filesystem_layers', 'config_blob', 'config_blob_requests_per_role'], 'REGISTRY_LAYERS');
   demand(layers.filesystem_layers === 'FORBIDDEN' && layers.config_blob === 'ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR' && layers.config_blob_requests_per_role === 1, 'REGISTRY_LAYER_POLICY');
-  const attempts = exact(contract.attempt_policy, ['logical_attempts_per_role', 'initial_manifest_requests', 'anonymous_token_exchanges', 'authenticated_manifest_requests', 'child_manifest_requests', 'config_blob_requests', 'retry', 'tag_substitution', 'fallback_registry'], 'REGISTRY_ATTEMPTS');
-  demand(['logical_attempts_per_role','initial_manifest_requests','anonymous_token_exchanges','authenticated_manifest_requests','child_manifest_requests','config_blob_requests'].every(key => attempts[key] === 1), 'REGISTRY_ATTEMPT_COUNT');
+  const attempts = exact(contract.attempt_policy, ['logical_attempts_per_role', 'initial_manifest_requests', 'anonymous_token_exchanges', 'authenticated_manifest_requests', 'child_manifest_requests', 'config_blob_requests', 'config_blob_redirect_requests', 'retry', 'tag_substitution', 'fallback_registry'], 'REGISTRY_ATTEMPTS');
+  demand(['logical_attempts_per_role','initial_manifest_requests','anonymous_token_exchanges','authenticated_manifest_requests','child_manifest_requests','config_blob_requests','config_blob_redirect_requests'].every(key => attempts[key] === 1), 'REGISTRY_ATTEMPT_COUNT');
   demand(attempts.retry === 'FORBIDDEN' && attempts.tag_substitution === 'FORBIDDEN' && attempts.fallback_registry === 'FORBIDDEN', 'REGISTRY_ATTEMPT_POLICY');
   exact(contract.bounds, ['timeout_ms', 'token_body_bytes', 'manifest_body_bytes', 'config_body_bytes'], 'REGISTRY_BOUNDS');
   demand(contract.bounds.timeout_ms === 10000 && contract.bounds.token_body_bytes === 65536 && contract.bounds.manifest_body_bytes === 4194304 && contract.bounds.config_body_bytes === 2097152, 'REGISTRY_BOUND_VALUES');
@@ -261,6 +270,7 @@ export function projectIndexPlatformDescriptors(index, contract) {
       os: typeof platform.os === 'string' ? platform.os : null,
       architecture: typeof platform.architecture === 'string' ? platform.architecture : null,
       variant_present: Object.hasOwn(platform, 'variant'),
+      variant_json_type: Object.hasOwn(platform, 'variant') ? (platform.variant === null ? 'null' : typeof platform.variant) : 'ABSENT',
       variant_value: Object.hasOwn(platform, 'variant') && (platform.variant === null || typeof platform.variant === 'string') ? platform.variant : null,
       digest: typeof row?.digest === 'string' && SHA.test(row.digest) ? row.digest : null,
       annotations: { docker_reference_type: dockerReferenceType, docker_reference_digest: dockerReferenceDigest },
@@ -348,7 +358,88 @@ function tokenFromResponse(response, contract) {
   return parseRegistryTokenResponse(body(response, contract.bounds.token_body_bytes, 'REGISTRY_TOKEN_BODY'), contract);
 }
 
-export async function resolveRegistryDigest({ contract, role, sourceReference, request, resolverSha256, clock = () => new Date() }) {
+function parseConfigRedirectTarget(location, contract) {
+  const policy = contract.config_blob_redirect_policy;
+  demand(typeof location === 'string' && Buffer.byteLength(location, 'utf8') > 0 && Buffer.byteLength(location, 'utf8') <= policy.location_maximum_bytes, 'REGISTRY_CONFIG_REDIRECT_LOCATION');
+  demand(/^[\x21-\x7e]+$/.test(location) && !location.includes('\\'), 'REGISTRY_CONFIG_REDIRECT_LOCATION');
+  demand(location.startsWith('https://'), 'REGISTRY_CONFIG_REDIRECT_TARGET');
+  let target;
+  try { target = new URL(location); } catch { throw new ContractError('REGISTRY_CONFIG_REDIRECT_LOCATION'); }
+  demand(target.protocol === 'https:' && target.username === '' && target.password === '' && target.hash === '', 'REGISTRY_CONFIG_REDIRECT_TARGET');
+  const afterScheme = location.slice('https://'.length), authorityEnd = afterScheme.search(/[/?#]/);
+  const authority = afterScheme.slice(0, authorityEnd === -1 ? undefined : authorityEnd);
+  const portMatch = /:([0-9]+)$/.exec(authority), explicitPort = portMatch === null ? null : portMatch[1];
+  demand(explicitPort === null || explicitPort === '443', 'REGISTRY_CONFIG_REDIRECT_PORT');
+  const hostname = target.hostname.toLowerCase();
+  demand(net.isIP(hostname) === 0 && hostname.includes('.') && /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/.test(hostname) && !hostname.includes('..'), 'REGISTRY_CONFIG_REDIRECT_HOST');
+  return { target, explicitPort };
+}
+
+export function projectConfigBlobRedirect({ contract, source, requestedDigest, sourcePath, response }) {
+  validateRegistryResolverContract(contract);
+  demand(contract.approved_sources.some(row => canonical(row) === canonical(source)), 'REGISTRY_CONFIG_REDIRECT_SOURCE');
+  demand(SHA.test(requestedDigest) && sourcePath === `/v2/${source.repository}/blobs/${requestedDigest}`, 'REGISTRY_CONFIG_REDIRECT_SOURCE_ENDPOINT');
+  demand(Number.isSafeInteger(response?.status) && contract.config_blob_redirect_policy.accepted_statuses.includes(response.status), 'REGISTRY_CONFIG_REDIRECT_STATUS');
+  demand(header(response.headers, 'set-cookie') === undefined, 'REGISTRY_COOKIE');
+  const location = header(response.headers, 'location');
+  const { target, explicitPort } = parseConfigRedirectTarget(location, contract);
+  const queryParameterNames = [...target.searchParams.keys()];
+  const segments = target.pathname.split('/').filter(Boolean);
+  return Object.freeze({
+    status: response.status,
+    source_host: source.registry_host,
+    source_repository: source.repository,
+    requested_config_digest: requestedDigest,
+    target_scheme: 'https',
+    target_host: target.hostname,
+    explicit_port: explicitPort,
+    location_path_structure: Object.freeze({ absolute: target.pathname.startsWith('/'), segment_count: segments.length, trailing_slash: target.pathname.endsWith('/') }),
+    query_parameter_names: Object.freeze(queryParameterNames),
+    query_parameter_count: queryParameterNames.length,
+    location_byte_length: Buffer.byteLength(location, 'utf8'),
+    location_sha256: sha256(location),
+    redirect_hop_count: 1,
+    redirect_request_header_names: Object.freeze(['accept']),
+    authorization_sent: false,
+    cookie_sent: false,
+  });
+}
+
+function verifiedConfigBytes(response, descriptorValue, contract) {
+  responseStatus(response, 'REGISTRY_CONFIG_STATUS');
+  const bytes = body(response, contract.bounds.config_body_bytes, 'REGISTRY_CONFIG_BODY');
+  demand(bytes.length === descriptorValue.size, 'REGISTRY_CONFIG_SIZE_MISMATCH');
+  const computedDigest = sha256(bytes);
+  demand(computedDigest === descriptorValue.digest, 'REGISTRY_CONFIG_DIGEST_MISMATCH');
+  const value = parseJson(bytes, 'REGISTRY_CONFIG_JSON');
+  const safe = safeConfigProjection(value, contract.target_platform);
+  return { bytes, computed_digest: computedDigest, safe };
+}
+
+export async function fetchImmutableConfigBlob({ contract, source, configDescriptor, layerDigests, requestedDigest, authorization = null, request, onRedirect = null }) {
+  validateRegistryResolverContract(contract);
+  descriptor(configDescriptor, contract.media_types.configs, 'REGISTRY_CONFIG_DESCRIPTOR');
+  demand(contract.approved_sources.some(row => canonical(row) === canonical(source)), 'REGISTRY_CONFIG_REDIRECT_SOURCE');
+  demand(Array.isArray(layerDigests) && layerDigests.every(value => SHA.test(value)), 'REGISTRY_LAYER_DESCRIPTORS');
+  demand(SHA.test(requestedDigest) && requestedDigest === configDescriptor.digest && !layerDigests.includes(requestedDigest), 'REGISTRY_CONFIG_BLOB_NOT_CONFIG');
+  demand(authorization === null || /^Bearer [A-Za-z0-9._~+\/-]+=*$/.test(authorization), 'REGISTRY_REQUEST_AUTHORIZATION');
+  demand(typeof request === 'function' && (onRedirect === null || typeof onRedirect === 'function'), 'REGISTRY_RESOLVER_INPUT');
+  const sourcePath = `/v2/${source.repository}/blobs/${requestedDigest}`;
+  const first = await request({ host: source.registry_host, path: sourcePath, headers: { accept: configDescriptor.mediaType, ...(authorization === null ? {} : { authorization }) }, maximum_body_bytes: contract.bounds.config_body_bytes, timeout_ms: contract.bounds.timeout_ms, purpose: 'CONFIG_METADATA_BLOB' });
+  if (first.status === 200) return { ...verifiedConfigBytes(first, configDescriptor, contract), redirect: null };
+  if (first.status !== 307) {
+    if (Number.isSafeInteger(first.status) && first.status >= 300 && first.status < 400) throw new ContractError('REGISTRY_CONFIG_REDIRECT_STATUS');
+    responseStatus(first, 'REGISTRY_CONFIG_STATUS');
+  }
+  const projection = projectConfigBlobRedirect({ contract, source, requestedDigest, sourcePath, response: first });
+  if (onRedirect !== null) onRedirect(projection);
+  const location = header(first.headers, 'location');
+  const redirected = await request({ url: location, headers: { accept: configDescriptor.mediaType }, maximum_body_bytes: contract.bounds.config_body_bytes, timeout_ms: contract.bounds.timeout_ms, purpose: 'CONFIG_METADATA_BLOB_REDIRECT' });
+  if (Number.isSafeInteger(redirected?.status) && redirected.status >= 300 && redirected.status < 400) throw new ContractError('REGISTRY_CONFIG_REDIRECT_HOP');
+  return { ...verifiedConfigBytes(redirected, configDescriptor, contract), redirect: projection };
+}
+
+export async function resolveRegistryDigest({ contract, role, sourceReference, request, resolverSha256, clock = () => new Date(), onConfigRedirect = null }) {
   validateRegistryResolverContract(contract);
   demand(typeof request === 'function' && /^[0-9a-f]{64}$/.test(resolverSha256), 'REGISTRY_RESOLVER_INPUT');
   const source = parseApprovedSourceReference(contract, role, sourceReference);
@@ -371,13 +462,9 @@ export async function resolveRegistryDigest({ contract, role, sourceReference, r
   demand(contract.media_types.manifests.includes(child.media_type), 'REGISTRY_CHILD_MANIFEST');
   const configDescriptor = descriptor(child.value.config, contract.media_types.configs, 'REGISTRY_CONFIG_DESCRIPTOR');
   demand(Array.isArray(child.value.layers) && child.value.layers.every(layer => object(layer) && SHA.test(layer.digest) && Number.isSafeInteger(layer.size) && layer.size >= 0), 'REGISTRY_LAYER_DESCRIPTORS');
-  const configResponse = await request({ host: source.registry_host, path: `/v2/${source.repository}/blobs/${configDescriptor.digest}`, headers: { accept: configDescriptor.mediaType, ...(token === null ? {} : { authorization: `Bearer ${token}` }) }, maximum_body_bytes: contract.bounds.config_body_bytes, timeout_ms: contract.bounds.timeout_ms, purpose: 'CONFIG_METADATA_BLOB' });
-  responseStatus(configResponse, 'REGISTRY_CONFIG_STATUS');
-  const configBytes = body(configResponse, contract.bounds.config_body_bytes, 'REGISTRY_CONFIG_BODY');
-  const configHash = sha256(configBytes);
-  demand(configHash === configDescriptor.digest, 'REGISTRY_CONFIG_DIGEST_MISMATCH');
-  const config = parseJson(configBytes, 'REGISTRY_CONFIG_JSON');
-  const safe = safeConfigProjection(config, contract.target_platform);
+  const fetchedConfig = await fetchImmutableConfigBlob({ contract, source, configDescriptor, layerDigests: child.value.layers.map(layer => layer.digest), requestedDigest: configDescriptor.digest,
+    authorization: token === null ? null : `Bearer ${token}`, request, onRedirect: onConfigRedirect });
+  const configBytes = fetchedConfig.bytes, configHash = fetchedConfig.computed_digest, safe = fetchedConfig.safe;
   const resolution = {
     schema_version: '1', role, source_reference: source.source_reference, registry_host: source.registry_host,
     repository: source.repository, requested_tag: source.tag, manifest_media_type: top.media_type,
@@ -394,21 +481,37 @@ export async function resolveRegistryDigest({ contract, role, sourceReference, r
   return resolution;
 }
 
-export function createBoundedHttpsTransport(contract, { onResponseCookie = null } = {}) {
+export function createBoundedHttpsTransport(contract, { onResponseCookie = null, onRequestHeaders = null } = {}) {
   validateRegistryResolverContract(contract);
   demand(onResponseCookie === null || typeof onResponseCookie === 'function', 'REGISTRY_COOKIE_AUDIT');
+  demand(onRequestHeaders === null || typeof onRequestHeaders === 'function', 'REGISTRY_REQUEST_AUDIT');
   return spec => new Promise((resolve, reject) => {
     try {
-      exact(spec, ['host', 'path', 'headers', 'maximum_body_bytes', 'timeout_ms', 'purpose'], 'REGISTRY_REQUEST');
-      demand([...contract.network_policy.registry_hosts, ...contract.network_policy.anonymous_auth_hosts].includes(spec.host), 'REGISTRY_REQUEST_HOST');
-      demand(typeof spec.path === 'string' && spec.path.startsWith('/') && !spec.path.includes('..') && !spec.path.includes('\\'), 'REGISTRY_REQUEST_PATH');
+      const isConfigRedirect = spec?.purpose === 'CONFIG_METADATA_BLOB_REDIRECT';
+      exact(spec, isConfigRedirect ? ['url', 'headers', 'maximum_body_bytes', 'timeout_ms', 'purpose'] : ['host', 'path', 'headers', 'maximum_body_bytes', 'timeout_ms', 'purpose'], 'REGISTRY_REQUEST');
+      let responseHost, responsePath, requestTarget;
+      if (isConfigRedirect) {
+        const { target } = parseConfigRedirectTarget(spec.url, contract);
+        responseHost = target.hostname;
+        responsePath = target.pathname + target.search;
+        requestTarget = spec.url;
+      } else {
+        demand([...contract.network_policy.registry_hosts, ...contract.network_policy.anonymous_auth_hosts].includes(spec.host), 'REGISTRY_REQUEST_HOST');
+        demand(typeof spec.path === 'string' && spec.path.startsWith('/') && !spec.path.includes('..') && !spec.path.includes('\\'), 'REGISTRY_REQUEST_PATH');
+        responseHost = spec.host;
+        responsePath = spec.path;
+        requestTarget = `https://${spec.host}${spec.path}`;
+      }
       demand(Number.isSafeInteger(spec.maximum_body_bytes) && spec.maximum_body_bytes > 0 && spec.maximum_body_bytes <= contract.bounds.manifest_body_bytes, 'REGISTRY_REQUEST_BOUND');
       demand(spec.timeout_ms === contract.bounds.timeout_ms && object(spec.headers), 'REGISTRY_REQUEST_POLICY');
       demand(Object.keys(spec.headers).every(name => name === name.toLowerCase()), 'REGISTRY_REQUEST_HEADER_NAME');
       demand(!Object.hasOwn(spec.headers, 'cookie'), 'REGISTRY_COOKIE_OUTBOUND');
-      const allowedHeaders = ['accept', 'authorization']; shape(spec.headers, allowedHeaders.filter(key => Object.hasOwn(spec.headers, key)));
+      const allowedHeaders = isConfigRedirect ? contract.config_blob_redirect_policy.redirect_request_headers : ['accept', 'authorization'];
+      shape(spec.headers, allowedHeaders.filter(key => Object.hasOwn(spec.headers, key)));
+      if (isConfigRedirect) demand(Object.keys(spec.headers).length === 1 && Object.hasOwn(spec.headers, 'accept'), 'REGISTRY_CONFIG_REDIRECT_HEADERS');
       if (spec.headers.authorization !== undefined) demand(/^Bearer [A-Za-z0-9._~+\/-]+=*$/.test(spec.headers.authorization), 'REGISTRY_REQUEST_AUTHORIZATION');
-      const request = https.request({ protocol: 'https:', hostname: spec.host, port: 443, method: 'GET', path: spec.path, headers: spec.headers, timeout: spec.timeout_ms, agent: false }, response => {
+      const requestOptions = { method: 'GET', headers: spec.headers, timeout: spec.timeout_ms, agent: false };
+      const request = https.request(requestTarget, requestOptions, response => {
         const chunks = []; let length = 0;
         const declaredLength = response.headers['content-length'];
         if (declaredLength !== undefined) {
@@ -424,10 +527,10 @@ export function createBoundedHttpsTransport(contract, { onResponseCookie = null 
           let projected;
           try {
             projected = projectProtectedResponseHeaders(response.rawHeaders, contract);
-            const cookieDisposition = validateResponseCookieNonParticipation({ contract, host: spec.host, path: spec.path, purpose: spec.purpose,
+            const cookieDisposition = validateResponseCookieNonParticipation({ contract, host: responseHost, path: responsePath, purpose: spec.purpose,
               requestHeaders: spec.headers, cookieJar: 'FORBIDDEN', responseStatusCode: response.statusCode,
               responseCookie: projected.response_cookie });
-            if (cookieDisposition.present && onResponseCookie !== null) onResponseCookie(Object.freeze({ host: spec.host,
+            if (cookieDisposition.present && onResponseCookie !== null) onResponseCookie(Object.freeze({ host: responseHost,
               endpoint: contract.response_cookie_policy.allowed_endpoint, purpose: spec.purpose, present: true,
               raw_occurrence_count: cookieDisposition.raw_occurrence_count, disposition: cookieDisposition.disposition }));
           }
@@ -439,6 +542,14 @@ export function createBoundedHttpsTransport(contract, { onResponseCookie = null 
       });
       request.on('timeout', () => request.destroy(new ContractError('REGISTRY_TIMEOUT')));
       request.on('error', error => reject(error instanceof ContractError ? error : new ContractError('REGISTRY_NETWORK')));
+      request.on('finish', () => {
+        if (onRequestHeaders !== null) {
+          const names = request.getRawHeaderNames().map(name => name.toLowerCase()).sort();
+          try { onRequestHeaders(Object.freeze({ purpose: spec.purpose, target_host: responseHost, header_names: Object.freeze(names),
+            authorization_sent: names.includes('authorization'), cookie_sent: names.includes('cookie') })); }
+          catch (error) { reject(error); }
+        }
+      });
       request.end();
     } catch (error) { reject(error); }
   });
