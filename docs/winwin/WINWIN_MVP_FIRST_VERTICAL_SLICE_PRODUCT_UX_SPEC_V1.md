@@ -18,29 +18,32 @@ Login
 → Case Home: changes since last view
 → view or publish a Care Update
 → explicitly create and assign an Action when handling is needed
-→ exact assignee Accepts
-→ exact assignee Starts
-→ exact assignee Completes with a bounded handling summary
+→ exact assignee chooses:
+   接受處理 → Start → Complete → short handling result
+   OR
+   目前無法接手 → continuity gap displayed
 → authorized participants see the preserved responsibility and activity history
 ```
 
 This remains the smallest slice that tests WinWin's product thesis: a meaningful care change is not merely recorded; it can be connected to one named current responsible participant, explicit acceptance, work, completion, and a traceable handoff history.
+
+The first slice also requires one minimal truthful response before acceptance: the exact assignee may choose **目前無法接手**. That response ends the unaccepted responsibility cycle and exposes a continuity gap; it never chooses or implies a replacement.
 
 The bounded adjustment is:
 
 ```text
 OLD: Complete Action by status transition alone
 →
-NEW: Complete Action with a short required handling summary
+NEW: MVP prototype includes a short handling/completion result
 ```
 
 Problem → a bare checkbox proves a transition but gives the next participant little usable handoff context.
 
 Reason → the product is about continuity, not task-count closure.
 
-Adjustment → require a concise handling summary (recommended 1–300 characters) when completing. This is not a diagnosis, clinical outcome, or declaration that the originating care issue is resolved.
+Adjustment → include a concise handling/completion result in the MVP prototype because it may help later participants understand what was done for this Action. This is not a diagnosis, clinical outcome, or declaration that the originating Care Update, Question, or broader care issue is resolved.
 
-This adjustment is student-buildable, adds one bounded text fact to the completion event, and does not add a new object or workflow.
+Whether the result should be mandatory, its appropriate length, its prompt/label, and the acceptable burden are an **UNVALIDATED PRODUCT ASSUMPTION** and **REQUIRES USER RESEARCH**. If a bounded input is needed for the prototype, use 1–300 characters only as a **PROVISIONAL PROTOTYPE CONSTRAINT — NOT A VALIDATED LONG-TERM-CARE REQUIREMENT**. The number is not research-derived, professional consensus, or policy guidance.
 
 ### Product-fit assessment
 
@@ -51,7 +54,7 @@ This adjustment is student-buildable, adds one bounded text fact to the completi
 | Care-continuity value | Stronger than a feed because current responsibility and gaps are visible | KEEP responsibility history and continuity-gap projection |
 | Student-project feasibility | Bounded if onboarding, Question, correction controls, notifications, organization administration, and reassignment controls remain out | MERGE screens; DEFER adjacent workflows |
 | Technical dependency | Depends on the adopted actor/grant seam, immutable publication, Action commands, activity projection, and cursor; not on full platform administration | Keep one adapter boundary; do not couple UI to database entities |
-| User burden | Moderate; source, visibility, assignment, and three explicit transitions add friction | Use progressive disclosure and one valid next CTA |
+| User burden | Moderate; source, visibility, assignment, response, and explicit transitions add friction | Use progressive disclosure and only the valid state-specific responses/actions |
 | Privacy | Manageable only with explicit visibility, data minimization, and fail-closed loss-of-access behavior | No default broad audience and no hidden-record leakage |
 | Expansion risk | High if invitations, Questions, clinical records, alerts, or organization features enter the slice | Strictly defer them |
 
@@ -73,15 +76,18 @@ The reference scenario is:
 2. The family caregiver opens an authorized Case and sees newly visible activity since the last successful view.
 3. They publish a sourced Care Update using the minimum necessary content and an explicit allowed visibility choice.
 4. If handling is needed, they deliberately create an Action from the published update and choose one concrete eligible Identity + Membership; there is no default assignee.
-5. The selected professional care-team member sees the assignment as **waiting for acceptance**, not accepted.
-6. That exact person Accepts, then Starts, then Completes with a short handling summary.
-7. The family caregiver later sees who was assigned, who accepted, when work started, what was reported at completion, and the ordered history.
+5. The selected professional care-team member sees the assignment as **尚待接手**, not accepted.
+6. That exact person either:
+   - chooses **接受處理**, then Starts and Completes with a short handling result; or
+   - chooses **目前無法接手**, which ends the unaccepted responsibility cycle and surfaces that no one currently holds effective responsibility.
+7. The family caregiver later sees either the accepted/started/completed trajectory and handling result, or the continuity gap and preserved prior attribution.
 
 The same flow may run in the opposite direction when a professional publishes and a family member is the eligible assignee. Authority is never inferred from that direction or from role labels.
 
 ### Product invariants
 
 - `ASSIGNED ≠ ACCEPTED ≠ IN_PROGRESS ≠ COMPLETED`.
+- The core Action progression remains `ASSIGNED → ACCEPTED → IN_PROGRESS → COMPLETED`. Cannot-take-over ends the `ASSIGNED` responsibility cycle; it does not add a linear Action lifecycle state.
 - Viewing an item does not imply reading, understanding, acceptance, or responsibility.
 - Assignment does not create Membership, Relationship, Grant, visibility, or acceptance.
 - Completion records the assignee's handling declaration; it does not resolve a Question, prove clinical improvement, or prove the originating issue is resolved.
@@ -92,16 +98,16 @@ The same flow may run in the opposite direction when a professional publishes an
 
 ### Explicitly not in the first-slice interaction
 
-Invitation/onboarding, professional verification, Question ask/answer/resolve, published correction controls, decline, relinquish, reassignment controls, access administration, notification delivery, delegation, supervisor completion, organization hierarchy, clinical signing, analytics, AI recommendations, location tracking, and full offline synchronization.
+Invitation/onboarding, professional verification, Question ask/answer/resolve, published correction controls, relinquish after acceptance, reassignment/replacement controls, access administration, notification delivery, delegation, supervisor completion, organization hierarchy, clinical signing, analytics, AI recommendations, location tracking, and full offline synchronization.
 
-The underlying model must remain compatible with correction, decline, relinquish, reassignment, and revocation continuity. Their absence from first-slice controls must never make their resulting states display as normal or completed.
+The first slice includes the minimal exact-assignee cannot-take-over response. The underlying model must remain compatible with correction, relinquish, reassignment, and revocation continuity. Absence of their deferred controls must never make their resulting states display as normal or completed.
 
 ## 3. Minimum MVP user set
 
 | Candidate user category | MVP decision | Why / contribution | Needs to see | Does not need in this slice | Data behavior |
 |---|---|---|---|---|---|
 | Family caregiver / family member | **RETAIN** | Often observes changes outside formal service encounters and may initiate or receive a handoff | Authorized Case changes, source/author, current responsible person, next state, history | Family chat, family directory, caregiver mental-health tools, blanket access administration | May create Care Updates and Actions or act on an Action only through operation-specific current authority |
-| Professional care-team member | **RETAIN** | Can receive a named assignment, report work, and contribute service-context observations | Only authorized Cases/records; source context; assignment terms; one valid next action; history | Full clinical record, staff roster, organization dashboard, supervisor override, broad professional-team feed | May create data and/or accept/start/complete only through their own complete Grant Path |
+| Professional care-team member | **RETAIN** | Can receive a named assignment, truthfully say they cannot take it, report work, and contribute service-context observations | Only authorized Cases/records; source context; assignment terms; permitted next responses/actions; history | Full clinical record, staff roster, organization dashboard, supervisor override, broad professional-team feed | May create data, indicate cannot-take-over while assigned, or accept/start/complete only through their own complete Grant Path |
 | Care recipient / older adult | **DEFER as an interactive MVP user; retain as the Case-centered person** | The product must remain centered on their care, preferences, dignity, and visibility boundaries, but direct account use is not required to prove the first loop | No first-slice account surface is assumed | No forced login, monitoring, or proxy consent model | Their data must be minimized; whether they directly create/view/action is **REQUIRES USER RESEARCH** |
 | Case manager / care manager | **DO NOT create a separate MVP permission class** | A case manager may participate as one professional Identity when a real workflow requires it | Same capability-derived surfaces as any authorized participant | No role-based manager dashboard, reassignment bypass, or completion override | May perform only operations present on their own complete Grant Path; the label grants nothing |
 
@@ -123,26 +129,28 @@ Minimum interactive set: **two concrete people in one Case—one family particip
    - **建立處理事項**: open a separate Action step.
 9. Enter an actionable title, reason/context, optional due time, and select one concrete eligible person. No option is preselected.
 10. Submit. The Action and first `ASSIGNED` cycle appear atomically; partial “Action created but unassigned” success is not shown.
-11. See “等待 [name] 接受”. Do not show acceptance, work, or completion prematurely.
-12. Later return and see the trajectory and completion summary.
+11. See “等待 [name] 回應是否接手”. Do not show acceptance, work, or completion prematurely.
+12. Later return and see either the handling trajectory/result or “目前沒有人確定接手” with the preserved activity history.
 
 ### B. Assignee flow
 
 1. Sign in under the assignee's own account/Identity.
 2. See an identity-scoped **指派給我** section in My Cases.
 3. Open the Action detail and review the originating Care Update, assigner, reason, due time, and visibility-safe context.
-4. If `ASSIGNED`, see exactly one primary CTA: **接受這項指派**.
-5. After server-confirmed acceptance, see exactly one primary CTA: **開始處理**.
-6. After server-confirmed start, see **標示處理完成**.
-7. Enter a bounded handling summary and confirm completion.
-8. See the terminal history. No further workflow CTA appears.
+4. If `ASSIGNED`, choose one truthful response:
+   - primary CTA **接受處理**; or
+   - secondary action **目前無法接手**.
+5. If accepting, after server confirmation see exactly one primary CTA: **開始處理**.
+6. After server-confirmed start, see **標示處理完成** and provide a short handling result using the provisional prototype input constraint.
+7. If currently unable to take over, confirm that no replacement will be selected automatically; after server confirmation see **目前沒有人確定接手** and **需要重新安排**.
+8. See the terminal cycle history or continuity-gap history. No reassignment control appears in this slice.
 
 ### C. Failure and access-loss flow
 
 - If a protected item is absent or not visible, show the same non-enumerating surface.
 - If access is revoked while the user is viewing, remove protected cached content, stop retries that assume authority, and return to My Cases or a no-access surface.
 - If a transition is stale, preserve safe draft text, refetch, and require renewed intent; never silently apply a transition to a changed cycle.
-- If an unfinished Action has no effective cycle, authorized viewers see **需要重新指派** and no former participant is shown as current. First-slice UI does not offer the repair control.
+- If an unfinished Action has no effective cycle, authorized viewers see **目前沒有人確定接手** and **需要重新安排**; no former participant is shown as current. First-slice UI does not offer the repair control.
 
 ## 5. Screen inventory and decisions
 
@@ -156,9 +164,9 @@ Minimum interactive set: **two concrete people in one Case—one family particip
 | 6. Create Care Update | **KEEP** | Dedicated focused form |
 | 7. Create Action | **KEEP as a separate step; MERGE routing** | Follow-up sheet/section after a published update; not embedded in the publish transaction |
 | 8. Action detail | **KEEP** | Detail card/anchor in Actions for MVP; route only if density testing requires it |
-| 9. Accept / Decline Action | **MERGE Accept; DEFER Decline control** | Accept is the only `ASSIGNED` CTA for the exact assignee; declined state can render, but triggering decline is Second Stage |
+| 9. Accept / Cannot Take Over | **MVP REQUIRED; MERGE into Action detail** | The exact `ASSIGNED` assignee may choose **接受處理** or **目前無法接手**; the latter creates no replacement and surfaces a continuity gap |
 | 10. Start Action | **MERGE** | One state-dependent CTA in Action detail |
-| 11. Complete Action | **MERGE** | One state-dependent CTA plus bounded completion-summary dialog/section |
+| 11. Complete Action | **MERGE** | One state-dependent CTA plus a short handling-result field; any 1–300 validation is provisional and unvalidated |
 | 12. Reassignment / Needs Reassignment | **MERGE gap display; DEFER repair control** | Warning on Case Home and Action detail; reassignment UI is Second Stage |
 | 13. Timeline / Activity History | **KEEP** | Permission-filtered product activity, including the since-last-view divider |
 | 14. No access / revoked access | **KEEP** | Shared non-enumerating protected-resource surface |
@@ -178,8 +186,8 @@ Screens are organized around user questions and responsibility, not one route pe
 | Care Update detail | “What changed, who reported it, when, from what source, and is handling linked?” | Current authorized version, author, occurred precision, publication time, source, visibility summary, linked Action | View current authorized version. No published edit. Create Action CTA only with separate authority | Prior versions/correction relationship are read-only when later exposed; first slice has no correction control | Hide body and linked targets; generic unavailable result |
 | Create Care Update | “What care change should collaborators understand?” | Minimum fields, explicit visibility choice, validation; CTA Publish | `CARE_UPDATE_CREATE + CASE`; server creates author/time/version/activity/audit | Author, server time, version, proof, activity order read-only/system generated | Keep only unsent local draft text temporarily; prevent publish and exit protected context |
 | Create Action step | “Does this change need handling, and who is the named eligible person?” | Source summary, title, reason, due time, eligible people; CTA Create and assign | Requires complete create+assign mutation decision and separate complete source-read decision; exact target eligibility | No free-text assignee, default selection, role-only selection, partial create, or later silent source switch | Preserve local draft without protected source body; disable submit and return safely |
-| Actions / Action detail | “Who currently holds responsibility, what is the one next step, and what happened before?” | Source, creator/assigner, exact current assignee, due time, stepper, completion summary, history | Visible actors may read; exact current assignee with operation capability may Accept/Start/Complete; others have no active CTA | Workflow facts, actor, times, ended cycles are read-only. Server rechecks state/cycle/path on every operation | Hide content and CTAs. A revoked/former person is never shown as current |
-| Continuity-gap state | “This unfinished Action has no effective responsible person—what is true now?” | Prominent “需要重新指派”; reason category only if safe; preserved historical milestones | Authorized viewers may see. No repair CTA in first slice | Former assignee history read-only; no auto-selection or implied manager | If viewer loses access too, generic no-access replaces gap details |
+| Actions / Action detail | “Who currently holds responsibility, what is the one next step, and what happened before?” | Source, creator/assigner, exact current assignee, due time, stepper, short handling result, history | Visible actors may read; exact current assignee with operation capability may Accept or indicate **目前無法接手** while `ASSIGNED`, then Start/Complete after acceptance; others have no active CTA | Workflow facts, actor, times, ended cycles are read-only. Server rechecks state/cycle/path on every operation | Hide content and CTAs. A revoked/former person is never shown as current |
+| Continuity-gap state | “This unfinished Action has no effective responsible person—what is true now?” | Prominent “目前沒有人確定接手” and “需要重新安排”; safe reason category and preserved historical milestones | Authorized viewers may see. No repair CTA in first slice | Former assignee history read-only; no auto-selection, implied manager, or “已重新指派” claim | If viewer loses access too, generic no-access replaces gap details |
 | No access | “What can I safely do when this resource is unavailable?” | Generic title, return to My Cases, retry only for transient session checks | No protected operations | Does not distinguish nonexistent, invisible, revoked, expired, or ended Membership | Remain safe; access restoration requires an out-of-slice governance flow |
 
 Authorization is enforced twice in UX terms: the client uses authorized projections to avoid misleading controls, and the server/database is the authoritative decision boundary for every read and operation. A hidden or disabled button is not a security boundary.
@@ -265,25 +273,28 @@ The assignee picker shows a safe display name first and only enough relationship
 
 | Current responsibility truth | User label | Exact current assignee | Other authorized viewer | Historical facts retained |
 |---|---|---|---|---|
-| First cycle created | 等待接受 | **接受這項指派** | “等待 [name] 接受” | assigner, assignee, server assigned time |
+| First cycle created | 尚待接手 | **接受處理** or **目前無法接手** | “等待 [name] 回應是否接手” | assigner, assignee, server assigned time |
 | Accepted | 已接受 | **開始處理** | accepted person/time; no CTA | assignment + acceptance |
 | In progress | 處理中 | **標示處理完成** | started person/time; no CTA | assignment + acceptance + start |
-| Completion form | 完成處理 | required bounded handling summary; confirm | no CTA | all prior milestones |
-| Completed | 已完成 | no workflow CTA | completion time and summary | complete cycle and all milestones |
-| No effective cycle, Action unfinished | 需要重新指派 | no first-slice repair CTA | warning; no former person shown as current | ended cycle and reason remain history |
+| Completion form | 完成處理 | short handling-result field; confirm | no CTA | all prior milestones |
+| Completed | 已完成 | no workflow CTA | completion time and handling result | complete cycle and all milestones |
+| Declined before acceptance | 目前無法接手 | no replacement/reassignment CTA | “目前沒有人確定接手”; no former person shown as current | declined cycle, actor, and server time remain history |
+| No effective cycle, Action unfinished | 需要重新安排 | no first-slice repair CTA | continuity-gap warning; no former person shown as current | ended cycle and reason remain history |
 
 Lack of authority normally removes the workflow control and states “此步驟由目前負責人操作.” A disabled control is reserved for an in-flight submission or a prerequisite the same user can resolve.
 
+The handling-result field is present in the prototype because it may improve handoff context. Whether it is mandatory, its appropriate length, wording, and burden are an **UNVALIDATED PRODUCT ASSUMPTION** and **REQUIRES USER RESEARCH**. A 1–300 character validation rule may be used only as a **PROVISIONAL PROTOTYPE CONSTRAINT — NOT A VALIDATED LONG-TERM-CARE REQUIREMENT**.
+
 ### Decline, relinquish, reassignment, and revocation
 
-- Decline before acceptance ends `ASSIGNED` as `DECLINED`; it does not choose a replacement.
+- Minimal decline/cannot-take-over is **MVP REQUIRED**. Only the exact current assignee with one complete current path containing `ACTION_DECLINE + RECORD` may choose **目前無法接手** while `ASSIGNED`. It ends that cycle as `DECLINED`, preserves attribution/activity, and derives the existing continuity-gap condition. It does not choose a replacement or mean another person accepted.
 - Relinquish after acceptance ends the cycle as `RELINQUISHED`; after start the reason is `CANNOT_CONTINUE_AFTER_START`. It does not complete the Action.
 - Reassignment ends/preserves the old cycle and creates a new `ASSIGNED` cycle for one exact eligible person. The new person must Accept, Start, and Complete again.
 - Revocation immediately removes authority. If no other independently complete path supports the current assignee, the cycle ends `ACCESS_REVOKED` and the Action derives `NEEDS_REASSIGNMENT`.
 - Historical attribution never gives permanent current visibility.
 - No operation automatically chooses a replacement, delegates, or permits supervisor completion.
 
-The states above must render safely if encountered. Their initiating/remediation controls are Second Stage under adopted decisions.
+The exact-assignee cannot-take-over control and resulting gap display are first-slice MVP. Relinquish after acceptance and every reassignment/replacement/remediation control remain Second Stage. No role, manager label, family/professional category, notification, or recommendation may fill the gap automatically.
 
 ## 10. Since-last-view UX
 
@@ -323,12 +334,13 @@ The Timeline answers: “What meaningful care-coordination and responsibility ev
 - Care Update published;
 - Action created;
 - Action assigned;
+- assigned person indicated **目前無法接手**;
 - Action accepted;
 - Action started;
 - Action completed, with a safe summary indicator;
 - continuity gap when product-relevant and visible.
 
-Second-stage events: Care Update correction published, Action declined, responsibility relinquished, reassignment, and product-relevant access-end consequences.
+Second-stage events: Care Update correction published, responsibility relinquished after acceptance, actual reassignment, and product-relevant access-end consequences. The MVP cannot-take-over activity and its continuity-gap activity are already part of the first-slice projection.
 
 Each item contains a stable activity ID, typed target link, safe actor display, server time, concise summary, and server order. Adjacent “Action created + assigned” may be visually grouped but both facts remain preserved. Ordering uses the server Case activity sequence; timestamp is display metadata.
 
@@ -367,12 +379,12 @@ Security denial details, Grant IDs/inventories, raw request data, SQL/RLS errors
 | Create Action — target became ineligible | Safe “這位協作者目前無法被指派” | Refresh selection | No Action/cycle created |
 | Create Action — uncertain network result | “尚未確認是否建立” | Duplicate submit disabled until operation-status lookup | Reuse idempotency key; do not blindly create again |
 | Action — assigned to someone else | Status and current responsible display if visible | No Accept/Start/Complete control | Historical attribution visible only through current record visibility |
-| Action — waiting acceptance | “等待 [name] 接受” | Exact assignee sees Accept; others none | Safe same-key retry; server rechecks cycle |
+| Action — waiting response | “等待 [name] 回應是否接手” | Exact assignee sees **接受處理** and **目前無法接手**; others none | Safe same-key retry; server rechecks cycle |
 | Action — accepted | Accepted time and current person | Exact assignee sees Start | No skipped completion |
-| Action — in progress | Started time and current person | Exact assignee sees Complete | Completion summary required |
-| Action — completed | Complete stepper, server time, handling summary | No workflow CTA | Duplicate Complete resolves to current result; no duplicate event |
-| Action — declined | “已婉拒；需要重新指派” | No first-slice repair CTA | History retained; do not show declined person as current |
-| Action — needs reassignment | Prominent continuity-gap warning | No first-slice reassign CTA | No auto-selection; authorized viewer may use out-of-slice coordination |
+| Action — in progress | Started time and current person | Exact assignee sees Complete and the short handling-result field | Field remains in prototype; mandatory status and limit are unvalidated |
+| Action — completed | Complete stepper, server time, short handling result | No workflow CTA | Duplicate Complete resolves to current result; no duplicate event; broader source issue remains independent |
+| Action — cannot take over | “目前無法接手” followed by “目前沒有人確定接手” | No replacement/reassignment CTA | History/activity retained; do not show declined person as current or claim “已重新指派” |
+| Action — needs reassignment | “目前沒有人確定接手；需要重新安排” | No first-slice reassign CTA | Continuity condition remains separate from Action lifecycle; no auto-selection |
 | Action — stale/concurrent update | “處理事項已更新，請查看最新狀態” | Discard stale CTA; preserve unsubmitted note separately | Refetch, then require explicit renewed intent |
 | Any mutation — offline/temporary failure | Pending/unknown result copy | Prevent duplicate taps | Status lookup, then same-key bounded retry |
 
@@ -426,7 +438,7 @@ Actor
 | My Cases | Case display label, minimum relationship/service validity, authorized counts | Private local organization is not needed for this slice | Hidden Case names/counts, broad family/staff directory, unrelated contact data | Case association is sensitive; exact current actor projection |
 | Case Home | Latest visible activity and responsibility/gap summary | None | Diagnosis dashboard, location, broad schedule, “stable” inference | Current Case/record-authorized participants only |
 | Care Update | Bounded change, source, occurred precision, author, server time, visibility | Bounded coordination context | Full chart, medication history by default, family narrative, GPS, mental-health profile, raw documents/photos | Potential health/care content; typed record visibility plus current path |
-| Action | Title, reason, source, exact assigner/assignee, due claim, states/times, completion summary | Due time | Staff performance scoring, route/location, employment details, recurring schedule | Responsibility/work data; typed visibility and exact operation rules |
+| Action | Title, reason, source, exact assigner/assignee, due claim, states/times, short handling result | Due time | Staff performance scoring, route/location, employment details, recurring schedule | Responsibility/work data; typed visibility and exact operation rules; handling-result requirement remains unvalidated |
 | Eligible assignee list | Safe name, minimum relationship/service context and validity | Availability hint only if authoritative and necessary later | Contact info, other Cases, full credential/Grant inventory | Only candidates authorized for this exact operation |
 | Timeline | Typed milestone, safe actor display, server time/order, target link | Safe compact summary | Full payload duplication, hidden sequence/counts, security denial detail | Re-evaluate each target under current visibility |
 | Cursor | Max boundary for Identity+Membership+Case | None | Per-record receipts, reader list, presence, device tracking | Behavioral metadata; exact owner only |
@@ -446,7 +458,9 @@ Default client behavior should avoid persistent offline caching of sensitive con
 - explicit permitted visibility selection;
 - separate Action create+exact-assignee step linked to a visible Care Update;
 - Action detail with current responsible person and ordered stepper;
-- exact-assignee Accept, Start, Complete with bounded handling summary;
+- exact-assignee **接受處理** or **目前無法接手** while `ASSIGNED`;
+- exact-assignee Start and Complete after acceptance, with a short prototype handling-result field whose mandatory status and 1–300 limit are unvalidated;
+- continuity-gap display stating **目前沒有人確定接手** / **需要重新安排** after cannot-take-over;
 - preserved responsibility/activity history;
 - loading, empty, failure, stale, no-access, revoked-access, and network-uncertain states;
 - server-bound monotonic Read Cursor behavior;
@@ -455,7 +469,7 @@ Default client behavior should avoid persistent offline caching of sensitive con
 ### PHASE 2
 
 - original-author Care Update correction UI;
-- decline and relinquish controls;
+- relinquish after acceptance;
 - reassignment/remediation controls and richer continuity-gap handling;
 - full Question ask/answer/resolve workflow;
 - invitation, delayed activation, access lifecycle, and optional professional-verification UI;
@@ -483,7 +497,7 @@ Default client behavior should avoid persistent offline caching of sensitive con
 | Generic care record | WinWin first-slice claim |
 |---|---|
 | Primarily records what happened | Records a meaningful care change and can connect it to one named responsibility lifecycle |
-| May show that a task exists or is checked | Separates assignment, acceptance, work started, and completion |
+| May show that a task exists or is checked | Separates assignment, cannot-take-over, acceptance, work started, completion, and the resulting continuity gap |
 | Often centers a chronological record | Centers the question “who currently holds responsibility, and is there a gap?” alongside history |
 | May preserve author/time | Preserves source plus immutable responsibility transitions and handoff attribution |
 | Access may be presented by role/team | Uses identity-, lifecycle-, visibility-, and operation-specific authorization boundaries |
@@ -500,7 +514,7 @@ The defensible product difference is **responsibility continuity attached to car
 Research questions:
 
 - Do users distinguish “assigned” from “accepted” without training?
-- Does the handling summary help the next participant, or become low-value documentation burden?
+- Does the short handling result help the next participant, or become low-value documentation burden?
 - When responsibility disappears, do users notice and act through their real coordination channel?
 - Is explicit visibility understandable at publication time?
 
@@ -513,8 +527,9 @@ All are **REQUIRES USER RESEARCH**.
 | Relevant change is fragmented across people/settings | Sourced Care Update and authorized Timeline | Makes minimum context and provenance available to current collaborators | Plausible continuity mechanism; local workflow effect unvalidated |
 | People see a change but no one owns handling | Explicit Action and exact assignee | Makes the current responsibility proposition visible | Core product hypothesis; requires testing |
 | Assignment is mistaken for agreement | Separate Assign and Accept | Records explicit acceptance rather than assuming it | Strong semantic safety; behavioral value unvalidated |
+| Assignee cannot take the work but has no truthful response | **目前無法接手** plus continuity-gap display | Distinguishes no response from an explicit inability to take responsibility and exposes that no one currently holds it | MVP semantic safety; downstream repair remains Phase 2 |
 | Acceptance is mistaken for action | Separate Start | Exposes whether handling began | Strong semantic safety; user burden requires testing |
-| Checkbox completion lacks handoff context | Required bounded handling summary | Gives the next participant a concise reported result | New bounded decision; requires usability testing |
+| Checkbox completion lacks handoff context | Short handling/completion result in the prototype | May give the next participant a concise report of what was done | **UNVALIDATED PRODUCT ASSUMPTION**; mandatory status, 1–300 limit, prompt, and burden **REQUIRE USER RESEARCH** |
 | Responsibility changes or access ends | Immutable cycles and gap projection | Prevents silent overwrite and visibly represents no current holder | Direct continuity value; remediation UX is Phase 2 |
 | New information is hard to find | Visible-projection Read Cursor | Surfaces new authorized changes without claiming read receipts | Useful navigation hypothesis; not a comprehension measure |
 | Formal and family care transition loses context | Shared object semantics with exact authorization | Supports bidirectional information/management continuity without copying full clinical records | Literature supports the problem area, not WinWin effectiveness |
@@ -538,18 +553,20 @@ The wording above was checked against the official page updated 2026-03-09. Any 
 
 ## 19. Open product questions
 
-**No unresolved product decision blocks a bounded fictional-data implementation of the A→B→A first slice after this specification is reviewed.** This specification fixes the initial choices: completion summary is required and bounded to 1–300 characters; visibility has no preselected option; the cursor advances after successful Timeline render rather than initial load; and Action detail remains merged in the Actions surface unless accessibility/mobile evidence later requires a route.
+**No unresolved product decision blocks a bounded fictional-data implementation of the corrected first slice after this specification is reviewed.** This specification fixes minimal exact-assignee **目前無法接手** as MVP, keeps full reassignment/replacement and relinquish after acceptance deferred, keeps the handling-result concept in the prototype, uses no preselected visibility option, advances the cursor after successful Timeline render rather than initial load, and keeps Action detail merged unless accessibility/mobile evidence later requires a route.
 
 The following are research hypotheses, not implementation blockers:
 
-- whether the completion-summary examples prevent diagnosis/outcome overclaiming without excessive documentation burden;
+- whether the handling result should be mandatory, what its limit/label/examples should be, and what burden prevents diagnosis or broader-outcome overclaiming;
 - whether family and professional participants understand the three visibility choices;
 - whether “上次查看後” is understood as navigation state rather than a read receipt; and
 - whether the merged Action detail remains usable on small screens.
 
 Each is **REQUIRES USER RESEARCH** during prototype usability testing. A dedicated Action route may be introduced as an evidence-led presentation adjustment without changing the domain contract.
 
-Direct older-adult participation, professional verification, notifications, correction, Question, decline/relinquish, and reassignment workflows are explicitly deferred; they do not block the first-slice implementation.
+The prototype may enforce 1–300 characters solely as a **PROVISIONAL PROTOTYPE CONSTRAINT — NOT A VALIDATED LONG-TERM-CARE REQUIREMENT** while this research is pending.
+
+Direct older-adult participation, professional verification, notifications, correction, Question, relinquish after acceptance, and full reassignment/replacement workflows are explicitly deferred; they do not block the first-slice implementation.
 
 ## 20. Recommended next implementation slice
 
@@ -559,10 +576,11 @@ After product review—and only under a separate frontend implementation authori
 2. Case Home + Timeline response with visible unread count/divider and cursor advancement after successful render.
 3. Immutable Care Update version-1 form/detail using an explicit visibility choice.
 4. Separate Action create+assign step with no default assignee and exact candidate references.
-5. Action detail projection with exact current responsibility and one permitted next CTA.
-6. Accept → Start → Complete with the bounded completion summary.
-7. Product Activity/history, stale-state handling, and continuity-gap/no-access projections.
-8. A→B→A usability and authorization-state tests, including unauthorized C and revoked B.
+5. Action detail projection with exact current responsibility and only the permitted state-specific controls.
+6. At `ASSIGNED`, exact assignee chooses **接受處理** or **目前無法接手**.
+7. Accepted path: Start → Complete with the short handling-result prototype field; cannot-take-over path: show **目前沒有人確定接手** / **需要重新安排** with no replacement control.
+8. Product Activity/history, stale-state handling, and continuity-gap/no-access projections.
+9. A→B→A usability and authorization-state tests, plus cannot-take-over, unauthorized C, and revoked B.
 
 Do not begin with invitation, Question, correction, professional-record, notification, reassignment controls, or a generalized design system. Do not expose raw database entities or authorize from `DemoRole`. The current IA-2 code is reference/demo scaffolding: reuse its exact-participant and cursor seam concepts, but replace its embedded Care Update+Action form coupling, role-oriented copy, Question/professional-record surfaces, incomplete history presentation, and non-production state handling in bounded frontend work.
 
