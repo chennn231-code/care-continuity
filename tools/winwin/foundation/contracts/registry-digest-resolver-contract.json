@@ -1,0 +1,65 @@
+{
+  "schema_version": "1",
+  "contract_type": "FOUNDATION_PUBLIC_REGISTRY_METADATA_RESOLVER",
+  "purpose": "IA-3A_SCHEMA_RUNTIME_VALIDATION",
+  "resolver_id": "WINWIN_PUBLIC_REGISTRY_METADATA_V1",
+  "resolver_version": "1.0.0",
+  "target_platform": {"os": "linux", "architecture": "arm64", "variant": "v8"},
+  "approved_sources": [
+    {"role": "AUTH", "source_reference": "supabase/gotrue:v2.195.0", "registry_host": "registry-1.docker.io", "repository": "supabase/gotrue", "tag": "v2.195.0"},
+    {"role": "EDGE", "source_reference": "supabase/edge-runtime:v1.74.3", "registry_host": "registry-1.docker.io", "repository": "supabase/edge-runtime", "tag": "v1.74.3"},
+    {"role": "KONG", "source_reference": "library/kong:2.8.1", "registry_host": "registry-1.docker.io", "repository": "library/kong", "tag": "2.8.1"},
+    {"role": "MAILPIT", "source_reference": "axllent/mailpit:v1.30.2", "registry_host": "registry-1.docker.io", "repository": "axllent/mailpit", "tag": "v1.30.2"},
+    {"role": "PG_META", "source_reference": "supabase/postgres-meta:v0.98.0", "registry_host": "registry-1.docker.io", "repository": "supabase/postgres-meta", "tag": "v0.98.0"},
+    {"role": "POSTGRES", "source_reference": "supabase/postgres:17.6.1.159", "registry_host": "registry-1.docker.io", "repository": "supabase/postgres", "tag": "17.6.1.159"},
+    {"role": "REALTIME", "source_reference": "supabase/realtime:v2.129.0", "registry_host": "registry-1.docker.io", "repository": "supabase/realtime", "tag": "v2.129.0"},
+    {"role": "REST", "source_reference": "postgrest/postgrest:v16.1", "registry_host": "registry-1.docker.io", "repository": "postgrest/postgrest", "tag": "v16.1"},
+    {"role": "STORAGE", "source_reference": "supabase/storage-api:v1.69.11", "registry_host": "registry-1.docker.io", "repository": "supabase/storage-api", "tag": "v1.69.11"},
+    {"role": "STUDIO", "source_reference": "supabase/studio:2026.08.17-sha-0c1da8f", "registry_host": "registry-1.docker.io", "repository": "supabase/studio", "tag": "2026.08.17-sha-0c1da8f"}
+  ],
+  "network_policy": {
+    "registry_hosts": ["registry-1.docker.io"],
+    "anonymous_auth_hosts": ["auth.docker.io"],
+    "redirects": "REJECT",
+    "credentials": "FORBIDDEN",
+    "docker_auth_config": "FORBIDDEN",
+    "credential_helpers": "FORBIDDEN",
+    "environment_proxy": "FORBIDDEN",
+    "anonymous_scope": "EXACT_REPOSITORY_PULL_METADATA_ONLY"
+  },
+  "layer_policy": {
+    "filesystem_layers": "FORBIDDEN",
+    "config_blob": "ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR",
+    "config_blob_requests_per_role": 1
+  },
+  "attempt_policy": {
+    "logical_attempts_per_role": 1,
+    "initial_manifest_requests": 1,
+    "anonymous_token_exchanges": 1,
+    "authenticated_manifest_requests": 1,
+    "child_manifest_requests": 1,
+    "config_blob_requests": 1,
+    "retry": "FORBIDDEN",
+    "tag_substitution": "FORBIDDEN",
+    "fallback_registry": "FORBIDDEN"
+  },
+  "bounds": {
+    "timeout_ms": 10000,
+    "token_body_bytes": 65536,
+    "manifest_body_bytes": 4194304,
+    "config_body_bytes": 2097152
+  },
+  "media_types": {
+    "indexes": ["application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json"],
+    "manifests": ["application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"],
+    "configs": ["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]
+  },
+  "evidence_policy": {
+    "raw_headers": "FORBIDDEN",
+    "authorization": "FORBIDDEN",
+    "tokens": "IN_MEMORY_ONLY",
+    "cookies": "FORBIDDEN",
+    "safe_response_hashes": "REQUIRED",
+    "timestamp": "NON_AUTHORITATIVE_METADATA"
+  }
+}

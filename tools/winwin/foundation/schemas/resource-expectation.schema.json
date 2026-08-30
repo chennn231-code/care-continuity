@@ -4,11 +4,12 @@
   "title": "Foundation resource expectation model",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "contract_type", "purpose", "source_binding", "identity_policy", "candidate_policy", "port_policy", "roles", "volumes", "networks", "transient_jobs"],
+  "required": ["schema_version", "contract_type", "purpose", "start_input_binding", "source_binding", "identity_policy", "candidate_policy", "port_policy", "roles", "volumes", "networks", "transient_jobs"],
   "properties": {
     "schema_version": {"const": "1"},
     "contract_type": {"const": "FOUNDATION_RESOURCE_EXPECTATION_MODEL"},
     "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "start_input_binding": {"$ref": "#/$defs/startInputBinding"},
     "source_binding": {"$ref": "#/$defs/sourceBinding"},
     "identity_policy": {"$ref": "#/$defs/identityPolicy"},
     "candidate_policy": {"$ref": "#/$defs/candidatePolicy"},
@@ -22,6 +23,20 @@
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "projectId": {"type": "string", "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$", "minLength": 35, "maxLength": 35},
     "roleId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+    "startInputBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["command", "excluded_services", "preview", "environment_service_overrides", "config_default_source", "service_gate_source", "orchestration_source", "embedded_source_binary_sha256"],
+      "properties": {
+        "command": {"const": "supabase start --workdir <FROZEN_PROJECT_ROOT>"},
+        "excluded_services": {"const": []},
+        "preview": {"const": false},
+        "environment_service_overrides": {"const": "FORBIDDEN"},
+        "config_default_source": {"type": "string", "minLength": 1},
+        "service_gate_source": {"type": "string", "minLength": 1},
+        "orchestration_source": {"type": "string", "minLength": 1},
+        "embedded_source_binary_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
     "sourceBinding": {
       "type": "object", "additionalProperties": false,
       "required": ["supabase_cli_version", "source_commit", "installed_binary_sha256", "normative_design_sha256", "source_research_sha256"],
@@ -74,8 +89,11 @@
       "oneOf": [
         {"type": "object", "additionalProperties": false, "required": ["kind", "evidence"], "properties": {"kind": {"const": "ALWAYS_FRESH"}, "evidence": {"type": "string"}}},
         {"type": "object", "additionalProperties": false, "required": ["kind", "config_key", "evidence"], "properties": {"kind": {"const": "CONFIG_BOOLEAN_TRUE"}, "config_key": {"type": "string"}, "evidence": {"type": "string"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "config_key", "default_value", "source_path", "source_function", "evidence"], "properties": {"kind": {"const": "SOURCE_DEFAULT_BOOLEAN"}, "config_key": {"type": "string"}, "default_value": {"type": "boolean"}, "source_path": {"type": "string"}, "source_function": {"type": "string"}, "evidence": {"type": "string"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "parent_role", "config_key", "default_value", "source_path", "source_function", "evidence"], "properties": {"kind": {"const": "DEPENDENT_CONFIG_BOOLEAN"}, "parent_role": {"$ref": "#/$defs/roleId"}, "config_key": {"type": "string"}, "default_value": {"type": "boolean"}, "source_path": {"type": "string"}, "source_function": {"type": "string"}, "evidence": {"type": "string"}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "parent_role", "source_path", "source_function", "evidence"], "properties": {"kind": {"const": "DEPENDENT_ROLE"}, "parent_role": {"$ref": "#/$defs/roleId"}, "source_path": {"type": "string"}, "source_function": {"type": "string"}, "evidence": {"type": "string"}}},
         {"type": "object", "additionalProperties": false, "required": ["kind", "missing_inputs", "evidence"], "properties": {"kind": {"const": "UNRESOLVED_EFFECTIVE_INPUT"}, "missing_inputs": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "evidence": {"type": "string"}}},
-        {"type": "object", "additionalProperties": false, "required": ["kind", "parent_role", "fresh_pg_minimum_major", "evidence"], "properties": {"kind": {"const": "DEPENDENT_PLATFORM_JOB"}, "parent_role": {"$ref": "#/$defs/roleId"}, "fresh_pg_minimum_major": {"type": "integer", "minimum": 1}, "evidence": {"type": "string"}}}
+        {"type": "object", "additionalProperties": false, "required": ["kind", "parent_role", "fresh_pg_minimum_major", "db_major_config_key", "db_major_default", "source_path", "source_function", "evidence"], "properties": {"kind": {"const": "DEPENDENT_PLATFORM_JOB"}, "parent_role": {"$ref": "#/$defs/roleId"}, "fresh_pg_minimum_major": {"type": "integer", "minimum": 1}, "db_major_config_key": {"const": "db.major_version"}, "db_major_default": {"type": "integer", "minimum": 1}, "source_path": {"type": "string"}, "source_function": {"type": "string"}, "evidence": {"type": "string"}}}
       ]
     },
     "relationships": {

@@ -22,10 +22,14 @@
     "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "approval": {
       "type": "object", "additionalProperties": false,
-      "required": ["role", "source_reference", "approved_registry_manifest_digest", "approved_platform_child_digest", "approved_config_digest", "required_repo_digest", "platform", "selected_config_sha256", "declared_volumes", "entrypoint_policy", "provenance", "schema_version"],
+      "required": ["role", "source_reference", "registry_host", "repository", "requested_tag", "manifest_media_type", "approved_registry_manifest_digest", "approved_platform_child_digest", "approved_config_digest", "required_repo_digest", "platform", "selected_config_sha256", "declared_volumes", "entrypoint_policy", "provenance", "schema_version"],
       "properties": {
         "role": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
         "source_reference": {"type": "string"},
+        "registry_host": {"const": "registry-1.docker.io"},
+        "repository": {"type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$"},
+        "requested_tag": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+        "manifest_media_type": {"enum": ["application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json", "application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"]},
         "approved_registry_manifest_digest": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$"},
         "approved_platform_child_digest": {"$ref": "#/$defs/digest"},
         "approved_config_digest": {"$ref": "#/$defs/digest"},
@@ -34,7 +38,7 @@
         "selected_config_sha256": {"$ref": "#/$defs/sha256"},
         "declared_volumes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
         "entrypoint_policy": {"enum": ["NO_NETWORK_BOOTSTRAP", "REVIEWED_STRUCTURAL_ENTRYPOINT"]},
-        "provenance": {"type": "object", "additionalProperties": false, "required": ["independent", "source_class", "source_record_sha256", "resolver_id", "approved_at_utc"], "properties": {"independent": {"const": true}, "source_class": {"const": "REVIEWED_REGISTRY_METADATA"}, "source_record_sha256": {"$ref": "#/$defs/sha256"}, "resolver_id": {"type": "string", "pattern": "^[A-Z0-9_-]+$"}, "approved_at_utc": {"type": "string", "format": "date-time"}}},
+        "provenance": {"type": "object", "additionalProperties": false, "required": ["independent", "source_class", "source_record_sha256", "resolver_id", "resolver_version", "resolver_sha256", "resolver_contract_sha256", "manifest_response_sha256", "child_manifest_response_sha256", "config_response_sha256", "approved_at_utc"], "properties": {"independent": {"const": true}, "source_class": {"const": "REVIEWED_REGISTRY_METADATA"}, "source_record_sha256": {"$ref": "#/$defs/sha256"}, "resolver_id": {"type": "string", "pattern": "^[A-Z0-9_-]+$"}, "resolver_version": {"const": "1.0.0"}, "resolver_sha256": {"$ref": "#/$defs/sha256"}, "resolver_contract_sha256": {"$ref": "#/$defs/sha256"}, "manifest_response_sha256": {"$ref": "#/$defs/sha256"}, "child_manifest_response_sha256": {"$ref": "#/$defs/sha256"}, "config_response_sha256": {"$ref": "#/$defs/sha256"}, "approved_at_utc": {"type": "string", "format": "date-time"}}},
         "schema_version": {"const": "1"}
       }
     }

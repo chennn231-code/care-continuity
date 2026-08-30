@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winwin.invalid/schemas/foundation-public-registry-metadata-resolver-v1.json",
+  "title": "Foundation bounded public registry metadata resolver",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_type", "purpose", "resolver_id", "resolver_version", "target_platform", "approved_sources", "network_policy", "layer_policy", "attempt_policy", "bounds", "media_types", "evidence_policy"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "contract_type": {"const": "FOUNDATION_PUBLIC_REGISTRY_METADATA_RESOLVER"},
+    "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "resolver_id": {"const": "WINWIN_PUBLIC_REGISTRY_METADATA_V1"},
+    "resolver_version": {"const": "1.0.0"},
+    "target_platform": {"$ref": "#/$defs/platform"},
+    "approved_sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/source"}},
+    "network_policy": {"$ref": "#/$defs/network"},
+    "layer_policy": {"$ref": "#/$defs/layers"},
+    "attempt_policy": {"$ref": "#/$defs/attempts"},
+    "bounds": {"$ref": "#/$defs/bounds"},
+    "media_types": {"$ref": "#/$defs/mediaTypes"},
+    "evidence_policy": {"$ref": "#/$defs/evidence"}
+  },
+  "$defs": {
+    "roleId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
+    "platform": {"type": "object", "additionalProperties": false, "required": ["os", "architecture", "variant"], "properties": {"os": {"const": "linux"}, "architecture": {"const": "arm64"}, "variant": {"const": "v8"}}},
+    "source": {"type": "object", "additionalProperties": false, "required": ["role", "source_reference", "registry_host", "repository", "tag"], "properties": {"role": {"$ref": "#/$defs/roleId"}, "source_reference": {"type": "string"}, "registry_host": {"const": "registry-1.docker.io"}, "repository": {"type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$"}, "tag": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}}},
+    "network": {"type": "object", "additionalProperties": false, "required": ["registry_hosts", "anonymous_auth_hosts", "redirects", "credentials", "docker_auth_config", "credential_helpers", "environment_proxy", "anonymous_scope"], "properties": {"registry_hosts": {"const": ["registry-1.docker.io"]}, "anonymous_auth_hosts": {"const": ["auth.docker.io"]}, "redirects": {"const": "REJECT"}, "credentials": {"const": "FORBIDDEN"}, "docker_auth_config": {"const": "FORBIDDEN"}, "credential_helpers": {"const": "FORBIDDEN"}, "environment_proxy": {"const": "FORBIDDEN"}, "anonymous_scope": {"const": "EXACT_REPOSITORY_PULL_METADATA_ONLY"}}},
+    "layers": {"type": "object", "additionalProperties": false, "required": ["filesystem_layers", "config_blob", "config_blob_requests_per_role"], "properties": {"filesystem_layers": {"const": "FORBIDDEN"}, "config_blob": {"const": "ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR"}, "config_blob_requests_per_role": {"const": 1}}},
+    "attempts": {"type": "object", "additionalProperties": false, "required": ["logical_attempts_per_role", "initial_manifest_requests", "anonymous_token_exchanges", "authenticated_manifest_requests", "child_manifest_requests", "config_blob_requests", "retry", "tag_substitution", "fallback_registry"], "properties": {"logical_attempts_per_role": {"const": 1}, "initial_manifest_requests": {"const": 1}, "anonymous_token_exchanges": {"const": 1}, "authenticated_manifest_requests": {"const": 1}, "child_manifest_requests": {"const": 1}, "config_blob_requests": {"const": 1}, "retry": {"const": "FORBIDDEN"}, "tag_substitution": {"const": "FORBIDDEN"}, "fallback_registry": {"const": "FORBIDDEN"}}},
+    "bounds": {"type": "object", "additionalProperties": false, "required": ["timeout_ms", "token_body_bytes", "manifest_body_bytes", "config_body_bytes"], "properties": {"timeout_ms": {"const": 10000}, "token_body_bytes": {"const": 65536}, "manifest_body_bytes": {"const": 4194304}, "config_body_bytes": {"const": 2097152}}},
+    "mediaTypes": {"type": "object", "additionalProperties": false, "required": ["indexes", "manifests", "configs"], "properties": {"indexes": {"const": ["application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json"]}, "manifests": {"const": ["application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"]}, "configs": {"const": ["application/vnd.oci.image.config.v1+json", "application/vnd.docker.container.image.v1+json"]}}},
+    "evidence": {"type": "object", "additionalProperties": false, "required": ["raw_headers", "authorization", "tokens", "cookies", "safe_response_hashes", "timestamp"], "properties": {"raw_headers": {"const": "FORBIDDEN"}, "authorization": {"const": "FORBIDDEN"}, "tokens": {"const": "IN_MEMORY_ONLY"}, "cookies": {"const": "FORBIDDEN"}, "safe_response_hashes": {"const": "REQUIRED"}, "timestamp": {"const": "NON_AUTHORITATIVE_METADATA"}}}
+  }
+}

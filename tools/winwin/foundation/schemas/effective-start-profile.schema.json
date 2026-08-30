@@ -4,7 +4,7 @@
   "title": "Foundation effective start profile",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "profile_type", "purpose", "result", "project_id", "config_sha256", "config_contract_sha256", "resource_contract_sha256", "source_binding", "decisions", "reachable_roles", "unreachable_roles", "unresolved_roles", "reachable_image_roles", "unresolved_image_roles", "project_inputs", "generated_at", "profile_sha256"],
+  "required": ["schema_version", "profile_type", "purpose", "result", "project_id", "config_sha256", "config_contract_sha256", "resource_contract_sha256", "source_binding", "start_input_binding", "decisions", "reachable_roles", "unreachable_roles", "unresolved_roles", "reachable_image_roles", "unresolved_image_roles", "project_inputs", "generated_at", "profile_sha256"],
   "properties": {
     "schema_version": {"const": "1"},
     "profile_type": {"const": "FOUNDATION_EFFECTIVE_START_PROFILE"},
@@ -26,6 +26,21 @@
         "source_research_sha256": {"$ref": "#/$defs/sha256"}
       }
     },
+    "start_input_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "excluded_services", "preview", "environment_service_overrides", "config_default_source", "service_gate_source", "orchestration_source", "embedded_source_binary_sha256"],
+      "properties": {
+        "command": {"const": "supabase start --workdir <FROZEN_PROJECT_ROOT>"},
+        "excluded_services": {"const": []},
+        "preview": {"const": false},
+        "environment_service_overrides": {"const": "FORBIDDEN"},
+        "config_default_source": {"type": "string", "minLength": 1},
+        "service_gate_source": {"type": "string", "minLength": 1},
+        "orchestration_source": {"type": "string", "minLength": 1},
+        "embedded_source_binary_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
     "decisions": {
       "type": "array",
       "items": {
@@ -41,7 +56,7 @@
           "lifecycle": {"enum": ["PERSISTENT", "TRANSIENT"]},
           "image_role": {"oneOf": [{"$ref": "#/$defs/roleId"}, {"type": "null"}]},
           "image_reference": {"oneOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
-          "source_rule": {"enum": ["ALWAYS_FRESH", "CONFIG_BOOLEAN_TRUE", "UNRESOLVED_EFFECTIVE_INPUT", "DEPENDENT_PLATFORM_JOB"]}
+          "source_rule": {"enum": ["ALWAYS_FRESH", "CONFIG_BOOLEAN_TRUE", "SOURCE_DEFAULT_BOOLEAN", "DEPENDENT_CONFIG_BOOLEAN", "DEPENDENT_ROLE", "UNRESOLVED_EFFECTIVE_INPUT", "DEPENDENT_PLATFORM_JOB"]}
         }
       }
     },

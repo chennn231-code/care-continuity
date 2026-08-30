@@ -71,24 +71,40 @@ function validateRelationship(value) {
 }
 
 function validateReachability(value) {
-  demand(object(value) && ['ALWAYS_FRESH', 'CONFIG_BOOLEAN_TRUE', 'UNRESOLVED_EFFECTIVE_INPUT', 'DEPENDENT_PLATFORM_JOB'].includes(value.kind), 'REACHABILITY_KIND');
+  demand(object(value) && ['ALWAYS_FRESH', 'CONFIG_BOOLEAN_TRUE', 'SOURCE_DEFAULT_BOOLEAN', 'DEPENDENT_CONFIG_BOOLEAN', 'DEPENDENT_ROLE', 'UNRESOLVED_EFFECTIVE_INPUT', 'DEPENDENT_PLATFORM_JOB'].includes(value.kind), 'REACHABILITY_KIND');
   if (value.kind === 'ALWAYS_FRESH') exact(value, ['kind', 'evidence'], 'REACHABILITY_ALWAYS');
   if (value.kind === 'CONFIG_BOOLEAN_TRUE') exact(value, ['kind', 'config_key', 'evidence'], 'REACHABILITY_CONFIG');
+  if (value.kind === 'SOURCE_DEFAULT_BOOLEAN') exact(value, ['kind', 'config_key', 'default_value', 'source_path', 'source_function', 'evidence'], 'REACHABILITY_SOURCE_DEFAULT');
+  if (value.kind === 'DEPENDENT_CONFIG_BOOLEAN') exact(value, ['kind', 'parent_role', 'config_key', 'default_value', 'source_path', 'source_function', 'evidence'], 'REACHABILITY_DEPENDENT_CONFIG');
+  if (value.kind === 'DEPENDENT_ROLE') exact(value, ['kind', 'parent_role', 'source_path', 'source_function', 'evidence'], 'REACHABILITY_DEPENDENT_ROLE');
   if (value.kind === 'UNRESOLVED_EFFECTIVE_INPUT') exact(value, ['kind', 'missing_inputs', 'evidence'], 'REACHABILITY_UNRESOLVED');
-  if (value.kind === 'DEPENDENT_PLATFORM_JOB') exact(value, ['kind', 'parent_role', 'fresh_pg_minimum_major', 'evidence'], 'REACHABILITY_JOB');
+  if (value.kind === 'DEPENDENT_PLATFORM_JOB') exact(value, ['kind', 'parent_role', 'fresh_pg_minimum_major', 'db_major_config_key', 'db_major_default', 'source_path', 'source_function', 'evidence'], 'REACHABILITY_JOB');
   safeText(value.evidence);
   if (value.config_key !== undefined) demand(typeof value.config_key === 'string' && /^[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*$/.test(value.config_key), 'REACHABILITY_KEY');
+  if (value.db_major_config_key !== undefined) demand(value.db_major_config_key === 'db.major_version', 'REACHABILITY_DB_MAJOR_KEY');
+  if (value.default_value !== undefined) demand(typeof value.default_value === 'boolean', 'REACHABILITY_DEFAULT');
   if (value.missing_inputs !== undefined) demand(Array.isArray(value.missing_inputs) && value.missing_inputs.length > 0 && value.missing_inputs.every(x => typeof x === 'string' && x.length > 0), 'REACHABILITY_INPUTS');
   if (value.parent_role !== undefined) roleId(value.parent_role);
   if (value.fresh_pg_minimum_major !== undefined) demand(Number.isSafeInteger(value.fresh_pg_minimum_major) && value.fresh_pg_minimum_major >= 1, 'PG_MAJOR');
+  if (value.db_major_default !== undefined) demand(Number.isSafeInteger(value.db_major_default) && value.db_major_default >= 1, 'PG_MAJOR_DEFAULT');
+  for (const key of ['source_path', 'source_function']) if (value[key] !== undefined) { demand(typeof value[key] === 'string' && value[key].length > 0, 'REACHABILITY_SOURCE'); safeText(value[key]); }
+}
+
+function validateStartInputBinding(value, installedBinarySha256) {
+  exact(value, ['command', 'excluded_services', 'preview', 'environment_service_overrides', 'config_default_source', 'service_gate_source', 'orchestration_source', 'embedded_source_binary_sha256'], 'START_INPUT_BINDING');
+  demand(value.command === 'supabase start --workdir <FROZEN_PROJECT_ROOT>' && Array.isArray(value.excluded_services) && value.excluded_services.length === 0 && value.preview === false, 'START_COMMAND_BINDING');
+  demand(value.environment_service_overrides === 'FORBIDDEN', 'START_ENVIRONMENT_POLICY');
+  for (const key of ['config_default_source', 'service_gate_source', 'orchestration_source']) { demand(typeof value[key] === 'string' && value[key].length > 0, 'START_SOURCE_BINDING'); safeText(value[key]); }
+  demand(value.embedded_source_binary_sha256 === installedBinarySha256, 'START_BINARY_BINDING');
 }
 
 export function validateResourceExpectationContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'source_binding', 'identity_policy', 'candidate_policy', 'port_policy', 'roles', 'volumes', 'networks', 'transient_jobs'], 'RESOURCE_CONTRACT');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'start_input_binding', 'source_binding', 'identity_policy', 'candidate_policy', 'port_policy', 'roles', 'volumes', 'networks', 'transient_jobs'], 'RESOURCE_CONTRACT');
   demand(contract.schema_version === PREREQUISITE_SCHEMA_VERSION && contract.contract_type === RESOURCE_CONTRACT_TYPE && contract.purpose === PREREQUISITE_PURPOSE, 'RESOURCE_CONTRACT_TYPE');
   const source = exact(contract.source_binding, ['supabase_cli_version', 'source_commit', 'installed_binary_sha256', 'normative_design_sha256', 'source_research_sha256'], 'RESOURCE_SOURCE');
   demand(source.supabase_cli_version === '2.115.0' && /^[0-9a-f]{40}$/.test(source.source_commit), 'RESOURCE_SOURCE_VERSION');
   for (const key of ['installed_binary_sha256', 'normative_design_sha256', 'source_research_sha256']) sha(source[key], 'RESOURCE_SOURCE_HASH');
+  validateStartInputBinding(contract.start_input_binding, source.installed_binary_sha256);
   const identity = exact(contract.identity_policy, ['project_id_format', 'production_project_id', 'required_labels', 'comparison', 'names_are_authority'], 'RESOURCE_IDENTITY');
   demand(identity.project_id_format === 'FROZEN_35_BYTE_ASCII' && identity.comparison === 'BYTE_EXACT' && identity.names_are_authority === false, 'RESOURCE_IDENTITY_VALUE');
   projectId(identity.production_project_id);
@@ -133,11 +149,25 @@ function roleDecision(row, config, decisions) {
     demand(Object.hasOwn(config, rule.config_key) && typeof config[rule.config_key] === 'boolean', 'PROFILE_CONFIG_KEY');
     return { role_id: row.role_id, state: config[rule.config_key] ? 'REACHABLE' : 'UNREACHABLE', reason: config[rule.config_key] ? 'FROZEN_CONFIG_TRUE' : 'FROZEN_CONFIG_FALSE', evidence: `${rule.config_key}=${config[rule.config_key]}` };
   }
+  if (rule.kind === 'SOURCE_DEFAULT_BOOLEAN') {
+    const explicit = Object.hasOwn(config, rule.config_key), effective = explicit ? config[rule.config_key] : rule.default_value;
+    demand(typeof effective === 'boolean', 'PROFILE_CONFIG_DEFAULT');
+    return { role_id: row.role_id, state: effective ? 'REACHABLE' : 'UNREACHABLE', reason: explicit ? 'FROZEN_CONFIG_BOOLEAN' : 'PINNED_SOURCE_DEFAULT_BOOLEAN', evidence: `${rule.config_key}=${effective};${rule.source_path}::${rule.source_function}` };
+  }
   if (rule.kind === 'UNRESOLVED_EFFECTIVE_INPUT') return { role_id: row.role_id, state: 'UNRESOLVED', reason: 'EFFECTIVE_INPUT_NOT_IN_APPROVED_BOUNDED_CONFIG', evidence: rule.missing_inputs.join(',') };
   const parent = decisions.get(rule.parent_role);
-  demand(parent, 'PROFILE_PARENT_ROLE');
+  if (!parent) return null;
   if (parent.state === 'UNREACHABLE') return { role_id: row.role_id, state: 'UNREACHABLE', reason: 'PARENT_ROLE_UNREACHABLE', evidence: rule.parent_role };
   if (parent.state === 'UNRESOLVED') return { role_id: row.role_id, state: 'UNRESOLVED', reason: 'PARENT_ROLE_UNRESOLVED', evidence: rule.parent_role };
+  if (rule.kind === 'DEPENDENT_CONFIG_BOOLEAN') {
+    const explicit = Object.hasOwn(config, rule.config_key), effective = explicit ? config[rule.config_key] : rule.default_value;
+    demand(typeof effective === 'boolean', 'PROFILE_DEPENDENT_CONFIG_DEFAULT');
+    return { role_id: row.role_id, state: effective ? 'REACHABLE' : 'UNREACHABLE', reason: effective ? 'PARENT_AND_CONFIG_GATE_REACHABLE' : 'DEPENDENT_CONFIG_GATE_FALSE', evidence: `${rule.parent_role};${rule.config_key}=${effective};${rule.source_path}::${rule.source_function}` };
+  }
+  if (rule.kind === 'DEPENDENT_ROLE') return { role_id: row.role_id, state: 'REACHABLE', reason: 'PARENT_ROLE_REACHABLE', evidence: `${rule.parent_role};${rule.source_path}::${rule.source_function}` };
+  const explicitMajor = Object.hasOwn(config, rule.db_major_config_key), major = explicitMajor ? config[rule.db_major_config_key] : rule.db_major_default;
+  demand(Number.isSafeInteger(major), 'PROFILE_DB_MAJOR');
+  if (major < rule.fresh_pg_minimum_major) return { role_id: row.role_id, state: 'UNREACHABLE', reason: 'POSTGRES_MAJOR_PLATFORM_BRANCH_UNREACHABLE', evidence: `${rule.db_major_config_key}=${major};minimum=${rule.fresh_pg_minimum_major}` };
   return { role_id: row.role_id, state: 'REACHABLE', reason: 'FRESH_PG_PLATFORM_JOB_REACHABLE', evidence: `${rule.parent_role};pg>=${rule.fresh_pg_minimum_major}` };
 }
 
@@ -149,13 +179,20 @@ export function deriveEffectiveStartProfile({ contract, config, projectId: reque
     exact(sourceEvidence, ['normative_design_sha256', 'source_research_sha256'], 'PROFILE_SOURCE_EVIDENCE');
     demand(sourceEvidence.normative_design_sha256 === contract.source_binding.normative_design_sha256 && sourceEvidence.source_research_sha256 === contract.source_binding.source_research_sha256, 'PROFILE_SOURCE_DRIFT');
   }
-  const decisions = new Map(), rows = [];
-  for (const row of [...contract.roles, ...contract.volumes, ...contract.networks]) {
-    const decision = roleDecision(row, config, decisions); decisions.set(row.role_id, decision); rows.push({ ...decision, resource_class: row.resource_class, lifecycle: row.lifecycle, image_role: row.image_role, image_reference: row.image_reference, source_rule: row.reachability.kind });
+  const decisions = new Map(), allRows = [...contract.roles, ...contract.volumes, ...contract.networks, ...contract.transient_jobs], pending = [...allRows];
+  while (pending.length > 0) {
+    let progress = false;
+    for (let index = pending.length - 1; index >= 0; index -= 1) {
+      const row = pending[index], decision = roleDecision(row, config, decisions);
+      if (decision === null) continue;
+      decisions.set(row.role_id, decision); pending.splice(index, 1); progress = true;
+    }
+    demand(progress, 'PROFILE_DEPENDENCY_CYCLE');
   }
-  for (const row of contract.transient_jobs) {
-    const decision = roleDecision(row, config, decisions); decisions.set(row.role_id, decision); rows.push({ ...decision, resource_class: row.resource_class, lifecycle: row.lifecycle, image_role: row.image_role, image_reference: row.image_reference, source_rule: row.reachability.kind });
-  }
+  const rows = allRows.map(row => {
+    const decision = decisions.get(row.role_id);
+    return { ...decision, resource_class: row.resource_class, lifecycle: row.lifecycle, image_role: row.image_role, image_reference: row.image_reference, source_rule: row.reachability.kind };
+  });
   const reachable = rows.filter(x => x.state === 'REACHABLE').map(x => x.role_id);
   const unreachable = rows.filter(x => x.state === 'UNREACHABLE').map(x => x.role_id);
   const unresolved = rows.filter(x => x.state === 'UNRESOLVED').map(x => x.role_id);
@@ -165,7 +202,7 @@ export function deriveEffectiveStartProfile({ contract, config, projectId: reque
     schema_version: PREREQUISITE_SCHEMA_VERSION, profile_type: PROFILE_TYPE, purpose: PREREQUISITE_PURPOSE,
     result: unresolved.length ? 'BLOCKED' : 'PASS', project_id: requestedId, config_sha256: configSha256,
     config_contract_sha256: configContractSha256, resource_contract_sha256: resourceContractSha256,
-    source_binding: copy(contract.source_binding), decisions: rows, reachable_roles: reachable.sort(),
+    source_binding: copy(contract.source_binding), start_input_binding: copy(contract.start_input_binding), decisions: rows, reachable_roles: reachable.sort(),
     unreachable_roles: unreachable.sort(), unresolved_roles: unresolved.sort(), reachable_image_roles: reachableImages,
     unresolved_image_roles: unresolvedImages,
     project_inputs: { migrations: 'DISABLED', seed: 'DISABLED', analytics: 'DISABLED', vector: 'DISABLED', pgdelta: 'DISABLED' },
@@ -185,8 +222,11 @@ export function validateImageApprovalSet(set) {
   demand(Array.isArray(set.approvals), 'APPROVAL_ROWS');
   const roles = [];
   for (const row of set.approvals) {
-    exact(row, ['role', 'source_reference', 'approved_registry_manifest_digest', 'approved_platform_child_digest', 'approved_config_digest', 'required_repo_digest', 'platform', 'selected_config_sha256', 'declared_volumes', 'entrypoint_policy', 'provenance', 'schema_version'], 'IMAGE_APPROVAL');
+    exact(row, ['role', 'source_reference', 'registry_host', 'repository', 'requested_tag', 'manifest_media_type', 'approved_registry_manifest_digest', 'approved_platform_child_digest', 'approved_config_digest', 'required_repo_digest', 'platform', 'selected_config_sha256', 'declared_volumes', 'entrypoint_policy', 'provenance', 'schema_version'], 'IMAGE_APPROVAL');
     demand(row.schema_version === PREREQUISITE_SCHEMA_VERSION, 'IMAGE_APPROVAL_VERSION'); roleId(row.role); roles.push(row.role); sourceReference(row.source_reference);
+    demand(row.registry_host === 'registry-1.docker.io' && typeof row.repository === 'string' && /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/.test(row.repository), 'APPROVAL_REGISTRY');
+    demand(typeof row.requested_tag === 'string' && row.source_reference === `${row.repository}:${row.requested_tag}`, 'APPROVAL_SOURCE_PARTS');
+    demand(['application/vnd.oci.image.index.v1+json','application/vnd.docker.distribution.manifest.list.v2+json','application/vnd.oci.image.manifest.v1+json','application/vnd.docker.distribution.manifest.v2+json'].includes(row.manifest_media_type), 'APPROVAL_MEDIA_TYPE');
     demand(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,200}@sha256:[0-9a-f]{64}$/.test(row.approved_registry_manifest_digest), 'APPROVAL_MANIFEST');
     digest(row.approved_platform_child_digest, 'APPROVAL_PLATFORM_CHILD'); digest(row.approved_config_digest, 'APPROVAL_CONFIG');
     demand(row.required_repo_digest === row.approved_registry_manifest_digest, 'APPROVAL_REPODIGEST');
@@ -196,11 +236,46 @@ export function validateImageApprovalSet(set) {
     demand(Array.isArray(row.declared_volumes) && new Set(row.declared_volumes).size === row.declared_volumes.length, 'APPROVAL_VOLUMES');
     for (const destination of row.declared_volumes) demand(typeof destination === 'string' && destination.startsWith('/') && !destination.includes('..'), 'APPROVAL_VOLUME');
     demand(['NO_NETWORK_BOOTSTRAP', 'REVIEWED_STRUCTURAL_ENTRYPOINT'].includes(row.entrypoint_policy), 'APPROVAL_ENTRYPOINT');
-    exact(row.provenance, ['independent', 'source_class', 'source_record_sha256', 'resolver_id', 'approved_at_utc'], 'APPROVAL_PROVENANCE');
+    exact(row.provenance, ['independent', 'source_class', 'source_record_sha256', 'resolver_id', 'resolver_version', 'resolver_sha256', 'resolver_contract_sha256', 'manifest_response_sha256', 'child_manifest_response_sha256', 'config_response_sha256', 'approved_at_utc'], 'APPROVAL_PROVENANCE');
     demand(row.provenance.independent === true && row.provenance.source_class === 'REVIEWED_REGISTRY_METADATA' && row.provenance.resolver_id === set.independent_source_policy.resolver_id, 'APPROVAL_PROVENANCE_VALUE');
-    sha(row.provenance.source_record_sha256, 'APPROVAL_SOURCE_RECORD'); utc(row.provenance.approved_at_utc);
+    demand(row.provenance.resolver_version === '1.0.0', 'APPROVAL_RESOLVER_VERSION');
+    for (const key of ['source_record_sha256','resolver_sha256','resolver_contract_sha256','manifest_response_sha256','child_manifest_response_sha256','config_response_sha256']) sha(row.provenance[key], 'APPROVAL_SOURCE_RECORD');
+    utc(row.provenance.approved_at_utc);
   }
   demand(new Set(roles).size === roles.length, 'APPROVAL_DUPLICATE_ROLE');
+  return set;
+}
+
+export function produceImageApprovalSet({ profile, resolutions, resolverContract, resolverContractSha256 }) {
+  demand(profile?.profile_type === PROFILE_TYPE && profile.result === 'PASS', 'APPROVAL_PROFILE_BLOCKED');
+  demand(Array.isArray(resolutions) && object(resolverContract), 'APPROVAL_PRODUCER_INPUT'); sha(resolverContractSha256, 'APPROVAL_RESOLVER_CONTRACT_HASH');
+  demand(resolverContract.resolver_id === 'WINWIN_PUBLIC_REGISTRY_METADATA_V1' && resolverContract.resolver_version === '1.0.0', 'APPROVAL_RESOLVER_CONTRACT');
+  exactSet(resolutions.map(row => row.role).sort(), [...profile.reachable_image_roles].sort());
+  const expectedReferences = new Map(profile.decisions.filter(row => row.state === 'REACHABLE' && row.image_role !== null).map(row => [row.image_role, row.image_reference]));
+  const approvals = [...resolutions].sort((a,b) => a.role.localeCompare(b.role)).map(row => {
+    exact(row, ['schema_version','role','source_reference','registry_host','repository','requested_tag','manifest_media_type','top_level_manifest_digest','platform_child_digest','config_digest','required_repo_digest','platform','selected_config_sha256','declared_volumes','entrypoint_policy','resolver_id','resolver_version','resolver_sha256','response_hashes','resolved_at_utc','network','source_record_sha256'], 'APPROVAL_RESOLUTION');
+    demand(row.schema_version === '1' && row.source_reference === expectedReferences.get(row.role), 'APPROVAL_RESOLUTION_REFERENCE');
+    demand(row.resolver_id === resolverContract.resolver_id && row.resolver_version === resolverContract.resolver_version, 'APPROVAL_RESOLUTION_RESOLVER');
+    demand(row.network?.metadata_only === true && row.network?.filesystem_layers_downloaded === false, 'APPROVAL_RESOLUTION_LAYER_POLICY');
+    const approval = {
+      role: row.role, source_reference: row.source_reference, registry_host: row.registry_host, repository: row.repository,
+      requested_tag: row.requested_tag, manifest_media_type: row.manifest_media_type,
+      approved_registry_manifest_digest: row.required_repo_digest, approved_platform_child_digest: row.platform_child_digest,
+      approved_config_digest: row.config_digest, required_repo_digest: row.required_repo_digest,
+      platform: copy(row.platform), selected_config_sha256: row.selected_config_sha256,
+      declared_volumes: copy(row.declared_volumes), entrypoint_policy: row.entrypoint_policy,
+      provenance: { independent: true, source_class: 'REVIEWED_REGISTRY_METADATA', source_record_sha256: row.source_record_sha256,
+        resolver_id: row.resolver_id, resolver_version: row.resolver_version, resolver_sha256: row.resolver_sha256,
+        resolver_contract_sha256: resolverContractSha256, manifest_response_sha256: row.response_hashes.manifest,
+        child_manifest_response_sha256: row.response_hashes.child_manifest, config_response_sha256: row.response_hashes.config,
+        approved_at_utc: row.resolved_at_utc }, schema_version: '1',
+    };
+    return approval;
+  });
+  const set = { schema_version:'1', approval_set_type:IMAGE_APPROVAL_SET_TYPE, purpose:PREREQUISITE_PURPOSE,
+    profile_sha256:profile.profile_sha256, independent_source_policy:{ resolver_id:resolverContract.resolver_id,
+      source_class:'REVIEWED_REGISTRY_METADATA', credentials:'FORBIDDEN', layer_download:'FORBIDDEN' }, approvals };
+  validateImageApprovalSet(set);
   return set;
 }
 
