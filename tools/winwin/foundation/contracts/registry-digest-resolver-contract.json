@@ -36,8 +36,24 @@
       "docker-content-digest": "BYTE_IDENTICAL_DUPLICATE_COLLAPSIBLE",
       "www-authenticate": "SEMANTICALLY_EQUIVALENT_CHALLENGE_COLLAPSIBLE",
       "location": "DUPLICATE_FORBIDDEN",
-      "set-cookie": "MULTI_VALUE_ALLOWED_RESPONSE_REJECTED"
+      "set-cookie": "RECEIVE_NON_PARTICIPATING_RESPONSE_ONLY"
     }
+  },
+  "response_cookie_policy": {
+    "mode": "RECEIVE_NON_PARTICIPATING_RESPONSE_ONLY",
+    "allowed_host": "auth.docker.io",
+    "allowed_endpoint": "/token",
+    "allowed_request_purpose": "ANONYMOUS_TOKEN",
+    "request_credentials": "NONE",
+    "outbound_cookie_header": "FORBIDDEN",
+    "cookie_jar": "FORBIDDEN",
+    "replay": "FORBIDDEN",
+    "persistence": "FORBIDDEN",
+    "logging": "FORBIDDEN",
+    "trust": "FORBIDDEN",
+    "low_level_audit_projection": "PRESENCE_COUNT_ONLY",
+    "higher_level_visibility": "NONE",
+    "all_other_contexts": "REJECT"
   },
   "layer_policy": {
     "filesystem_layers": "FORBIDDEN",
