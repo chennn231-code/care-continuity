@@ -12,6 +12,13 @@ const MODULE_URL = new URL(import.meta.url);
 const SHA = /^sha256:[0-9a-f]{64}$/;
 const REPOSITORY = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/;
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const PROTECTED_HEADER_RULES = Object.freeze({
+  'content-type': 'SINGLETON_EXACT',
+  'docker-content-digest': 'BYTE_IDENTICAL_DUPLICATE_COLLAPSIBLE',
+  'www-authenticate': 'SEMANTICALLY_EQUIVALENT_CHALLENGE_COLLAPSIBLE',
+  location: 'DUPLICATE_FORBIDDEN',
+  'set-cookie': 'MULTI_VALUE_ALLOWED_RESPONSE_REJECTED',
+});
 const canonical = value => {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
   if (object(value)) return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
@@ -36,7 +43,7 @@ const body = (response, maximum, code) => {
 const mediaType = value => typeof value === 'string' ? value.split(';', 1)[0].trim() : '';
 
 export function validateRegistryResolverContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'approved_sources', 'network_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'approved_sources', 'network_policy', 'protected_header_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
   demand(contract.schema_version === '1' && contract.contract_type === REGISTRY_RESOLVER_TYPE && contract.resolver_id === REGISTRY_RESOLVER_ID && contract.resolver_version === '1.0.0', 'REGISTRY_CONTRACT_TYPE');
   exact(contract.target_platform, ['os', 'architecture', 'variant'], 'REGISTRY_PLATFORM');
   demand(contract.target_platform.os === 'linux' && contract.target_platform.architecture === 'arm64' && contract.target_platform.variant === 'v8', 'REGISTRY_PLATFORM_VALUE');
@@ -52,6 +59,10 @@ export function validateRegistryResolverContract(contract) {
   const network = exact(contract.network_policy, ['registry_hosts', 'anonymous_auth_hosts', 'redirects', 'credentials', 'docker_auth_config', 'credential_helpers', 'environment_proxy', 'anonymous_scope'], 'REGISTRY_NETWORK');
   demand(JSON.stringify(network.registry_hosts) === JSON.stringify(['registry-1.docker.io']) && JSON.stringify(network.anonymous_auth_hosts) === JSON.stringify(['auth.docker.io']), 'REGISTRY_HOSTS');
   demand(network.redirects === 'REJECT' && network.credentials === 'FORBIDDEN' && network.docker_auth_config === 'FORBIDDEN' && network.credential_helpers === 'FORBIDDEN' && network.environment_proxy === 'FORBIDDEN' && network.anonymous_scope === 'EXACT_REPOSITORY_PULL_METADATA_ONLY', 'REGISTRY_NETWORK_POLICY');
+  const protectedHeaders = exact(contract.protected_header_policy, ['multiplicity_authority', 'normalized_headers_object', 'unknown_policy', 'headers'], 'REGISTRY_HEADER_POLICY');
+  demand(protectedHeaders.multiplicity_authority === 'NODE_INCOMING_MESSAGE_RAW_HEADERS' && protectedHeaders.normalized_headers_object === 'FORBIDDEN_AS_MULTIPLICITY_AUTHORITY' && protectedHeaders.unknown_policy === 'DUPLICATE_FORBIDDEN', 'REGISTRY_HEADER_POLICY_VALUE');
+  exact(protectedHeaders.headers, Object.keys(PROTECTED_HEADER_RULES), 'REGISTRY_HEADER_RULES');
+  demand(Object.entries(PROTECTED_HEADER_RULES).every(([name, rule]) => protectedHeaders.headers[name] === rule), 'REGISTRY_HEADER_RULE_VALUE');
   const layers = exact(contract.layer_policy, ['filesystem_layers', 'config_blob', 'config_blob_requests_per_role'], 'REGISTRY_LAYERS');
   demand(layers.filesystem_layers === 'FORBIDDEN' && layers.config_blob === 'ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR' && layers.config_blob_requests_per_role === 1, 'REGISTRY_LAYER_POLICY');
   const attempts = exact(contract.attempt_policy, ['logical_attempts_per_role', 'initial_manifest_requests', 'anonymous_token_exchanges', 'authenticated_manifest_requests', 'child_manifest_requests', 'config_blob_requests', 'retry', 'tag_substitution', 'fallback_registry'], 'REGISTRY_ATTEMPTS');
@@ -75,15 +86,71 @@ export function parseApprovedSourceReference(contract, role, sourceReference) {
   return structuredClone(source);
 }
 
-export function parseAnonymousBearerChallenge(value, source) {
+function parseBearerChallenge(value) {
   demand(typeof value === 'string' && value.startsWith('Bearer '), 'REGISTRY_AUTH_CHALLENGE');
+  let offset = 7;
   const fields = {};
-  for (const part of value.slice(7).split(/,\s*/)) {
-    const match = /^([a-z]+)="([^"]+)"$/.exec(part);
-    demand(match && !Object.hasOwn(fields, match[1]), 'REGISTRY_AUTH_CHALLENGE');
-    fields[match[1]] = match[2];
+  while (offset < value.length) {
+    const key = /^[a-z]+/.exec(value.slice(offset));
+    demand(key && !Object.hasOwn(fields, key[0]), 'REGISTRY_AUTH_CHALLENGE');
+    offset += key[0].length;
+    demand(value.slice(offset, offset + 2) === '="', 'REGISTRY_AUTH_CHALLENGE');
+    offset += 2;
+    let decoded = '', closed = false;
+    while (offset < value.length) {
+      const character = value[offset++];
+      if (character === '"') { closed = true; break; }
+      if (character === '\\') {
+        demand(offset < value.length && /^[\x20-\x7e]$/.test(value[offset]), 'REGISTRY_AUTH_CHALLENGE');
+        decoded += value[offset++];
+      } else {
+        demand(/^[\x20-\x21\x23-\x5b\x5d-\x7e]$/.test(character), 'REGISTRY_AUTH_CHALLENGE');
+        decoded += character;
+      }
+    }
+    demand(closed && decoded.length > 0, 'REGISTRY_AUTH_CHALLENGE');
+    fields[key[0]] = decoded;
+    if (offset === value.length) break;
+    demand(value[offset] === ',', 'REGISTRY_AUTH_CHALLENGE');
+    offset += 1;
+    while (value[offset] === ' ' || value[offset] === '\t') offset += 1;
+    demand(offset < value.length, 'REGISTRY_AUTH_CHALLENGE');
   }
   exact(fields, ['realm', 'service', 'scope'], 'REGISTRY_AUTH_CHALLENGE');
+  return fields;
+}
+
+export function canonicalizeProtectedHeaders(rawHeaders, contract) {
+  validateRegistryResolverContract(contract);
+  demand(Array.isArray(rawHeaders) && rawHeaders.length % 2 === 0 && rawHeaders.every(value => typeof value === 'string' && !/[\r\n]/.test(value)), 'REGISTRY_RAW_HEADERS');
+  const grouped = new Map(Object.keys(PROTECTED_HEADER_RULES).map(name => [name, []]));
+  for (let index = 0; index < rawHeaders.length; index += 2) {
+    const name = rawHeaders[index].toLowerCase();
+    if (grouped.has(name)) grouped.get(name).push(rawHeaders[index + 1]);
+  }
+  const headers = {};
+  for (const [name, values] of grouped) {
+    if (values.length === 0) continue;
+    const rule = contract.protected_header_policy.headers[name];
+    if (rule === 'SINGLETON_EXACT' || rule === 'DUPLICATE_FORBIDDEN') {
+      demand(values.length === 1, 'REGISTRY_HEADER_DUPLICATE');
+      headers[name] = values[0];
+    } else if (rule === 'BYTE_IDENTICAL_DUPLICATE_COLLAPSIBLE') {
+      demand(values.every(value => value === values[0]), 'REGISTRY_HEADER_CONFLICT');
+      headers[name] = values[0];
+    } else if (rule === 'SEMANTICALLY_EQUIVALENT_CHALLENGE_COLLAPSIBLE') {
+      const parsed = values.map(parseBearerChallenge), baseline = canonical(parsed[0]);
+      demand(parsed.every(value => canonical(value) === baseline), 'REGISTRY_AUTH_CONFLICT');
+      headers[name] = values[0];
+    } else if (rule === 'MULTI_VALUE_ALLOWED_RESPONSE_REJECTED') {
+      headers[name] = 'PRESENT_REJECTED';
+    } else throw new ContractError('REGISTRY_HEADER_RULE_UNKNOWN');
+  }
+  return headers;
+}
+
+export function parseAnonymousBearerChallenge(value, source) {
+  const fields = parseBearerChallenge(value);
   const realm = new URL(fields.realm);
   demand(realm.protocol === 'https:' && realm.hostname === 'auth.docker.io' && realm.pathname === '/token' && realm.search === '' && realm.username === '' && realm.password === '', 'REGISTRY_AUTH_REALM');
   demand(fields.service === 'registry.docker.io' && fields.scope === `repository:${source.repository}:pull`, 'REGISTRY_AUTH_SCOPE');
@@ -241,12 +308,10 @@ export function createBoundedHttpsTransport(contract) {
         });
         response.on('end', () => {
           if (typeof declaredLength === 'string' && Number(declaredLength) !== length) { reject(new ContractError('REGISTRY_PARTIAL_RESPONSE')); return; }
-          const headers = {};
-          for (const name of ['content-type', 'content-length', 'docker-content-digest', 'www-authenticate', 'location', 'set-cookie']) {
-            const value = response.headers[name];
-            if (Array.isArray(value)) { reject(new ContractError('REGISTRY_HEADER_DUPLICATE')); return; }
-            if (typeof value === 'string') headers[name] = value;
-          }
+          let headers;
+          try { headers = canonicalizeProtectedHeaders(response.rawHeaders, contract); }
+          catch (error) { reject(error); return; }
+          if (typeof declaredLength === 'string') headers['content-length'] = declaredLength;
           resolve({ status: response.statusCode, headers, body: Buffer.concat(chunks) });
         });
       });

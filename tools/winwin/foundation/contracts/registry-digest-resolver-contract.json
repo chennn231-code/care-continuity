@@ -27,6 +27,18 @@
     "environment_proxy": "FORBIDDEN",
     "anonymous_scope": "EXACT_REPOSITORY_PULL_METADATA_ONLY"
   },
+  "protected_header_policy": {
+    "multiplicity_authority": "NODE_INCOMING_MESSAGE_RAW_HEADERS",
+    "normalized_headers_object": "FORBIDDEN_AS_MULTIPLICITY_AUTHORITY",
+    "unknown_policy": "DUPLICATE_FORBIDDEN",
+    "headers": {
+      "content-type": "SINGLETON_EXACT",
+      "docker-content-digest": "BYTE_IDENTICAL_DUPLICATE_COLLAPSIBLE",
+      "www-authenticate": "SEMANTICALLY_EQUIVALENT_CHALLENGE_COLLAPSIBLE",
+      "location": "DUPLICATE_FORBIDDEN",
+      "set-cookie": "MULTI_VALUE_ALLOWED_RESPONSE_REJECTED"
+    }
+  },
   "layer_policy": {
     "filesystem_layers": "FORBIDDEN",
     "config_blob": "ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR",

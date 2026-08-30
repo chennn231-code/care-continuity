@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 import { hash } from '../lib/contracts.mjs';
 import {
-  parseAnonymousBearerChallenge, parseApprovedSourceReference, resolveRegistryDigest,
+  canonicalizeProtectedHeaders, parseAnonymousBearerChallenge, parseApprovedSourceReference, resolveRegistryDigest,
   selectExactPlatform, validateRegistryResolverContract,
 } from '../lib/registry-digest-resolver.mjs';
 
@@ -16,6 +16,8 @@ const json = value => Buffer.from(JSON.stringify(value), 'utf8');
 const code = expected => error => error?.code === expected;
 const platform = { os: 'linux', architecture: 'arm64', variant: 'v8' };
 const source = () => load().approved_sources.find(row => row.role === 'AUTH');
+const raw = (...pairs) => pairs.flat();
+const challenge = ({ realm='https://auth.docker.io/token', service='registry.docker.io', scope='repository:supabase/gotrue:pull', separator=',' }={}) => `Bearer realm="${realm}"${separator}service="${service}"${separator}scope="${scope}"`;
 
 function response(bytes, type, digestValue = digest(bytes), status = 200, extra = {}) {
   return { status, headers: { 'content-type': type, 'docker-content-digest': digestValue, ...extra }, body: bytes };
@@ -66,6 +68,24 @@ test('unsupported manifest media type fails closed', async () => { const bytes=j
 test('unexpected redirect is rejected and never followed', async () => { const queue=anonymousQueue(); queue[0]={status:302,headers:{location:'https://foreign.example/'},body:Buffer.alloc(0)}; await assert.rejects(()=>resolveWith(queue),code('REGISTRY_UNEXPECTED_REDIRECT')); });
 test('credential-bearing or non-Bearer auth challenge is rejected', () => assert.throws(()=>parseAnonymousBearerChallenge('Basic realm="x"',source()),code('REGISTRY_AUTH_CHALLENGE')));
 test('anonymous bearer challenge must use exact realm service and scope', () => assert.throws(()=>parseAnonymousBearerChallenge('Bearer realm="https://evil.example/token",service="registry.docker.io",scope="repository:supabase/gotrue:pull"',source()),code('REGISTRY_AUTH_REALM')));
+test('one valid singleton protected header is preserved exactly', () => assert.deepEqual(canonicalizeProtectedHeaders(raw(['Content-Type','application/json']),load()),{'content-type':'application/json'}));
+test('two byte-identical Docker digest lines collapse to one', () => { const value=`sha256:${H('1')}`; assert.equal(canonicalizeProtectedHeaders(raw(['Docker-Content-Digest',value],['docker-content-digest',value]),load())['docker-content-digest'],value); });
+test('Docker digest duplicate differing by one byte fails', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['docker-content-digest',`sha256:${H('1')}`],['docker-content-digest',`sha256:${H('2')}`]),load()),code('REGISTRY_HEADER_CONFLICT')));
+test('Docker digest duplicate differing only by case fails', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['docker-content-digest',`sha256:${H('a')}`],['docker-content-digest',`sha256:${H('A')}`]),load()),code('REGISTRY_HEADER_CONFLICT')));
+test('Docker digest duplicate differing only by whitespace fails', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['docker-content-digest',`sha256:${H('1')}`],['docker-content-digest',`sha256:${H('1')} `]),load()),code('REGISTRY_HEADER_CONFLICT')));
+test('conflicting duplicate auth realm fails', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['www-authenticate',challenge()],['www-authenticate',challenge({realm:'https://auth.docker.io/other'})]),load()),code('REGISTRY_AUTH_CONFLICT')));
+test('conflicting duplicate auth service fails', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['www-authenticate',challenge()],['www-authenticate',challenge({service:'other'})]),load()),code('REGISTRY_AUTH_CONFLICT')));
+test('conflicting duplicate auth scope fails', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['www-authenticate',challenge()],['www-authenticate',challenge({scope:'repository:supabase/other:pull'})]),load()),code('REGISTRY_AUTH_CONFLICT')));
+test('semantically equivalent duplicate Bearer challenges collapse', () => { const first=challenge(), second=challenge({separator:',\t'}); assert.equal(canonicalizeProtectedHeaders(raw(['WWW-Authenticate',first],['www-authenticate',second]),load())['www-authenticate'],first); });
+test('quoted commas are parsed within auth parameter values rather than split', () => { const value=challenge({realm:'https://auth.docker.io/to,ken'}); assert.equal(canonicalizeProtectedHeaders(raw(['www-authenticate',value]),load())['www-authenticate'],value); assert.throws(()=>parseAnonymousBearerChallenge(value,source()),code('REGISTRY_AUTH_REALM')); });
+test('multiple auth schemes are rejected', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['www-authenticate',challenge()+', Basic realm="other"']),load()),code('REGISTRY_AUTH_CHALLENGE')));
+test('malformed auth challenge is rejected', () => assert.throws(()=>canonicalizeProtectedHeaders(raw(['www-authenticate','Bearer realm="unterminated']),load()),code('REGISTRY_AUTH_CHALLENGE')));
+test('protected header casing is normalized only at the field-name layer', () => { const value=`sha256:${H('1')}`; assert.equal(canonicalizeProtectedHeaders(raw(['DoCkEr-CoNtEnT-DiGeSt',value],['docker-content-digest',value]),load())['docker-content-digest'],value); });
+test('already comma-coalesced Docker digest value is not split or accepted', async () => { const queue=anonymousQueue(); queue[2].headers['docker-content-digest']=`${queue[2].headers['docker-content-digest']}, ${queue[2].headers['docker-content-digest']}`; await assert.rejects(()=>resolveWith(queue),code('REGISTRY_DIGEST_HEADER')); });
+test('raw separate protected lines are the sole multiplicity authority', () => { const value=`sha256:${H('1')}`; assert.deepEqual(canonicalizeProtectedHeaders(raw(['content-type','application/json'],['docker-content-digest',value]),load()),{'content-type':'application/json','docker-content-digest':value}); assert.throws(()=>canonicalizeProtectedHeaders({'docker-content-digest':[value]},load()),code('REGISTRY_RAW_HEADERS')); });
+test('one runtime Set-Cookie array occurrence is represented without duplicate processing or value retention', () => { const projected=canonicalizeProtectedHeaders(raw(['set-cookie','secret-cookie=value; Secure']),load()); assert.deepEqual(projected,{'set-cookie':'PRESENT_REJECTED'}); assert.doesNotMatch(JSON.stringify(projected),/secret-cookie|value/); });
+test('multiple Set-Cookie lines remain non-persisted and response-rejected', async () => { const queue=anonymousQueue(); queue[1].headers['set-cookie']='PRESENT_REJECTED'; await assert.rejects(()=>resolveWith(queue),code('REGISTRY_COOKIE')); });
+test('unknown protected-header policy cannot be introduced', () => { const value=load(); value.protected_header_policy.headers['x-unknown-protected']='BYTE_IDENTICAL_DUPLICATE_COLLAPSIBLE'; assert.throws(()=>validateRegistryResolverContract(value),code('REGISTRY_HEADER_RULES')); });
 test('anonymous token remains absent from result and evidence', async () => { const {result,calls}=await resolveWith(anonymousQueue()); assert.doesNotMatch(JSON.stringify(result),/safe\.synthetic\.token|authorization/i); assert.ok(calls.some(call=>typeof call.headers.authorization==='string')); });
 test('timeout is surfaced without retry', async () => { let calls=0; await assert.rejects(()=>resolveRegistryDigest({contract:load(),role:'AUTH',sourceReference:'supabase/gotrue:v2.195.0',resolverSha256:H('a'),request:async()=>{calls+=1;throw Object.assign(new Error('timeout'),{code:'REGISTRY_TIMEOUT'});}})); assert.equal(calls,1); });
 test('rate limit fails without retry', async () => { let calls=0; await assert.rejects(()=>resolveRegistryDigest({contract:load(),role:'AUTH',sourceReference:'supabase/gotrue:v2.195.0',resolverSha256:H('a'),request:async()=>{calls+=1;return{status:429,headers:{},body:Buffer.from('rate')};}}),code('REGISTRY_RATE_LIMIT')); assert.equal(calls,1); });
