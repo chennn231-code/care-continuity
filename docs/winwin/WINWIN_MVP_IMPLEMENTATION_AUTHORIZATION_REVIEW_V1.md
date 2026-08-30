@@ -1,8 +1,9 @@
 # WinWin MVP Implementation Authorization Review V1
 
-> **Status: IMPLEMENTATION AUTHORIZATION REVIEW V1 — review passed for separate bounded gates; no implementation authorized**
-> Date: 2026-08-29
+> **Status: IMPLEMENTATION AUTHORIZATION REVIEW V1 — final semantic correction complete; pending final adoption verification; no implementation authorized**
+> Date: 2026-08-30
 > Authoritative baseline: `codex/foundation-spike-design-correction` at `1e692ed96be6231c684224d447cb372e13d2d6a6`
+> Final semantic-correction parent: `74b49f09eaaeae761d9230b27d40ce65fb2b125a`
 > This artifact authorizes no source, migration, SQL, RLS, RPC, runtime, integration, deployment, remote or Production action.
 
 ## A. Preflight
@@ -67,6 +68,15 @@ The helper returns the exact Grant instance ID as proof. It never asks independe
 
 RLS may call a private, security-reviewed helper that returns only the minimum proof/decision. Its ownership, row-security behavior, fully qualified objects, fixed `search_path`, arguments and EXECUTE ACL require the IA-4 security review.
 
+### Compound create/assign with a protected linked source
+
+Atomic domain mutation does not collapse separate authorization operations. A `create_action` request that references an existing protected source record requires both decisions below, evaluated independently at the same authoritative server/database time:
+
+1. **Mutation decision:** one complete valid Grant Path independently supplies `ACTION_CREATE` + `ACTION_ASSIGN` + `CASE` scope, together with the exact Identity, Membership, Relationship, Grant-status, validity, purpose and lifecycle predicates required by the mutation. No capability, scope or prerequisite may be borrowed from another Grant.
+2. **Linked-source read decision:** one complete valid Grant Path independently supplies `RECORD_VIEW` + `RECORD` scope covering the exact typed source record, together with its own exact Identity, Membership, Relationship, Grant-status, validity, purpose and lifecycle predicates; separately, that source's typed Record Visibility must admit the actor. No capability, scope, visibility result or prerequisite may be borrowed from another decision or stitched across Grants.
+
+The two complete decisions may resolve to the same Grant ID or to different Grant IDs. This is not cross-Grant stitching: each decision must pass without facts from the other, and a complete read decision cannot repair an incomplete mutation decision (or vice versa). The command retains the exact proof reference for each decision and validates same-Case/source consistency. When no existing protected source record is referenced, the linked-source read decision is not required.
+
 ## E. Authoritative data model mapping
 
 Names below are reviewed candidates for later migration authoring, not created objects.
@@ -109,9 +119,9 @@ An Action's current responsibility and workflow projection is derived from its u
 
 ## G. Action state machine mapping
 
-| Operation | Current state | Capability | Identity/responsibility condition | Single Grant Path | Server validation and authoritative result | Audit |
+| Operation | Current state | Capability | Identity/responsibility condition | Complete Grant Path decision(s) | Server validation and authoritative result | Audit |
 |---|---|---|---|---|---|---|
-| create + initial assign | none | `ACTION_CREATE` + `ACTION_ASSIGN` | creator current for Case/source; target eligible concrete Identity+Membership | The same Grant carries both capabilities + `CASE` scope | Atomically create stable Action and first `ASSIGNED` cycle; no visible partial unassigned result | distinct `ACTION_CREATED` + `ACTION_ASSIGNED` facts under one correlation |
+| create + initial assign | none | `ACTION_CREATE` + `ACTION_ASSIGN` | creator current for Case; target eligible concrete Identity+Membership; protected source separately readable when referenced | Mutation decision: one complete Grant carries both capabilities + `CASE` scope. Linked-source read decision when applicable: one complete Grant carries `RECORD_VIEW` + exact-source `RECORD` scope, while typed visibility independently admits the actor; it may be the same or a different Grant, but neither decision may stitch facts | Atomically authorize all applicable decisions, create stable Action and first `ASSIGNED` cycle; no visible partial unassigned result | distinct `ACTION_CREATED` + `ACTION_ASSIGNED` facts under one correlation; retain applicable mutation/read proof references |
 | standalone assign | unassigned/nonterminal | `ACTION_ASSIGN` | target eligible; no effective cycle; operation separately authorized | Same Grant carries capability + `CASE` scope | Lock Action and create an `ASSIGNED` cycle | `ACTION_ASSIGNED` |
 | accept | `ASSIGNED` | `ACTION_ACCEPT` | exact assignee of effective cycle | Assignee's same Grant carries capability + `RECORD` scope | Expected version/state; set cycle accepted/server time | `ACTION_ACCEPTED` |
 | start | `ACCEPTED` | `ACTION_START` | exact accepted assignee | Same Grant + `RECORD` | Expected version/state; set started/server time | `ACTION_STARTED` |
@@ -153,7 +163,7 @@ Membership is Case participation and Relationship explains context. Neither auth
 
 ## L. Single Grant Path evaluation
 
-One candidate Grant must independently satisfy Identity, Membership, Relationship, Case, status, validity, purpose, scope and all capabilities required by the command. The command and Audit Event retain that exact Grant proof/reference.
+Within each authorization decision, one candidate Grant must independently satisfy Identity, Membership, Relationship, Case, status, validity, purpose, scope and every capability required by that decision. The compound `create_action` case has the separately complete mutation and linked-source-read decisions defined in Section D; it does not turn either decision into a stitched path. The command and Audit Event retain each exact applicable Grant proof/reference.
 
 Evaluation is correlated on one Grant alias/ID. It cannot union capabilities, use scope from another Grant, revive an ended Membership through a newer Grant, or treat audience/role as a missing predicate. Unknown capability/scope/purpose and absent validity fail closed.
 
@@ -173,7 +183,7 @@ RLS does not orchestrate multi-row state machines, choose assignees, allocate ac
 | Command | Classification | Reason |
 |---|---|---|
 | `create_care_update` | FIRST SLICE | Required publication path |
-| `create_action` | FIRST SLICE | One compound command creates the stable Action and first exact-Identity `ASSIGNED` cycle atomically; same Grant must contain `ACTION_CREATE` and `ACTION_ASSIGN` |
+| `create_action` | FIRST SLICE | One compound command creates the stable Action and first exact-Identity `ASSIGNED` cycle atomically; one complete mutation Grant must contain `ACTION_CREATE` + `ACTION_ASSIGN` + `CASE`, and a referenced protected source independently requires one complete exact-record read decision |
 | `assign_action` | FIRST-SLICE PREREQUISITE | Internal reviewed primitive for the compound command; standalone exposure for a pre-existing unassigned Action is Second Stage |
 | `accept_action` | FIRST SLICE | Required B transition |
 | `start_action` | FIRST SLICE | Required B transition |
@@ -187,7 +197,7 @@ RLS does not orchestrate multi-row state machines, choose assignees, allocate ac
 | Question commands | SECOND STAGE | Full Question workflow deferred |
 | delegation/supervisor override | FUTURE | Separate evidence/authority model required |
 
-The first-slice application exposes one `create_action` result that atomically creates the Action and its first cycle. Its creation and assignment capabilities/domain/audit facts stay distinguishable, but the same Grant and idempotency correlation cover both. Failure commits neither object. `assign_action` may remain an internal command primitive; standalone exposure requires its later bounded authorization.
+The first-slice application exposes one `create_action` result that atomically creates the Action and its first cycle. Creation and assignment capabilities/domain/audit facts stay distinguishable, while one complete mutation Grant and one idempotency correlation cover both mutations. If the request references an existing protected source, the command also requires the independent complete linked-source read decision defined in Section D; its Grant may equal or differ from the mutation Grant because neither decision borrows facts from the other. Without such a source, no linked-source read proof is required. Failure of any applicable decision commits neither object. `assign_action` may remain an internal command primitive; standalone exposure requires its later bounded authorization.
 
 ## O. Revocation boundary
 
@@ -197,7 +207,7 @@ Product requires a correlated fail-closed result; IA-4 decides the exact transac
 
 ## P. Audit implementation
 
-Minimum Audit Event fields are event ID, Case, physical actor/account-link reference, Logical Identity, Membership lifecycle instance, operation, allow-listed target type/ID, optional Responsibility Cycle, authorizing Grant proof/reference, bounded previous/new state references, database server time, correlation/idempotency reference and Case activity sequence where applicable.
+Minimum Audit Event fields are event ID, Case, physical actor/account-link reference, Logical Identity, Membership lifecycle instance, operation, allow-listed target type/ID, optional Responsibility Cycle, applicable authorizing Grant proof/reference(s), bounded previous/new state references, database server time, correlation/idempotency reference and Case activity sequence where applicable.
 
 Audit is append-only and server-written inside the owning command. Target allow-list, existence and same-Case consistency are validated by the controlled writer. Audit failure rolls back the owning mutation. It does not copy Care Update bodies, raw credentials, broad client telemetry or unnecessary profile data.
 
@@ -207,7 +217,15 @@ User-facing Activity is a permission-filtered, minimized domain projection. Acti
 
 Key: Logical Identity + Membership lifecycle instance + Case. Initial cursor is absent or an explicit zero/start boundary for that lifecycle; it never imports an old Membership boundary.
 
-`advance_read_cursor` accepts only the newest visible boundary issued in an authorized server response and stores `max(current, supplied)`. Concurrent advances converge on the maximum. A stale/lower boundary is idempotent and cannot rewind. A boundary belonging to another Identity/Membership/Case is denied. Browser clock, client timestamps, hard-coded counts and hidden global sequence gaps never determine unread state.
+`advance_read_cursor` accepts only a visible boundary issued in an authorized server response for the exact owner key and applies:
+
+`storedBoundary = max(currentBoundary, requestedBoundary)`
+
+- `requestedBoundary > currentBoundary`: advance and return success;
+- `requestedBoundary == currentBoundary`: return success as an idempotent no-op;
+- `requestedBoundary < currentBoundary`: return success as an idempotent no-op, leave the stored boundary unchanged, and optionally record an internal `CURSOR_REGRESSION` diagnostic.
+
+`CURSOR_REGRESSION` is never a public failure and never authorizes rollback. Atomic max-upsert semantics make concurrent advances converge on the maximum while preserving monotonicity and idempotency. A boundary belonging to another Identity/Membership/Case is denied. Browser clock, client timestamps, hard-coded counts and hidden global sequence gaps never determine unread state.
 
 Unread count/divider is computed over the actor's currently visible activity projection. Routine cursor advance requires no care-operation capability or separate Audit Event; exact ownership, current Case path and server boundary validation are the full rule.
 
@@ -234,21 +252,29 @@ The real backend adapter begins only after IA-3/IA-4 designs and IA-5/IA-6 runti
 
 ## T. Error model
 
-Closed command errors:
+Internal denial/diagnostic semantics are translated at the trusted server boundary. Public results are deliberately less specific where specificity would reveal protected existence, another member's responsibility, Grant inventory or authorization proof.
 
-- `UNAUTHENTICATED`;
-- `NOT_FOUND_OR_NOT_VISIBLE`;
-- `NO_COMPLETE_GRANT` / UI-safe `FORBIDDEN`;
-- `TARGET_INELIGIBLE`;
-- `NOT_CURRENT_ASSIGNEE`;
-- `INVALID_STATE`;
-- `STALE_VERSION`;
-- `IDEMPOTENCY_CONFLICT`;
-- `ACCESS_REVOKED`;
-- `CONTINUITY_GAP` for authorized viewers;
-- `TEMPORARY_FAILURE`.
+| Internal semantic | Public/UI-safe semantic | Privacy/security rationale | Retryability | Client behavior |
+|---|---|---|---|---|
+| `UNAUTHENTICATED`: no usable authenticated account context | `UNAUTHENTICATED` | Reveals only absence of the caller's usable session | Retry after authentication/session recovery | Preserve safe intent if appropriate; request sign-in |
+| `IDENTITY_NOT_RESOLVED`: the account link cannot resolve one current Logical Identity | `FORBIDDEN` | Hides account-link and Logical Identity topology | Not until identity/account administration changes | Show generic no-access state; do not enumerate identities |
+| `MEMBERSHIP_INACTIVE`: the required Membership lifecycle is absent, ended or superseded | `FORBIDDEN` | Hides Membership existence and lifecycle details | Not on the same lifecycle; retry only after authorized context refresh | Exit the Case context or show generic no-access state |
+| `GRANT_INVALID` / `NO_COMPLETE_GRANT`: no one Grant passes every current validity, purpose and prerequisite predicate | `FORBIDDEN`; use `NOT_FOUND_OR_NOT_VISIBLE` when a protected target must remain non-enumerable | Hides Grant existence, inventory, status, proof predicates and target existence | Not until authorization changes | Remove unsafe CTA; show generic access denial or safe not-found state |
+| `CAPABILITY_DENIED`: the otherwise evaluated path lacks the operation capability | `FORBIDDEN` | Does not disclose the missing capability or alternate Grant inventory | Not until authorization changes | Remove/disable operation after refresh; never name the missing capability |
+| `VISIBILITY_DENIED`: the independent typed visibility policy does not admit the actor | `NOT_FOUND_OR_NOT_VISIBLE` | Prevents confirmation that a protected record exists | Not until visibility changes | Return to a safe parent projection; do not distinguish hidden from absent |
+| `INVALID_TRANSITION`: the requested transition is invalid from authoritative state | `INVALID_STATE` | Exposes only the already authorized resource's usable workflow state | Retry only after refreshing state and forming a valid new intent | Refresh the authorized projection and render allowed operations |
+| `RESPONSIBILITY_MISMATCH` / `NOT_CURRENT_ASSIGNEE`: the actor is not the exact Identity+Membership responsible for the transition | `FORBIDDEN` | Hides another member's current or historical responsibility | Not for the same intent; refresh may remove the CTA | Show generic no-access result; do not identify the assignee |
+| `STALE_STATE`: expected version, cycle, lineage head or state no longer matches | `STALE_VERSION` | Reports concurrency staleness without leaking the winning actor or hidden transition | Retry only after refetch and explicit re-evaluation of intent | Refresh state; never silently replay against a new version |
+| `CURSOR_REGRESSION`: requested cursor boundary is below the stored boundary | success / idempotent no-op | Avoids leaking intervening activity while preserving monotonic state | No retry needed | Keep the returned/current cursor; show no error and never lower local state |
+| `NOT_FOUND` for a protected resource: no protected target is available to this request | `NOT_FOUND_OR_NOT_VISIBLE` | Makes protected absence indistinguishable from invisibility | Not blindly retryable; navigation/context refresh only | Remove stale protected content and return to a safe parent projection |
+| `CONFLICT`: an unresolved internal concurrency/uniqueness category | Prefer `STALE_VERSION`, `IDEMPOTENCY_CONFLICT` or `TEMPORARY_FAILURE`, selected by the specific cause; no generic public `CONFLICT` is required for known first-slice paths | Avoids a vague conflict channel and exposes only safe recovery semantics | Per mapped semantic | Follow the mapped refresh, new-intent or bounded-retry behavior; never branch on internal conflict detail |
+| `TARGET_INELIGIBLE`: the proposed assignee/target fails current same-Case eligibility | `TARGET_INELIGIBLE` only when the target came from an already authorized eligible-target context; otherwise `NOT_FOUND_OR_NOT_VISIBLE` | Prevents probing arbitrary Membership or Identity eligibility | Retry after refreshing the authorized candidate set | Reload picker/candidates; do not expose why a hidden target is ineligible |
+| `IDEMPOTENCY_CONFLICT`: one caller-supplied key names a different normalized request | `IDEMPOTENCY_CONFLICT` | Discloses only misuse of the caller's request key, not the protected prior payload | Never retry the changed request under the same key | Require explicit fresh intent and a new key; do not guess which request won |
+| `ACCESS_REVOKED`: the request path lost current access before commit | `FORBIDDEN`; use `NOT_FOUND_OR_NOT_VISIBLE` when protected target existence must remain hidden | Does not disclose revoker, remaining paths, Grant inventory or proof | Not until authorization changes | Stop retries, discard unsafe cached authority and return to a safe projection |
+| `TEMPORARY_FAILURE`: bounded serialization, dependency or transient server failure produced no committed result | `TEMPORARY_FAILURE` | Reveals no internal lock, infrastructure, SQL or policy detail | Bounded retry with the same idempotency key when instructed | Preserve form state, apply backoff and offer safe retry |
+| `CONTINUITY_GAP` for an already authorized viewer: an unfinished Action has no effective Responsibility Cycle | `CONTINUITY_GAP` | It is an authorized minimized domain projection, not an authorization diagnostic | Not a retryable mutation error | Show the reviewed reassignment-needed warning without naming hidden history |
 
-The UI receives safe copy and recovery hints, not SQL/RLS details, Grant inventory, hidden-object existence or stack traces. Same idempotency key/request returns the committed result; the same key with a different normalized request returns conflict.
+Same idempotency key and normalized request returns the committed result; the same key with a different normalized request maps to `IDEMPOTENCY_CONFLICT`. No response may disclose protected-record existence, Grant inventory, authorization proof or another member's responsibility. SQL/RLS details, stack traces and exact internal denial reasons never cross the public boundary.
 
 ## U. Concurrency and stale state
 
@@ -257,7 +283,7 @@ The UI receives safe copy and recovery hints, not SQL/RLS details, Grant invento
 | B and C operate one Action | Lock Action/effective cycle; same-Case uniqueness | Expected cycle/row version; exact assignee; operation key | One valid exact assignee transition; other denied/stale |
 | Reassign vs Complete | Common lock hierarchy through Grant→Action→cycle | Recheck capability/state/version after lock | One commits; loser observes ended/completed/stale state; no rewritten history |
 | Revoke vs Complete | Common Case/Grant/Action/cycle order or equivalent serializable coordination | Re-evaluate Grant proof at one server time | If revoke wins, completion denied and gap recorded; if complete wins, history stays completed then access revokes |
-| Concurrent cursor advance | Unique cursor key + atomic max-upsert | Boundary bound to Identity+Membership+Case | Maximum visible boundary persists; no rewind |
+| Concurrent cursor advance | Unique cursor key + atomic max-upsert | Boundary bound to Identity+Membership+Case | Greater advances; equal/lower succeeds as an idempotent no-op; maximum visible boundary persists with no rewind |
 | Concurrent Care Update correction | Lock envelope/lineage; unique ordinal/predecessor-successor | Expected derived head/ordinal + idempotency | One successor commits; competing stale correction conflicts |
 
 No command uses last-client-write-wins as its safety model. Deadlock/serialization retry is bounded and reuses the same idempotency key.
@@ -276,15 +302,20 @@ No command uses last-client-write-wins as its safety model. Deadlock/serializati
 | revoked actor completes | deny; affected cycle ended/gap exposed | DB, server, integration |
 | expired Membership uses old Grant | deny; no lifecycle aggregation | Unit, RLS, server |
 | capability/scope split across Grants | deny and query-shape regression | Unit, RLS/helper, integration |
+| create+assign mutation capabilities/scope split across Grants | deny mutation; linked-source read proof cannot repair it | Unit, server, integration |
+| protected linked source uses an independently complete read Grant | allow whether read Grant equals or differs from the complete mutation Grant; deny any stitched read path | Unit, RLS/helper, server, integration |
+| create+assign without a protected linked source | no linked-source read proof required | Unit, server, integration |
 | `DemoRole` substituted | grants nothing | Unit, frontend adapter |
 | client forges Identity/state/time | server ignores/denies; authoritative fields unchanged | Server, integration, security E2E |
 | old Membership cursor updates new cursor | deny by ownership key | DB, RLS, server |
+| cursor request equals or trails stored boundary | success/idempotent no-op; stored maximum unchanged; optional diagnostic remains internal | Unit, DB, server, integration |
+| internal authorization/state errors reach adapter | exact privacy-safe disposition; no existence, responsibility or Grant-proof leak | Unit, server, frontend adapter, security E2E |
 | revocation continuity | old cycle historical, no replacement, derived gap | DB, server, integration |
 | valid authorized reassignment | new cycle; old cycle immutable | Unit, DB, server |
 
 ## W. Test-layer split
 
-- **Unit/domain:** same-Grant predicates, state eligibility, visibility vocabulary, continuity derivation, error mapping.
+- **Unit/domain:** same-Grant predicates within each operation decision, independent compound mutation/read decisions, state eligibility, visibility vocabulary, continuity derivation, complete internal-to-public error mapping.
 - **DB invariant:** composite FKs, immutability, unique effective cycle, lineage, monotonic cursor, idempotency/audit uniqueness.
 - **RLS:** read allow/deny, existence non-enumeration, same-Grant helper, exact own cursor/access projections, direct-write denial.
 - **Server command:** authentication derivation, locks/version checks, multi-row atomicity, audit, stable errors/retries.
@@ -417,16 +448,20 @@ Required closeout:
 3. sensitive-information and machine-specific absolute-path scans;
 4. Migration 001–008 fingerprint verification;
 5. protected Foundation/input artifact verification;
-6. confirm this new Markdown is the only worktree item;
-7. after exact-path commit, confirm clean staged/unstaged/untracked state and one-file commit.
+6. confirm this Markdown is the only modified worktree item;
+7. verify compound mutation/read proof separation, independently complete proofs and no cross-decision borrowing;
+8. verify every required internal error has an explicit public disposition, privacy rationale, retry rule and client behavior;
+9. verify cursor greater/equal/lower and concurrent maximum dispositions;
+10. verify `RECORD_VIEW` + `RECORD` + typed Record Visibility, `ACTION_ASSIGN` + `CASE`, and `ACTION_REASSIGN` + `RECORD` remain unchanged;
+11. after exact-path commit, confirm clean staged/unstaged/untracked state and one-file commit.
 
 Vite, Vitest, build, Supabase and Docker are not required or authorized for this Markdown-only review.
 
 ## AJ. Commit
 
-Only after every validation passes, at most one local commit is permitted:
+Only after every final semantic-correction validation passes, at most one local commit is permitted:
 
-`docs: review winwin mvp implementation authorization`
+`docs: complete winwin implementation review semantics`
 
 Stage only this artifact by exact path. `git add .` and push are prohibited.
 
@@ -435,7 +470,7 @@ Stage only this artifact by exact path. `git add .` and push are prohibited.
 Expected after the permitted commit:
 
 - branch remains `codex/foundation-spike-design-correction`;
-- commit parent is `1e692ed96be6231c684224d447cb372e13d2d6a6`;
+- final semantic-correction commit parent is `74b49f09eaaeae761d9230b27d40ce65fb2b125a`;
 - commit contains only this artifact;
 - staged, unstaged and untracked sets are empty;
 - authoritative inputs, Foundation and Migration 001–008 remain unchanged;
@@ -445,4 +480,4 @@ Expected after the permitted commit:
 
 This review concludes that the implementation sequence is safe to authorize through separate bounded gates. It does not grant IA-2 through IA-8, begin implementation, create a migration, write SQL/RLS/functions, start Supabase/Docker/Foundation, integrate the frontend, run E2E, cut over, deploy or push.
 
-**A — IMPLEMENTATION AUTHORIZATION REVIEW V1 PASS — IMPLEMENTATION PLAN IS SAFE TO AUTHORIZE IN SEPARATE BOUNDED GATES**
+**A — IMPLEMENTATION REVIEW FINAL SEMANTIC CORRECTION PASS — READY FOR FINAL ADOPTION VERIFICATION**
