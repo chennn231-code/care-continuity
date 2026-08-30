@@ -26,6 +26,9 @@ const config = () => ({
   'db.migrations.enabled': false, 'db.migrations.schema_paths': [], 'db.seed.enabled': false,
   'db.seed.sql_paths': [], 'analytics.enabled': false, 'experimental.pgdelta.enabled': false,
 });
+const absentHealthcheck = () => ({ state:'ABSENT', test_form:null, executable:false, argv_element_count:null, payload_sha256:null, payload_byte_length:0,
+  interval:{present:false,value_nanoseconds:null}, timeout:{present:false,value_nanoseconds:null}, start_period:{present:false,value_nanoseconds:null},
+  start_interval:{present:false,value_nanoseconds:null}, retries:{present:false,value:null}, unknown_keys:[], projection_sha256:H('8') });
 const profile = (value = contract(), input = config()) => deriveEffectiveStartProfile({
   contract: value, config: input, projectId: input.project_id, configSha256: H('a'), configContractSha256: H('b'), resourceContractSha256: H('c'),
 });
@@ -50,7 +53,7 @@ const approval = (role, reference, volume = []) => ({
   approved_config_digest: `sha256:${H('f')}`,
   required_repo_digest: `${reference.slice(0,reference.lastIndexOf(':'))}@sha256:${H('d')}`,
   platform: { os: 'linux', architecture: 'arm64', variant: '' },
-  selected_config_sha256: H('1'), declared_volumes: volume,
+  selected_config_sha256: H('1'), declared_volumes: volume, healthcheck: absentHealthcheck(),
   entrypoint_policy: 'REVIEWED_STRUCTURAL_ENTRYPOINT',
   provenance: { independent: true, source_class: 'REVIEWED_REGISTRY_METADATA', source_record_sha256: H('2'), resolver_id: 'SYNTHETIC_REGISTRY_METADATA_V1', resolver_version:'1.0.0', resolver_sha256:H('3'), resolver_contract_sha256:H('4'), manifest_response_sha256:H('5'), child_manifest_response_sha256:H('6'), config_response_sha256:H('7'), approved_at_utc: '2000-01-01T00:00:00.000Z' },
   schema_version: '1',
@@ -77,7 +80,7 @@ const resolutionRows = p => {
       schema_version: '1', role, source_reference: reference, registry_host: 'registry-1.docker.io', repository, requested_tag: requestedTag,
       manifest_media_type: 'application/vnd.oci.image.index.v1+json', top_level_manifest_digest: `sha256:${H(character)}`,
       platform_child_digest: `sha256:${H('a')}`, config_digest: `sha256:${H('b')}`, required_repo_digest: `${repository}@sha256:${H(character)}`,
-      platform: { os: 'linux', architecture: 'arm64', variant: 'v8' }, selected_config_sha256: H('c'), declared_volumes: [],
+      platform: { os: 'linux', architecture: 'arm64', variant: 'v8' }, selected_config_sha256: H('c'), config_byte_length: 1024, declared_volumes: [], healthcheck: absentHealthcheck(),
       entrypoint_policy: 'REVIEWED_STRUCTURAL_ENTRYPOINT', resolver_id: 'WINWIN_PUBLIC_REGISTRY_METADATA_V1', resolver_version: '1.0.0', resolver_sha256: H('d'),
       response_hashes: { manifest: H('e'), child_manifest: H('f'), config: H('1') }, resolved_at_utc: '2000-01-01T00:00:00.000Z',
       network: { metadata_only: true, filesystem_layers_downloaded: false, anonymous_auth: 'ANONYMOUS_BEARER' }, source_record_sha256: H('2'),

@@ -45,7 +45,7 @@ const body = (response, maximum, code) => {
 const mediaType = value => typeof value === 'string' ? value.split(';', 1)[0].trim() : '';
 
 export function validateRegistryResolverContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'platform_selection_policy', 'approved_sources', 'network_policy', 'config_blob_redirect_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'platform_selection_policy', 'healthcheck_policy', 'approved_sources', 'network_policy', 'config_blob_redirect_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
   demand(contract.schema_version === '1' && contract.contract_type === REGISTRY_RESOLVER_TYPE && contract.resolver_id === REGISTRY_RESOLVER_ID && contract.resolver_version === '1.0.0', 'REGISTRY_CONTRACT_TYPE');
   exact(contract.target_platform, ['os', 'architecture', 'variant'], 'REGISTRY_PLATFORM');
   demand(contract.target_platform.os === 'linux' && contract.target_platform.architecture === 'arm64' && contract.target_platform.variant === 'v8', 'REGISTRY_PLATFORM_VALUE');
@@ -55,6 +55,13 @@ export function validateRegistryResolverContract(contract) {
   demand(platformPolicy.conflicting_explicit_arm64_variant === 'AMBIGUOUS_IF_OMITTED_CANDIDATE_SELECTED' && platformPolicy.other_architecture_missing_variant === 'NO_IMPLICIT_COMPATIBILITY', 'REGISTRY_PLATFORM_POLICY_SCOPE');
   demand(platformPolicy.executable_descriptor_media_types === 'CONTRACT_MANIFEST_MEDIA_TYPES_ONLY' && platformPolicy.non_runtime_descriptors === 'EXCLUDE', 'REGISTRY_PLATFORM_POLICY_EXECUTABLE');
   demand(platformPolicy.uniqueness === 'EXACTLY_ONE' && platformPolicy.zero_matches === 'REGISTRY_PLATFORM_MISSING' && platformPolicy.multiple_matches === 'REGISTRY_PLATFORM_AMBIGUOUS' && platformPolicy.config_cross_check === 'SAME_PLATFORM_COMPATIBILITY_REQUIRED', 'REGISTRY_PLATFORM_POLICY_UNIQUENESS');
+  const healthcheck = exact(contract.healthcheck_policy, ['source_semantics', 'oci_status', 'allowed_keys', 'test_forms', 'empty_test', 'none_arity', 'cmd_minimum_arity', 'cmd_shell_arity', 'timing_unit', 'timing_minimum_nonzero', 'zero_timing', 'retries', 'unknown_keys', 'command_projection', 'raw_command_persistence', 'runtime_effect_authority'], 'REGISTRY_HEALTHCHECK_POLICY');
+  demand(healthcheck.source_semantics === 'DOCKER_IMAGE_SPEC_EXTENSION' && healthcheck.oci_status === 'RESERVED_COMPATIBILITY_FIELD', 'REGISTRY_HEALTHCHECK_SEMANTICS');
+  demand(canonical(healthcheck.allowed_keys) === canonical(['Test', 'Interval', 'Timeout', 'Retries', 'StartPeriod', 'StartInterval']) && canonical(healthcheck.test_forms) === canonical(['NONE', 'CMD', 'CMD-SHELL']), 'REGISTRY_HEALTHCHECK_FIELDS');
+  demand(healthcheck.empty_test === 'REJECT' && healthcheck.none_arity === 1 && healthcheck.cmd_minimum_arity === 2 && healthcheck.cmd_shell_arity === 2, 'REGISTRY_HEALTHCHECK_TEST_POLICY');
+  demand(healthcheck.timing_unit === 'NANOSECONDS' && healthcheck.timing_minimum_nonzero === 1000000 && healthcheck.zero_timing === 'ENGINE_DEFAULT_OR_INHERIT', 'REGISTRY_HEALTHCHECK_TIMING_POLICY');
+  demand(healthcheck.retries === 'NON_NEGATIVE_SAFE_INTEGER_ZERO_DEFAULT_OR_INHERIT' && healthcheck.unknown_keys === 'REJECT', 'REGISTRY_HEALTHCHECK_VALUE_POLICY');
+  demand(healthcheck.command_projection === 'FORM_COUNT_SHA256_BYTE_LENGTH' && healthcheck.raw_command_persistence === 'FORBIDDEN' && healthcheck.runtime_effect_authority === 'SEPARATE_FROZEN_RUNTIME_CONFIGURATION', 'REGISTRY_HEALTHCHECK_EVIDENCE_POLICY');
   demand(Array.isArray(contract.approved_sources) && contract.approved_sources.length > 0, 'REGISTRY_SOURCES');
   const roles = [], references = [];
   for (const source of contract.approved_sources) {
@@ -301,7 +308,71 @@ function nullableStringArray(value, code) {
   return value === undefined ? null : value;
 }
 
-function safeConfigProjection(config, platform) {
+function optionalHealthcheckNumber(healthcheck, key, policy) {
+  if (!Object.hasOwn(healthcheck, key)) return { present: false, value_nanoseconds: null };
+  const value = healthcheck[key];
+  demand(Number.isSafeInteger(value) && value >= 0 && (value === 0 || value >= policy.timing_minimum_nonzero), 'REGISTRY_CONFIG_HEALTHCHECK_VALUE');
+  return { present: true, value_nanoseconds: value };
+}
+
+export function projectHealthcheckConfig(value, policy) {
+  demand(object(policy), 'REGISTRY_HEALTHCHECK_POLICY');
+  if (value === undefined || value === null) {
+    const projection = { state: 'ABSENT', test_form: null, executable: false, argv_element_count: null, payload_sha256: null, payload_byte_length: 0,
+      interval: { present: false, value_nanoseconds: null }, timeout: { present: false, value_nanoseconds: null },
+      start_period: { present: false, value_nanoseconds: null }, start_interval: { present: false, value_nanoseconds: null },
+      retries: { present: false, value: null }, unknown_keys: [] };
+    return { ...projection, projection_sha256: hash(Buffer.from(canonical(projection), 'utf8')) };
+  }
+  demand(object(value) && Object.keys(value).every(key => policy.allowed_keys.includes(key)) && Object.hasOwn(value, 'Test'), 'REGISTRY_CONFIG_HEALTHCHECK');
+  demand(Array.isArray(value.Test) && value.Test.length > 0 && value.Test.every(item => typeof item === 'string'), 'REGISTRY_CONFIG_HEALTHCHECK_TEST');
+  const form = value.Test[0];
+  demand(policy.test_forms.includes(form), 'REGISTRY_CONFIG_HEALTHCHECK_TEST_FORM');
+  if (form === 'NONE') demand(value.Test.length === policy.none_arity, 'REGISTRY_CONFIG_HEALTHCHECK_TEST_ARITY');
+  if (form === 'CMD') demand(value.Test.length >= policy.cmd_minimum_arity && value.Test[1].length > 0, 'REGISTRY_CONFIG_HEALTHCHECK_TEST_ARITY');
+  if (form === 'CMD-SHELL') demand(value.Test.length === policy.cmd_shell_arity && value.Test[1].length > 0, 'REGISTRY_CONFIG_HEALTHCHECK_TEST_ARITY');
+  const payload = form === 'CMD' ? Buffer.from(canonical(value.Test.slice(1)), 'utf8') : form === 'CMD-SHELL' ? Buffer.from(value.Test[1], 'utf8') : null;
+  const retries = Object.hasOwn(value, 'Retries') ? (() => {
+    demand(Number.isSafeInteger(value.Retries) && value.Retries >= 0, 'REGISTRY_CONFIG_HEALTHCHECK_RETRIES');
+    return { present: true, value: value.Retries };
+  })() : { present: false, value: null };
+  const projection = {
+    state: form === 'NONE' ? 'DISABLED' : 'EXECUTABLE', test_form: form, executable: form !== 'NONE',
+    argv_element_count: form === 'CMD' ? value.Test.length - 1 : null,
+    payload_sha256: payload === null ? null : hash(payload), payload_byte_length: payload?.length ?? 0,
+    interval: optionalHealthcheckNumber(value, 'Interval', policy), timeout: optionalHealthcheckNumber(value, 'Timeout', policy),
+    start_period: optionalHealthcheckNumber(value, 'StartPeriod', policy), start_interval: optionalHealthcheckNumber(value, 'StartInterval', policy),
+    retries, unknown_keys: [],
+  };
+  return { ...projection, projection_sha256: hash(Buffer.from(canonical(projection), 'utf8')) };
+}
+
+export function classifyHealthcheckRuntime({ imageHealthcheck, runtimeHealthcheck, policy }) {
+  const image = projectHealthcheckConfig(imageHealthcheck, policy);
+  if (runtimeHealthcheck === undefined || runtimeHealthcheck === null) {
+    return { classification: image.executable ? 'C_EXECUTABLE_AND_INHERITED' : 'A_NON_EXECUTING_OR_DISABLED', runtime_effect: 'INHERITED',
+      image, runtime: null, effective: image, field_sources: { Test: image.state === 'ABSENT' ? 'ABSENT' : 'IMAGE', Interval: 'IMAGE_OR_ENGINE_DEFAULT', Timeout: 'IMAGE_OR_ENGINE_DEFAULT', StartPeriod: 'IMAGE_OR_ENGINE_DEFAULT', StartInterval: 'IMAGE_OR_ENGINE_DEFAULT', Retries: 'IMAGE_OR_ENGINE_DEFAULT' } };
+  }
+  const runtime = projectHealthcheckConfig(runtimeHealthcheck, policy);
+  const imageRaw = object(imageHealthcheck) ? imageHealthcheck : {};
+  const runtimeRaw = object(runtimeHealthcheck) ? runtimeHealthcheck : {};
+  const effectiveRaw = {};
+  const fieldSources = {};
+  if (Array.isArray(runtimeRaw.Test) && runtimeRaw.Test.length > 0) { effectiveRaw.Test = structuredClone(runtimeRaw.Test); fieldSources.Test = 'RUNTIME'; }
+  else if (Array.isArray(imageRaw.Test) && imageRaw.Test.length > 0) { effectiveRaw.Test = structuredClone(imageRaw.Test); fieldSources.Test = 'IMAGE'; }
+  else fieldSources.Test = 'ABSENT';
+  for (const key of ['Interval', 'Timeout', 'StartPeriod', 'StartInterval', 'Retries']) {
+    if (Number.isSafeInteger(runtimeRaw[key]) && runtimeRaw[key] !== 0) { effectiveRaw[key] = runtimeRaw[key]; fieldSources[key] = 'RUNTIME'; }
+    else if (Number.isSafeInteger(imageRaw[key]) && imageRaw[key] !== 0) { effectiveRaw[key] = imageRaw[key]; fieldSources[key] = 'IMAGE'; }
+    else fieldSources[key] = 'ENGINE_DEFAULT';
+  }
+  const effective = projectHealthcheckConfig(Object.hasOwn(effectiveRaw, 'Test') ? effectiveRaw : undefined, policy);
+  const testOverridden = fieldSources.Test === 'RUNTIME';
+  return { classification: image.executable ? (testOverridden ? 'B_EXECUTABLE_BUT_OVERRIDDEN_OR_DISABLED' : 'C_EXECUTABLE_AND_INHERITED') : 'A_NON_EXECUTING_OR_DISABLED',
+    runtime_effect: runtime.state === 'DISABLED' ? 'DISABLED' : testOverridden ? 'OVERRIDDEN' : 'INHERITED', image, runtime, effective, field_sources: fieldSources };
+}
+
+function safeConfigProjection(config, platform, healthcheckPolicy) {
   demand(object(config) && config.os === platform.os && config.architecture === platform.architecture, 'REGISTRY_CONFIG_PLATFORM');
   demand(platformCompatible(config, platform, { nullIsOmitted: true }), 'REGISTRY_CONFIG_VARIANT');
   const selected = object(config.config) ? config.config : {};
@@ -313,14 +384,7 @@ function safeConfigProjection(config, platform) {
   demand(volumes.every(value => value.startsWith('/') && !value.includes('..')), 'REGISTRY_CONFIG_VOLUMES');
   const exposedPorts = selected.ExposedPorts === undefined || selected.ExposedPorts === null ? [] : Object.keys(selected.ExposedPorts);
   demand(exposedPorts.every(value => /^[0-9]{1,5}\/(tcp|udp|sctp)$/.test(value)), 'REGISTRY_CONFIG_PORTS');
-  let healthcheck = null;
-  if (selected.Healthcheck !== undefined && selected.Healthcheck !== null) {
-    const allowed = ['Test', 'Interval', 'Timeout', 'Retries', 'StartPeriod'];
-    demand(object(selected.Healthcheck) && Object.keys(selected.Healthcheck).every(key => allowed.includes(key)) && Object.hasOwn(selected.Healthcheck, 'Test'), 'REGISTRY_CONFIG_HEALTHCHECK');
-    demand(Array.isArray(selected.Healthcheck.Test) && selected.Healthcheck.Test.every(value => typeof value === 'string'), 'REGISTRY_CONFIG_HEALTHCHECK_TEST');
-    for (const key of ['Interval', 'Timeout', 'Retries', 'StartPeriod']) if (selected.Healthcheck[key] !== undefined) demand(Number.isSafeInteger(selected.Healthcheck[key]) && selected.Healthcheck[key] >= 0, 'REGISTRY_CONFIG_HEALTHCHECK_VALUE');
-    healthcheck = structuredClone(selected.Healthcheck);
-  }
+  const healthcheck = projectHealthcheckConfig(selected.Healthcheck, healthcheckPolicy);
   const projection = { platform: structuredClone(platform), user: selected.User ?? '', working_dir: selected.WorkingDir ?? '', entrypoint, cmd, declared_volumes: volumes.sort(), exposed_ports: exposedPorts.sort(), healthcheck };
   return { projection, sha256: hash(Buffer.from(canonical(projection), 'utf8')) };
 }
@@ -412,7 +476,7 @@ function verifiedConfigBytes(response, descriptorValue, contract) {
   const computedDigest = sha256(bytes);
   demand(computedDigest === descriptorValue.digest, 'REGISTRY_CONFIG_DIGEST_MISMATCH');
   const value = parseJson(bytes, 'REGISTRY_CONFIG_JSON');
-  const safe = safeConfigProjection(value, contract.target_platform);
+  const safe = safeConfigProjection(value, contract.target_platform, contract.healthcheck_policy);
   return { bytes, computed_digest: computedDigest, safe };
 }
 
@@ -470,7 +534,7 @@ export async function resolveRegistryDigest({ contract, role, sourceReference, r
     repository: source.repository, requested_tag: source.tag, manifest_media_type: top.media_type,
     top_level_manifest_digest: top.digest, platform_child_digest: child.digest, config_digest: configDescriptor.digest,
     required_repo_digest: `${source.repository}@${top.digest}`, platform: structuredClone(contract.target_platform),
-    selected_config_sha256: safe.sha256, declared_volumes: safe.projection.declared_volumes,
+    selected_config_sha256: safe.sha256, config_byte_length: configBytes.length, declared_volumes: safe.projection.declared_volumes, healthcheck: safe.projection.healthcheck,
     entrypoint_policy: 'REVIEWED_STRUCTURAL_ENTRYPOINT', resolver_id: contract.resolver_id,
     resolver_version: contract.resolver_version, resolver_sha256: resolverSha256,
     response_hashes: { manifest: top.response_sha256, child_manifest: child.response_sha256, config: configHash.slice(7) },

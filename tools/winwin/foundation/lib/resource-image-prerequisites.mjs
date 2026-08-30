@@ -222,7 +222,7 @@ export function validateImageApprovalSet(set) {
   demand(Array.isArray(set.approvals), 'APPROVAL_ROWS');
   const roles = [];
   for (const row of set.approvals) {
-    exact(row, ['role', 'source_reference', 'registry_host', 'repository', 'requested_tag', 'manifest_media_type', 'approved_registry_manifest_digest', 'approved_platform_child_digest', 'approved_config_digest', 'required_repo_digest', 'platform', 'selected_config_sha256', 'declared_volumes', 'entrypoint_policy', 'provenance', 'schema_version'], 'IMAGE_APPROVAL');
+    exact(row, ['role', 'source_reference', 'registry_host', 'repository', 'requested_tag', 'manifest_media_type', 'approved_registry_manifest_digest', 'approved_platform_child_digest', 'approved_config_digest', 'required_repo_digest', 'platform', 'selected_config_sha256', 'declared_volumes', 'healthcheck', 'entrypoint_policy', 'provenance', 'schema_version'], 'IMAGE_APPROVAL');
     demand(row.schema_version === PREREQUISITE_SCHEMA_VERSION, 'IMAGE_APPROVAL_VERSION'); roleId(row.role); roles.push(row.role); sourceReference(row.source_reference);
     demand(row.registry_host === 'registry-1.docker.io' && typeof row.repository === 'string' && /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/.test(row.repository), 'APPROVAL_REGISTRY');
     demand(typeof row.requested_tag === 'string' && row.source_reference === `${row.repository}:${row.requested_tag}`, 'APPROVAL_SOURCE_PARTS');
@@ -235,6 +235,7 @@ export function validateImageApprovalSet(set) {
     demand(typeof row.platform.variant === 'string', 'APPROVAL_VARIANT'); sha(row.selected_config_sha256, 'APPROVAL_CONFIG_PROJECTION');
     demand(Array.isArray(row.declared_volumes) && new Set(row.declared_volumes).size === row.declared_volumes.length, 'APPROVAL_VOLUMES');
     for (const destination of row.declared_volumes) demand(typeof destination === 'string' && destination.startsWith('/') && !destination.includes('..'), 'APPROVAL_VOLUME');
+    validateHealthcheckProjection(row.healthcheck);
     demand(['NO_NETWORK_BOOTSTRAP', 'REVIEWED_STRUCTURAL_ENTRYPOINT'].includes(row.entrypoint_policy), 'APPROVAL_ENTRYPOINT');
     exact(row.provenance, ['independent', 'source_class', 'source_record_sha256', 'resolver_id', 'resolver_version', 'resolver_sha256', 'resolver_contract_sha256', 'manifest_response_sha256', 'child_manifest_response_sha256', 'config_response_sha256', 'approved_at_utc'], 'APPROVAL_PROVENANCE');
     demand(row.provenance.independent === true && row.provenance.source_class === 'REVIEWED_REGISTRY_METADATA' && row.provenance.resolver_id === set.independent_source_policy.resolver_id, 'APPROVAL_PROVENANCE_VALUE');
@@ -246,6 +247,27 @@ export function validateImageApprovalSet(set) {
   return set;
 }
 
+function validateHealthcheckProjection(value) {
+  exact(value, ['state', 'test_form', 'executable', 'argv_element_count', 'payload_sha256', 'payload_byte_length', 'interval', 'timeout', 'start_period', 'start_interval', 'retries', 'unknown_keys', 'projection_sha256'], 'APPROVAL_HEALTHCHECK');
+  demand(['ABSENT', 'DISABLED', 'EXECUTABLE'].includes(value.state) && [null, 'NONE', 'CMD', 'CMD-SHELL'].includes(value.test_form), 'APPROVAL_HEALTHCHECK_STATE');
+  demand(typeof value.executable === 'boolean' && Number.isSafeInteger(value.payload_byte_length) && value.payload_byte_length >= 0, 'APPROVAL_HEALTHCHECK_PAYLOAD');
+  demand(Array.isArray(value.unknown_keys) && value.unknown_keys.length === 0, 'APPROVAL_HEALTHCHECK_UNKNOWN');
+  for (const key of ['interval', 'timeout', 'start_period', 'start_interval']) {
+    exact(value[key], ['present', 'value_nanoseconds'], 'APPROVAL_HEALTHCHECK_TIMING');
+    demand(typeof value[key].present === 'boolean', 'APPROVAL_HEALTHCHECK_TIMING');
+    demand(value[key].present ? Number.isSafeInteger(value[key].value_nanoseconds) && value[key].value_nanoseconds >= 0 : value[key].value_nanoseconds === null, 'APPROVAL_HEALTHCHECK_TIMING');
+  }
+  exact(value.retries, ['present', 'value'], 'APPROVAL_HEALTHCHECK_RETRIES');
+  demand(typeof value.retries.present === 'boolean' && (value.retries.present ? Number.isSafeInteger(value.retries.value) && value.retries.value >= 0 : value.retries.value === null), 'APPROVAL_HEALTHCHECK_RETRIES');
+  if (value.state === 'ABSENT') demand(value.test_form === null && value.executable === false && value.argv_element_count === null && value.payload_sha256 === null && value.payload_byte_length === 0, 'APPROVAL_HEALTHCHECK_ABSENT');
+  if (value.state === 'DISABLED') demand(value.test_form === 'NONE' && value.executable === false && value.argv_element_count === null && value.payload_sha256 === null && value.payload_byte_length === 0, 'APPROVAL_HEALTHCHECK_DISABLED');
+  if (value.state === 'EXECUTABLE') {
+    demand(['CMD', 'CMD-SHELL'].includes(value.test_form) && value.executable === true && /^[0-9a-f]{64}$/.test(value.payload_sha256) && value.payload_byte_length > 0, 'APPROVAL_HEALTHCHECK_EXECUTABLE');
+    demand(value.test_form === 'CMD' ? Number.isSafeInteger(value.argv_element_count) && value.argv_element_count >= 1 : value.argv_element_count === null, 'APPROVAL_HEALTHCHECK_ARGV');
+  }
+  sha(value.projection_sha256, 'APPROVAL_HEALTHCHECK_HASH');
+}
+
 export function produceImageApprovalSet({ profile, resolutions, resolverContract, resolverContractSha256 }) {
   demand(profile?.profile_type === PROFILE_TYPE && profile.result === 'PASS', 'APPROVAL_PROFILE_BLOCKED');
   demand(Array.isArray(resolutions) && object(resolverContract), 'APPROVAL_PRODUCER_INPUT'); sha(resolverContractSha256, 'APPROVAL_RESOLVER_CONTRACT_HASH');
@@ -253,7 +275,8 @@ export function produceImageApprovalSet({ profile, resolutions, resolverContract
   exactSet(resolutions.map(row => row.role).sort(), [...profile.reachable_image_roles].sort());
   const expectedReferences = new Map(profile.decisions.filter(row => row.state === 'REACHABLE' && row.image_role !== null).map(row => [row.image_role, row.image_reference]));
   const approvals = [...resolutions].sort((a,b) => a.role.localeCompare(b.role)).map(row => {
-    exact(row, ['schema_version','role','source_reference','registry_host','repository','requested_tag','manifest_media_type','top_level_manifest_digest','platform_child_digest','config_digest','required_repo_digest','platform','selected_config_sha256','declared_volumes','entrypoint_policy','resolver_id','resolver_version','resolver_sha256','response_hashes','resolved_at_utc','network','source_record_sha256'], 'APPROVAL_RESOLUTION');
+    exact(row, ['schema_version','role','source_reference','registry_host','repository','requested_tag','manifest_media_type','top_level_manifest_digest','platform_child_digest','config_digest','required_repo_digest','platform','selected_config_sha256','config_byte_length','declared_volumes','healthcheck','entrypoint_policy','resolver_id','resolver_version','resolver_sha256','response_hashes','resolved_at_utc','network','source_record_sha256'], 'APPROVAL_RESOLUTION');
+    demand(Number.isSafeInteger(row.config_byte_length) && row.config_byte_length > 0, 'APPROVAL_RESOLUTION_CONFIG_SIZE');
     demand(row.schema_version === '1' && row.source_reference === expectedReferences.get(row.role), 'APPROVAL_RESOLUTION_REFERENCE');
     demand(row.resolver_id === resolverContract.resolver_id && row.resolver_version === resolverContract.resolver_version, 'APPROVAL_RESOLUTION_RESOLVER');
     demand(row.network?.metadata_only === true && row.network?.filesystem_layers_downloaded === false, 'APPROVAL_RESOLUTION_LAYER_POLICY');
@@ -263,7 +286,7 @@ export function produceImageApprovalSet({ profile, resolutions, resolverContract
       approved_registry_manifest_digest: row.required_repo_digest, approved_platform_child_digest: row.platform_child_digest,
       approved_config_digest: row.config_digest, required_repo_digest: row.required_repo_digest,
       platform: copy(row.platform), selected_config_sha256: row.selected_config_sha256,
-      declared_volumes: copy(row.declared_volumes), entrypoint_policy: row.entrypoint_policy,
+      declared_volumes: copy(row.declared_volumes), healthcheck: copy(row.healthcheck), entrypoint_policy: row.entrypoint_policy,
       provenance: { independent: true, source_class: 'REVIEWED_REGISTRY_METADATA', source_record_sha256: row.source_record_sha256,
         resolver_id: row.resolver_id, resolver_version: row.resolver_version, resolver_sha256: row.resolver_sha256,
         resolver_contract_sha256: resolverContractSha256, manifest_response_sha256: row.response_hashes.manifest,

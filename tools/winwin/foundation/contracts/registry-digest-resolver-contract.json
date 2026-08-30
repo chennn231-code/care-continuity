@@ -21,6 +21,24 @@
     "multiple_matches": "REGISTRY_PLATFORM_AMBIGUOUS",
     "config_cross_check": "SAME_PLATFORM_COMPATIBILITY_REQUIRED"
   },
+  "healthcheck_policy": {
+    "source_semantics": "DOCKER_IMAGE_SPEC_EXTENSION",
+    "oci_status": "RESERVED_COMPATIBILITY_FIELD",
+    "allowed_keys": ["Test", "Interval", "Timeout", "Retries", "StartPeriod", "StartInterval"],
+    "test_forms": ["NONE", "CMD", "CMD-SHELL"],
+    "empty_test": "REJECT",
+    "none_arity": 1,
+    "cmd_minimum_arity": 2,
+    "cmd_shell_arity": 2,
+    "timing_unit": "NANOSECONDS",
+    "timing_minimum_nonzero": 1000000,
+    "zero_timing": "ENGINE_DEFAULT_OR_INHERIT",
+    "retries": "NON_NEGATIVE_SAFE_INTEGER_ZERO_DEFAULT_OR_INHERIT",
+    "unknown_keys": "REJECT",
+    "command_projection": "FORM_COUNT_SHA256_BYTE_LENGTH",
+    "raw_command_persistence": "FORBIDDEN",
+    "runtime_effect_authority": "SEPARATE_FROZEN_RUNTIME_CONFIGURATION"
+  },
   "approved_sources": [
     {"role": "AUTH", "source_reference": "supabase/gotrue:v2.195.0", "registry_host": "registry-1.docker.io", "repository": "supabase/gotrue", "tag": "v2.195.0"},
     {"role": "EDGE", "source_reference": "supabase/edge-runtime:v1.74.3", "registry_host": "registry-1.docker.io", "repository": "supabase/edge-runtime", "tag": "v1.74.3"},

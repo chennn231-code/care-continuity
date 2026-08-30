@@ -22,7 +22,7 @@
     "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "approval": {
       "type": "object", "additionalProperties": false,
-      "required": ["role", "source_reference", "registry_host", "repository", "requested_tag", "manifest_media_type", "approved_registry_manifest_digest", "approved_platform_child_digest", "approved_config_digest", "required_repo_digest", "platform", "selected_config_sha256", "declared_volumes", "entrypoint_policy", "provenance", "schema_version"],
+      "required": ["role", "source_reference", "registry_host", "repository", "requested_tag", "manifest_media_type", "approved_registry_manifest_digest", "approved_platform_child_digest", "approved_config_digest", "required_repo_digest", "platform", "selected_config_sha256", "declared_volumes", "healthcheck", "entrypoint_policy", "provenance", "schema_version"],
       "properties": {
         "role": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
         "source_reference": {"type": "string"},
@@ -37,10 +37,14 @@
         "platform": {"type": "object", "additionalProperties": false, "required": ["os", "architecture", "variant"], "properties": {"os": {"type": "string"}, "architecture": {"type": "string"}, "variant": {"type": "string"}}},
         "selected_config_sha256": {"$ref": "#/$defs/sha256"},
         "declared_volumes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^/"}},
+        "healthcheck": {"$ref": "#/$defs/healthcheck"},
         "entrypoint_policy": {"enum": ["NO_NETWORK_BOOTSTRAP", "REVIEWED_STRUCTURAL_ENTRYPOINT"]},
         "provenance": {"type": "object", "additionalProperties": false, "required": ["independent", "source_class", "source_record_sha256", "resolver_id", "resolver_version", "resolver_sha256", "resolver_contract_sha256", "manifest_response_sha256", "child_manifest_response_sha256", "config_response_sha256", "approved_at_utc"], "properties": {"independent": {"const": true}, "source_class": {"const": "REVIEWED_REGISTRY_METADATA"}, "source_record_sha256": {"$ref": "#/$defs/sha256"}, "resolver_id": {"type": "string", "pattern": "^[A-Z0-9_-]+$"}, "resolver_version": {"const": "1.0.0"}, "resolver_sha256": {"$ref": "#/$defs/sha256"}, "resolver_contract_sha256": {"$ref": "#/$defs/sha256"}, "manifest_response_sha256": {"$ref": "#/$defs/sha256"}, "child_manifest_response_sha256": {"$ref": "#/$defs/sha256"}, "config_response_sha256": {"$ref": "#/$defs/sha256"}, "approved_at_utc": {"type": "string", "format": "date-time"}}},
         "schema_version": {"const": "1"}
       }
-    }
+    },
+    "timing": {"type": "object", "additionalProperties": false, "required": ["present", "value_nanoseconds"], "properties": {"present": {"type": "boolean"}, "value_nanoseconds": {"type": ["integer", "null"], "minimum": 0}}},
+    "retry": {"type": "object", "additionalProperties": false, "required": ["present", "value"], "properties": {"present": {"type": "boolean"}, "value": {"type": ["integer", "null"], "minimum": 0}}},
+    "healthcheck": {"type": "object", "additionalProperties": false, "required": ["state", "test_form", "executable", "argv_element_count", "payload_sha256", "payload_byte_length", "interval", "timeout", "start_period", "start_interval", "retries", "unknown_keys", "projection_sha256"], "properties": {"state": {"enum": ["ABSENT", "DISABLED", "EXECUTABLE"]}, "test_form": {"type": ["string", "null"], "enum": [null, "NONE", "CMD", "CMD-SHELL"]}, "executable": {"type": "boolean"}, "argv_element_count": {"type": ["integer", "null"], "minimum": 1}, "payload_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "payload_byte_length": {"type": "integer", "minimum": 0}, "interval": {"$ref": "#/$defs/timing"}, "timeout": {"$ref": "#/$defs/timing"}, "start_period": {"$ref": "#/$defs/timing"}, "start_interval": {"$ref": "#/$defs/timing"}, "retries": {"$ref": "#/$defs/retry"}, "unknown_keys": {"const": []}, "projection_sha256": {"$ref": "#/$defs/sha256"}}}
   }
 }
