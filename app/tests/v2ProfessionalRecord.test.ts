@@ -13,7 +13,7 @@ import {
   publishProfessionalRecord,
   validateProfessionalRecordDraft
 } from '../src/v2/state/professionalRecordState';
-import { createInitialPrototypeState } from '../src/v2/state/prototypeState';
+import { createInitialPrototypeState, selectDemoActor } from '../src/v2/state/prototypeState';
 
 const completedDraft = () => ({
   ...structuredClone(EMPTY_PROFESSIONAL_RECORD_DRAFT),
@@ -28,7 +28,7 @@ const completedDraft = () => ({
   }
 });
 
-const nurseState = () => ({ ...createInitialPrototypeState(), activeRole: 'NURSE' as const });
+const nurseState = () => selectDemoActor(createInitialPrototypeState(), 'demo-case', { identityId: 'demo-identity-nurse', membershipId: 'demo-membership-nurse' }, 'NURSE');
 
 describe('v2 professional care record prototype', () => {
   it('labels the first template as a nurse demo scenario rather than all professions', () => {

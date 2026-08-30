@@ -4,7 +4,7 @@ import type {
   ProfessionalRecordVersion,
   PrototypeState
 } from '../types/prototype';
-import { currentActorGrantPaths } from './prototypeState';
+import { currentActorGrantPaths, nextDemoActivitySequence, sameParticipant, type DemoOperationAvailability } from './prototypeState';
 import {
   currentActorCanViewFullProfessionalRecord,
   currentActorCanViewProfessionalRecord,
@@ -50,10 +50,25 @@ export function canCreateProfessionalRecord(
   caseId: string,
   now = new Date('2026-08-25T12:00:00+08:00')
 ) {
-  return currentActorGrantPaths(state, caseId, now).some(({ grant }) =>
-      grant.actingRole === 'NURSE'
-      && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
-  );
+  return demoProfessionalRecordOperationAvailability(state, caseId, 'CREATE', undefined, now).allowed;
+}
+
+export function demoProfessionalRecordOperationAvailability(
+  state: PrototypeState,
+  caseId: string,
+  operation: 'CREATE' | 'CORRECT',
+  author?: ProfessionalRecordVersion['author'],
+  now = new Date('2026-08-25T12:00:00+08:00')
+): DemoOperationAvailability {
+  const paths = currentActorGrantPaths(state, caseId, now).filter(({ identity, membership, grant }) =>
+    grant.targetScopes.includes(operation === 'CREATE' ? 'CASE' : 'RECORD')
+    && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
+    && grant.sharingScopes.some((scope) => scope === 'SHARED_CARE' || scope === 'DIRECT_PARTICIPANTS' || scope === 'AUTHOR_ONLY')
+    && (operation === 'CREATE' || (author && sameParticipant(author, { identityId: identity.id, membershipId: membership.id }))));
+  if (paths.length > 1) return { source: 'DEMO_NON_AUTHORITATIVE', allowed: false, unavailableReason: 'AMBIGUOUS_DEMO_PATH' };
+  return paths.length === 1
+    ? { source: 'DEMO_NON_AUTHORITATIVE', allowed: true }
+    : { source: 'DEMO_NON_AUTHORITATIVE', allowed: false, unavailableReason: 'NO_DEMO_PATH' };
 }
 
 export function professionalRecordGrantPath(
@@ -61,9 +76,12 @@ export function professionalRecordGrantPath(
   caseId: string,
   now = new Date('2026-08-25T12:00:00+08:00')
 ) {
-  return currentActorGrantPaths(state, caseId, now).find(({ grant }) =>
-    grant.actingRole === 'NURSE'
-    && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')) ?? null;
+  const paths = currentActorGrantPaths(state, caseId, now).filter(({ grant }) =>
+    grant.targetScopes.includes('CASE')
+    && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
+    && grant.sharingScopes.some((scope) => scope === 'SHARED_CARE' || scope === 'DIRECT_PARTICIPANTS' || scope === 'AUTHOR_ONLY'));
+  if (paths.length > 1) throw new Error('MULTIPLE_EFFECTIVE_PROFESSIONAL_RECORD_PATHS');
+  return paths[0] ?? null;
 }
 
 export function createProfessionalRecordDraftForCurrentActor(state: PrototypeState, caseId: string): ProfessionalRecordDraft | null {
@@ -101,9 +119,10 @@ export function latestProfessionalRecordVersions(state: PrototypeState, caseId: 
   const latestByRecord = new Map<string, ProfessionalRecordVersion>();
   for (const version of state.professionalRecordVersions.filter((item) => item.caseId === caseId)) {
     const current = latestByRecord.get(version.recordId);
+    if (current?.versionNumber === version.versionNumber) throw new Error('MULTIPLE_CURRENT_PROFESSIONAL_RECORD_VERSIONS');
     if (!current || version.versionNumber > current.versionNumber) latestByRecord.set(version.recordId, version);
   }
-  return [...latestByRecord.values()].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+  return [...latestByRecord.values()].sort((a, b) => b.activitySequence - a.activitySequence);
 }
 
 export function visibleProfessionalRecordVersions(state: PrototypeState, caseId: string) {
@@ -117,7 +136,11 @@ export function professionalRecordVersions(state: PrototypeState, recordId: stri
 }
 
 export function professionalRecordVersion(state: PrototypeState, recordId: string) {
-  return professionalRecordVersions(state, recordId)[0] ?? null;
+  const versions = professionalRecordVersions(state, recordId);
+  if (versions.length === 0) return null;
+  const current = versions.filter((version) => version.versionNumber === versions[0].versionNumber);
+  if (current.length > 1) throw new Error('MULTIPLE_CURRENT_PROFESSIONAL_RECORD_VERSIONS');
+  return current[0];
 }
 
 export function professionalRecordAccess(state: PrototypeState, recordId: string) {
@@ -144,14 +167,26 @@ export function publishProfessionalRecord(
   draft: ProfessionalRecordDraft,
   now = new Date('2026-08-25T15:10:00+08:00')
 ): PrototypeState {
-  const authorizedPath = currentActorGrantPaths(state, draft.caseId, now).find(({ grant }) =>
-    grant.actingRole === draft.actingRole
-    && grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
-    && grant.purpose === draft.purpose
-    && grant.sharingScopes.includes(draft.sharingScope));
-  if (!authorizedPath || hasProfessionalRecordErrors(validateProfessionalRecordDraft(draft))) return state;
   const existingVersions = draft.recordId ? professionalRecordVersions(state, draft.recordId) : [];
-  if (draft.correctionOfVersionId && existingVersions[0]?.id !== draft.correctionOfVersionId) return state;
+  const correctingVersion = draft.correctionOfVersionId && draft.recordId ? professionalRecordVersion(state, draft.recordId) : null;
+  const availability = demoProfessionalRecordOperationAvailability(
+    state,
+    draft.caseId,
+    correctingVersion ? 'CORRECT' : 'CREATE',
+    correctingVersion?.author,
+    now
+  );
+  if (!availability.allowed) return state;
+  const authorizedPaths = currentActorGrantPaths(state, draft.caseId, now).filter(({ identity, membership, grant }) =>
+    grant.capabilities.includes('CREATE_PROFESSIONAL_RECORD')
+    && grant.targetScopes.includes(correctingVersion ? 'RECORD' : 'CASE')
+    && grant.purpose === draft.purpose
+    && grant.sharingScopes.includes(draft.sharingScope)
+    && (!correctingVersion || sameParticipant(correctingVersion.author, { identityId: identity.id, membershipId: membership.id })));
+  if (authorizedPaths.length > 1) throw new Error('MULTIPLE_EFFECTIVE_PROFESSIONAL_RECORD_PATHS');
+  const authorizedPath = authorizedPaths[0] ?? null;
+  if (!authorizedPath || hasProfessionalRecordErrors(validateProfessionalRecordDraft(draft))) return state;
+  if (draft.correctionOfVersionId && correctingVersion?.id !== draft.correctionOfVersionId) return state;
   const recordId = draft.recordId ?? `professional-record-demo-${state.professionalRecordVersions.length + 1}`;
   const versionNumber = existingVersions.length + 1;
   const id = `${recordId}-v${versionNumber}`;
@@ -162,13 +197,14 @@ export function publishProfessionalRecord(
     caseId: draft.caseId,
     versionNumber,
     authorName: '陳護理師',
-    authorIdentityId: authorizedPath.identity.id,
+    author: { identityId: authorizedPath.identity.id, membershipId: authorizedPath.membership.id },
     actingRole: 'NURSE',
     purpose: draft.purpose,
     sharingScope: draft.sharingScope,
     occurredAt: `${draft.content.serviceDate}T${draft.content.startedAt}:00+08:00`,
     recordedAt: timestamp,
     publishedAt: timestamp,
+    activitySequence: nextDemoActivitySequence(state, draft.caseId),
     supersedesVersionId: draft.correctionOfVersionId,
     correctionReason: draft.correctionReason?.trim() || undefined,
     content: structuredClone(draft.content)

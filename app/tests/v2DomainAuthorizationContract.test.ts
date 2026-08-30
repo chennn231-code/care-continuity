@@ -5,6 +5,8 @@ import {
   canPerformAssigneeOperation,
   canViewRecord,
   completeActionWithoutResolvingQuestion,
+  deriveCurrentCareUpdateVersion,
+  deriveCurrentResponsibilityCycle,
   materializeInvitationAcceptance,
   reassignResponsibility,
   transitionResponsibility,
@@ -49,12 +51,12 @@ function pathFor(identityId = 'identity-a', overrides: Partial<AuthorizationGran
     relationshipId: relationship.id,
     caseId: 'case-1',
     purpose: '照顧協作',
-    scopes: ['AUTHOR_ONLY', 'DIRECT_PARTICIPANTS', 'PROFESSIONAL_TEAM'],
+    scopes: ['CASE', 'RECORD'],
     capabilities: [
-      'VIEW_RECORD',
-      'ACCEPT_ASSIGNED_ACTION',
-      'START_ASSIGNED_ACTION',
-      'COMPLETE_ASSIGNED_ACTION'
+      'RECORD_VIEW',
+      'ACTION_ACCEPT',
+      'ACTION_START',
+      'ACTION_COMPLETE'
     ],
     status: 'ACTIVE',
     validFrom: '2026-01-01T00:00:00.000Z',
@@ -113,7 +115,6 @@ const action: ActionContract = {
   sourceCareUpdateId: 'record-1',
   creator: { identityId: 'identity-manager', membershipId: 'membership-manager' },
   authorization: record('DIRECT_PARTICIPANTS'),
-  currentResponsibilityCycleId: 'responsibility-1',
   linkedQuestionId: 'question-1',
   serverCreatedAt: serverNow,
   serverUpdatedAt: serverNow,
@@ -148,9 +149,21 @@ describe('WinWin Batch 1 domain authorization contract', () => {
     expect(authorizeThroughAnySingleGrant({
       actor: actor.actor,
       paths: [capabilityOnly, scopeOnly],
-      requirement: { capability: 'VIEW_RECORD', scope: 'PROFESSIONAL_TEAM' },
+      requirement: { capability: 'RECORD_VIEW', scope: 'RECORD' },
       serverNow
     })).toEqual({ allowed: false, reason: 'NO_SINGLE_GRANT_PATH' });
+  });
+
+  it('fails explicitly instead of silently selecting the first complete Grant Path', () => {
+    const actor = pathFor();
+    const first = actor.path;
+    const second = pathFor('identity-a', { id: 'grant-identity-a-second' }).path;
+    expect(() => authorizeThroughAnySingleGrant({
+      actor: actor.actor,
+      paths: [first, second],
+      requirement: { capability: 'RECORD_VIEW', scope: 'RECORD' },
+      serverNow
+    })).toThrow('MULTIPLE_COMPLETE_GRANT_PATHS');
   });
 
   it('requires exact identity and membership for DIRECT_PARTICIPANTS', () => {
@@ -170,13 +183,24 @@ describe('WinWin Batch 1 domain authorization contract', () => {
     })).toEqual({ allowed: false, reason: 'NOT_DIRECT_PARTICIPANT' });
   });
 
+  it('rejects a correct membership paired with the wrong identity', () => {
+    const participant = pathFor('identity-b');
+    const wrongIdentityActor = { ...participant.actor, identityId: 'identity-other' };
+    expect(canViewRecord({
+      actor: wrongIdentityActor,
+      record: record('DIRECT_PARTICIPANTS'),
+      paths: [participant.path],
+      serverNow
+    })).toEqual({ allowed: false, reason: 'NOT_DIRECT_PARTICIPANT' });
+  });
+
   it('binds accept, start and complete to the current assignee identity', () => {
     const assignee = pathFor('identity-a');
     const sameRoleOtherIdentity = pathFor('identity-b');
     expect(canPerformAssigneeOperation({
       actor: assignee.actor,
       action,
-      responsibility: responsibility(),
+      responsibilities: [responsibility()],
       operation: 'ACCEPT',
       paths: [assignee.path],
       serverNow
@@ -184,7 +208,7 @@ describe('WinWin Batch 1 domain authorization contract', () => {
     expect(canPerformAssigneeOperation({
       actor: sameRoleOtherIdentity.actor,
       action,
-      responsibility: responsibility(),
+      responsibilities: [responsibility()],
       operation: 'ACCEPT',
       paths: [sameRoleOtherIdentity.path],
       serverNow
@@ -205,6 +229,27 @@ describe('WinWin Batch 1 domain authorization contract', () => {
     expect(() => transitionResponsibility(assigned, 'START', serverNow)).toThrow('INVALID_RESPONSIBILITY_TRANSITION');
   });
 
+  it('derives current responsibility without an Action pointer', () => {
+    const current = responsibility();
+    expect(deriveCurrentResponsibilityCycle('action-1', [])).toBeNull();
+    expect(deriveCurrentResponsibilityCycle('action-1', [current])).toBe(current);
+    expect(() => deriveCurrentResponsibilityCycle('action-1', [current, { ...current, id: 'responsibility-2' }]))
+      .toThrow('MULTIPLE_EFFECTIVE_RESPONSIBILITY_CYCLES');
+  });
+
+  it('derives the current append-only Care Update version without a mutable pointer', () => {
+    const first = {
+      id: 'version-1', careUpdateId: 'update-1', version: 1,
+      author: { identityId: 'identity-a', membershipId: 'membership-identity-a' },
+      content: 'original', occurredAt: serverNow, serverRecordedAt: serverNow,
+      correctsVersionId: null, correctionReason: null
+    };
+    const second = { ...first, id: 'version-2', version: 2, content: 'correction', correctsVersionId: first.id, correctionReason: 'clarification' };
+    expect(deriveCurrentCareUpdateVersion('update-1', [first, second])).toBe(second);
+    expect(() => deriveCurrentCareUpdateVersion('update-1', [first, second, { ...second, id: 'version-2-duplicate' }]))
+      .toThrow('MULTIPLE_CURRENT_CARE_UPDATE_VERSIONS');
+  });
+
   it('denies a revoked grant even when its capability and scope match', () => {
     const revoked = pathFor('identity-a', { status: 'REVOKED' });
     expect(canViewRecord({ actor: revoked.actor, record: record('AUTHOR_ONLY'), paths: [revoked.path], serverNow })).toEqual({
@@ -217,7 +262,7 @@ describe('WinWin Batch 1 domain authorization contract', () => {
     const actor = pathFor('identity-manager').actor;
     const result = reassignResponsibility({
       action,
-      current: responsibility(),
+      responsibilities: [responsibility()],
       nextCycleId: 'responsibility-2',
       nextAssignee: { identityId: 'identity-b', membershipId: 'membership-identity-b' },
       actor,
@@ -231,7 +276,7 @@ describe('WinWin Batch 1 domain authorization contract', () => {
       status: 'ASSIGNED',
       assignee: { identityId: 'identity-b', membershipId: 'membership-identity-b' }
     });
-    expect(result.action.currentResponsibilityCycleId).toBe('responsibility-2');
+    expect(result.action).not.toHaveProperty('currentResponsibilityCycleId');
   });
 
   it('keeps question resolution independent from action completion', () => {
@@ -264,8 +309,8 @@ describe('WinWin Batch 1 domain authorization contract', () => {
       relationship: { type: 'PROFESSIONAL_SERVICE', label: '職能治療服務' },
       grant: {
         purpose: '職能治療交接',
-        scopes: ['DIRECT_PARTICIPANTS'],
-        capabilities: ['VIEW_RECORD', 'CREATE_CARE_UPDATE'],
+        scopes: ['CASE', 'RECORD'],
+        capabilities: ['RECORD_VIEW', 'CARE_UPDATE_CREATE'],
         validFrom: '2026-01-01T00:00:00.000Z',
         validUntil: null
       },
@@ -286,7 +331,7 @@ describe('WinWin Batch 1 domain authorization contract', () => {
       capabilities: invitation.grant.capabilities,
       issuedByIdentityId: 'identity-manager'
     });
-    expect(result.grant.capabilities).not.toContain('INVITE_MEMBER');
+    expect(result.grant.capabilities).not.toContain('ACCESS_INVITE');
   });
 
   it('accepts a current invitation for future service without granting early access', () => {
@@ -300,8 +345,8 @@ describe('WinWin Batch 1 domain authorization contract', () => {
       relationship: { type: 'PROFESSIONAL_SERVICE', label: '未來服務' },
       grant: {
         purpose: '未來服務交接',
-        scopes: ['DIRECT_PARTICIPANTS'],
-        capabilities: ['VIEW_RECORD'],
+        scopes: ['RECORD'],
+        capabilities: ['RECORD_VIEW'],
         validFrom: '2026-09-15T00:00:00.000Z',
         validUntil: null
       },
@@ -324,19 +369,75 @@ describe('WinWin Batch 1 domain authorization contract', () => {
     const initial = advanceReadCursor({
       actor,
       current: null,
-      boundary: { source: 'SERVER', sequence: 12, recordedAt: serverNow }
+      requestedBoundary: {
+        source: 'SERVER',
+        owner: { identityId: actor.identityId, membershipId: actor.membershipId, caseId: actor.caseId },
+        value: 'opaque-12',
+        sequence: 12,
+        recordedAt: serverNow
+      }
     });
     const replay = advanceReadCursor({
       actor,
-      current: initial,
-      boundary: { source: 'SERVER', sequence: 10, recordedAt: '2026-08-29T08:04:00.000Z' }
+      current: initial.cursor,
+      requestedBoundary: {
+        source: 'SERVER',
+        owner: { identityId: actor.identityId, membershipId: actor.membershipId, caseId: actor.caseId },
+        value: 'opaque-10',
+        sequence: 10,
+        recordedAt: '2026-08-29T08:04:00.000Z'
+      }
     });
-    expect(initial).toMatchObject({ identityId: actor.identityId, membershipId: actor.membershipId, lastVisibleSequence: 12 });
-    expect(replay.lastVisibleSequence).toBe(12);
+    expect(initial.cursor).toMatchObject({ owner: { identityId: actor.identityId, membershipId: actor.membershipId, caseId: actor.caseId } });
+    expect(initial.resultingBoundary.sequence).toBe(12);
+    expect(replay.resultingBoundary.sequence).toBe(12);
     expect(() => advanceReadCursor({
       actor,
       current: null,
-      boundary: { source: 'CLIENT' as 'SERVER', sequence: 13, recordedAt: '2099-01-01T00:00:00.000Z' }
+      requestedBoundary: {
+        source: 'CLIENT' as 'SERVER',
+        owner: { identityId: actor.identityId, membershipId: actor.membershipId, caseId: actor.caseId },
+        value: 'client-time-is-not-authority',
+        sequence: 13,
+        recordedAt: '2099-01-01T00:00:00.000Z'
+      }
     })).toThrow('INVALID_SERVER_BOUNDARY');
+  });
+
+  it('does not reuse a read cursor across membership lifecycles or cases', () => {
+    const actor = pathFor('identity-a').actor;
+    const boundary = {
+      source: 'SERVER' as const,
+      owner: { identityId: actor.identityId, membershipId: actor.membershipId, caseId: actor.caseId },
+      value: 'opaque-21',
+      sequence: 21,
+      recordedAt: serverNow
+    };
+    const current = advanceReadCursor({ actor, current: null, requestedBoundary: boundary }).cursor;
+    expect(() => advanceReadCursor({
+      actor: { ...actor, membershipId: 'membership-new-lifecycle' },
+      current,
+      requestedBoundary: { ...boundary, owner: { ...boundary.owner, membershipId: 'membership-new-lifecycle' } }
+    })).toThrow('CURSOR_ACTOR_MISMATCH');
+    expect(() => advanceReadCursor({
+      actor,
+      current: null,
+      requestedBoundary: { ...boundary, owner: { ...boundary.owner, caseId: 'case-other' } }
+    })).toThrow('CURSOR_BOUNDARY_OWNER_MISMATCH');
+  });
+
+  it('rejects a cursor boundary with the right membership but wrong identity', () => {
+    const actor = pathFor('identity-a').actor;
+    expect(() => advanceReadCursor({
+      actor,
+      current: null,
+      requestedBoundary: {
+        source: 'SERVER',
+        owner: { identityId: 'identity-other', membershipId: actor.membershipId, caseId: actor.caseId },
+        value: 'opaque-22',
+        sequence: 22,
+        recordedAt: serverNow
+      }
+    })).toThrow('CURSOR_BOUNDARY_OWNER_MISMATCH');
   });
 });

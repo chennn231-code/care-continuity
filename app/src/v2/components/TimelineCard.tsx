@@ -16,8 +16,8 @@ export function TimelineCard({ entry }: { entry: CaseActivityItem }) {
         <div><StatusPill tone="active">{sourceLabels[entry.sourceType]}</StatusPill><h2>{entry.summary}</h2></div>
       </div>
       <dl className="v2-meta-grid">
-        <div><dt>活動時間</dt><dd>{formatTime(entry.timestamp)}</dd></div>
-        <div><dt>執行者</dt><dd>{entry.actorLabel}（{DEMO_ROLE_LABELS[entry.actorRole]}）</dd></div>
+        <div><dt>活動時間</dt><dd>{formatTime(entry.displayTimestamp)}</dd></div>
+        <div><dt>執行者</dt><dd>{entry.actorLabel}（{DEMO_ROLE_LABELS[entry.actorDisplayRole]}）</dd></div>
         <div><dt>來源類型</dt><dd>{sourceLabels[entry.sourceType]}</dd></div>
         <div><dt>來源資訊</dt><dd>{entry.sourceLabel}</dd></div>
         <div><dt>分享範圍</dt><dd>{SHARING_SCOPE_LABELS[entry.sharingScope]}</dd></div>

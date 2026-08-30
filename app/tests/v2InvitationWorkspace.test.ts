@@ -25,7 +25,7 @@ import {
   visibleWorkspaceCases,
   waitingStartWorkspaceCases
 } from '../src/v2/state/invitationWorkspaceState';
-import { createInitialPrototypeState } from '../src/v2/state/prototypeState';
+import { createInitialPrototypeState, selectDemoActor } from '../src/v2/state/prototypeState';
 import { V2_GUARDED_CASE_ROUTE_SUFFIXES } from '../src/v2/data/prototypeRoutes';
 import { canCreateProfessionalRecord } from '../src/v2/state/professionalRecordState';
 import { PrototypeProvider } from '../src/v2/state/PrototypeProvider';
@@ -164,12 +164,12 @@ describe('v2 invitation and multi-case workspace prototype', () => {
   });
 
   it('requires MANAGE_MEMBERS to create an invitation', () => {
-    const state = { ...createInitialPrototypeState(), activeRole: 'NURSE' as const };
+    const state = selectDemoActor(createInitialPrototypeState(), 'demo-case', { identityId: 'demo-identity-nurse', membershipId: 'demo-membership-nurse' }, 'NURSE');
     const input = {
       caseId: 'demo-case', caseDisplayName: '林奶奶', recipientType: 'FAMILY' as const, roleLabel: '家屬', purpose: '共同照顧', scopeSummary: '共同照顧', serviceStartsAt: '2026-08-25', serviceEndsAt: '2026-12-31'
     };
     expect(createPrototypeInvitation(state, input).invitations).toEqual(state.invitations);
-    const manager = { ...state, activeRole: 'FAMILY' as const };
+    const manager = selectDemoActor(state, 'demo-case', { identityId: 'demo-identity-family', membershipId: 'demo-membership-family' }, 'FAMILY');
     expect(createPrototypeInvitation(manager, input).invitations).toHaveLength(state.invitations.length + 1);
   });
 
@@ -286,21 +286,56 @@ describe('v2 invitation and multi-case workspace prototype', () => {
   });
 
   it('does not reassign another role\'s unfinished action when the nurse path expires', () => {
-    const state = {
+    const state = selectDemoActor({
       ...createInitialPrototypeState(),
-      activeRole: 'NURSE' as const,
       actions: createInitialPrototypeState().actions.map((action) => action.id === 'action-skin-check'
         ? { ...action, status: 'IN_PROGRESS' as const }
-        : action)
-    };
+        : action),
+      responsibilityCycles: createInitialPrototypeState().responsibilityCycles.map((cycle) => cycle.actionId === 'action-skin-check'
+        ? { ...cycle, status: 'IN_PROGRESS' as const }
+        : cycle)
+    }, 'demo-case', { identityId: 'demo-identity-nurse', membershipId: 'demo-membership-nurse' }, 'NURSE');
     const next = removeWorkspaceCaseAccess(state, 'demo-case', 'EXPIRED');
     expect(next.actions.find((item) => item.id === 'action-skin-check')?.status).toBe('NEEDS_REASSIGNMENT');
     expect(next.actions.find((item) => item.id === 'action-meal-followup')?.status).toBe('IN_PROGRESS');
   });
 
+  it('removes only the exact identity and membership participant', () => {
+    const initial = createInitialPrototypeState();
+    const state = selectDemoActor({
+      ...initial,
+      identities: [...initial.identities, {
+        id: 'same-role-other-identity', accountId: 'other-account', identityType: 'PROFESSIONAL' as const,
+        professionalType: 'NURSE' as const, verificationStatus: 'VERIFIED' as const, isPrimary: true
+      }],
+      memberships: [...initial.memberships,
+        { id: 'same-role-other-membership', identityId: 'same-role-other-identity', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE' as const, status: 'ACTIVE' as const, validUntil: null },
+        { id: 'same-identity-new-membership', identityId: 'demo-identity-nurse', caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE' as const, status: 'ACTIVE' as const, validUntil: null }
+      ],
+      roleGrants: [...initial.roleGrants,
+        { id: 'same-role-other-grant', membershipId: 'same-role-other-membership', actingRole: 'NURSE' as const, purpose: '其他帳號路徑', targetScopes: ['RECORD' as const], sharingScopes: ['SHARED_CARE' as const], capabilities: ['RECORD_VIEW'], validUntil: null },
+        { id: 'same-identity-new-grant', membershipId: 'same-identity-new-membership', actingRole: 'DAY_CARE' as const, purpose: '新生命週期路徑', targetScopes: ['RECORD' as const], sharingScopes: ['SHARED_CARE' as const], capabilities: ['RECORD_VIEW'], validUntil: null }
+      ]
+    }, 'demo-case', { identityId: 'demo-identity-nurse', membershipId: 'demo-membership-nurse' }, 'NURSE');
+    const next = removeWorkspaceCaseAccess(state, 'demo-case', 'REVOKED');
+    expect(next.memberships.find((membership) => membership.id === 'demo-membership-nurse')?.status).toBe('REVOKED');
+    expect(next.memberships.find((membership) => membership.id === 'same-role-other-membership')?.status).toBe('ACTIVE');
+    expect(next.memberships.find((membership) => membership.id === 'same-identity-new-membership')?.status).toBe('ACTIVE');
+  });
+
+  it('fails deterministically when the exact access-removal membership is duplicated', () => {
+    const initial = createInitialPrototypeState();
+    const state = selectDemoActor({
+      ...initial,
+      memberships: [...initial.memberships, { ...initial.memberships.find((membership) => membership.id === 'demo-membership-nurse')! }]
+    }, 'demo-case', { identityId: 'demo-identity-nurse', membershipId: 'demo-membership-nurse' }, 'NURSE');
+    expect(() => removeWorkspaceCaseAccess(state, 'demo-case', 'REVOKED'))
+      .toThrow('MULTIPLE_EXACT_ACCESS_REMOVAL_MEMBERSHIPS');
+  });
+
   it('shows reassignment only through an effective manager grant path', () => {
     const state = createInitialPrototypeState();
-    const nurseState = { ...state, activeRole: 'NURSE' as const };
+    const nurseState = selectDemoActor(state, 'river-case', { identityId: 'demo-identity-nurse', membershipId: 'demo-membership-river' }, 'NURSE');
     const managerItems = managerReassignmentItems(nurseState, 'river-case');
     expect(managerItems).toHaveLength(1);
     expect(managerItems[0].history?.summary).toContain('服務到期');

@@ -1,3 +1,5 @@
+import type { CaseParticipantRef } from '../authorization/domainAuthorizationContract';
+
 export type DemoRole = 'FAMILY' | 'DAY_CARE' | 'NURSE';
 export type PrimaryIdentityType = 'SELF' | 'FAMILY' | 'PROFESSIONAL';
 export type VerificationStatus = 'DECLARED' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED' | 'EXPIRED';
@@ -37,11 +39,14 @@ export interface TimelineEntry {
   summary: string;
   occurredAt: string;
   recordedAt: string;
-  authorRole: DemoRole;
-  authorIdentityId?: string;
+  author: CaseParticipantRef;
+  authorDisplayRole: DemoRole;
   source: string;
   sharingScope: SharingScope;
-  participantRoles?: DemoRole[];
+  participantRefs?: CaseParticipantRef[];
+  participantDisplayRoles?: DemoRole[];
+  /** Deterministic demo adapter ordering; display timestamps never provide authority. */
+  activitySequence: number;
   version: number;
   supersedesId?: string;
   hasUpdatedVersion: boolean;
@@ -53,9 +58,9 @@ export interface PrototypeAction {
   caseId: string;
   title: string;
   detail: string;
-  assigneeRole: DemoRole;
-  assigneeName: string;
+  creator: CaseParticipantRef;
   dueAt: string;
+  /** Demo projection derived from responsibilityCycles; never an authoritative pointer. */
   status: ActionStatus;
   linkedQuestionId: string;
 }
@@ -66,6 +71,8 @@ export interface PrototypeQuestion {
   sourceTimelineEntryId: string;
   text: string;
   status: QuestionStatus;
+  author: CaseParticipantRef;
+  /** Display-only author label. */
   askedBy: string;
   answer?: string;
 }
@@ -75,6 +82,7 @@ export interface CareCircleMember {
   caseId: string;
   name: string;
   role: DemoRole;
+  participant: CaseParticipantRef;
   relationship: string;
   purpose: string;
   scopeSummary: string;
@@ -90,11 +98,13 @@ export interface NewUpdateInput {
   occurredTime: string;
   content: string;
   source: string;
-  actingRole: DemoRole;
+  actor: CaseParticipantRef;
+  actorDisplayRole: DemoRole;
   purpose: string;
   sharingScope: SharingScope;
   needsAction: boolean;
-  assigneeRole?: DemoRole;
+  assignee?: CaseParticipantRef;
+  assigneeDisplayRole?: DemoRole;
   dueAt?: string;
 }
 
@@ -127,6 +137,7 @@ export interface MockRoleGrant {
   membershipId: string;
   actingRole: DemoRole;
   purpose: string;
+  targetScopes: Array<'CASE' | 'RECORD'>;
   sharingScopes: SharingScope[];
   capabilities: string[];
   startsAt?: string;
@@ -145,6 +156,9 @@ export interface PrototypeInvitation {
   roleLabel: string;
   purpose: string;
   scopeSummary: string;
+  proposedTargetScopes: Array<'CASE' | 'RECORD'>;
+  proposedSharingScopes: SharingScope[];
+  proposedCapabilities: string[];
   serviceStartsAt: string;
   serviceEndsAt: string;
   expiresAt: string;
@@ -194,8 +208,11 @@ export interface PrototypeResponsibilityHistory {
   caseId: string;
   actionId: string;
   formerAssigneeName: string;
-  previousStatus: Extract<ActionStatus, 'ACCEPTED' | 'IN_PROGRESS'>;
+  formerAssignee: CaseParticipantRef;
+  formerAssigneeDisplayRole: DemoRole;
+  previousStatus: Extract<PrototypeResponsibilityStatus, 'ASSIGNED' | 'ACCEPTED' | 'IN_PROGRESS'>;
   endedAt: string;
+  activitySequence: number;
   reason: 'SERVICE_EXPIRED' | 'MEMBERSHIP_REVOKED';
   summary: string;
 }
@@ -206,8 +223,10 @@ export interface PrototypeActionStatusHistory {
   actionId: string;
   fromStatus: ActionStatus;
   toStatus: ActionStatus;
-  actorRole: DemoRole;
+  actor: CaseParticipantRef;
+  actorDisplayRole: DemoRole;
   changedAt: string;
+  activitySequence: number;
 }
 
 export type CaseActivitySourceType = 'TIMELINE_ENTRY' | 'PROFESSIONAL_RECORD' | 'ACTION';
@@ -217,18 +236,42 @@ export interface CaseActivityItem {
   caseId: string;
   sourceType: CaseActivitySourceType;
   sourceId: string;
-  actorRole: DemoRole;
+  actor: CaseParticipantRef;
+  actorDisplayRole: DemoRole;
   actorLabel: string;
-  actorIdentityId?: string;
-  timestamp: string;
+  displayTimestamp: string;
+  /** Comparable only inside the explicitly non-authoritative demo adapter. */
+  demoSequence: number;
+  boundary: ActivityBoundary;
   summary: string;
   sharingScope: SharingScope;
-  participantRoles?: DemoRole[];
+  participantRefs?: CaseParticipantRef[];
+  participantDisplayRoles?: DemoRole[];
   sourceLabel: string;
   linkedQuestionId?: string;
   linkedQuestionStatus?: QuestionStatus;
   linkedActionId?: string;
   linkedActionStatus?: ActionStatus;
+}
+
+export interface ActivityBoundary {
+  source: 'SERVER' | 'DEMO_NON_AUTHORITATIVE';
+  caseId: string;
+  /** Opaque response boundary; clients must not derive it from display time. */
+  value: string;
+}
+
+export interface CaseActivityResponse {
+  source: 'SERVER' | 'DEMO_NON_AUTHORITATIVE';
+  items: CaseActivityItem[];
+  latestBoundary: ActivityBoundary | null;
+  storedCursorBoundary: ActivityBoundary | null;
+}
+
+export interface PrototypeReadCursor {
+  owner: CaseParticipantRef;
+  caseId: string;
+  boundary: ActivityBoundary;
 }
 
 export interface ProfessionalRecordContent {
@@ -262,13 +305,14 @@ export interface ProfessionalRecordVersion {
   caseId: string;
   versionNumber: number;
   authorName: string;
-  authorIdentityId?: string;
+  author: CaseParticipantRef;
   actingRole: 'NURSE';
   purpose: string;
   sharingScope: ProfessionalRecordSharingScope;
   occurredAt: string;
   recordedAt: string;
   publishedAt: string;
+  activitySequence: number;
   supersedesVersionId?: string;
   correctionReason?: string;
   content: ProfessionalRecordContent;
@@ -293,8 +337,22 @@ export interface PrototypeGrantPath {
   grant: MockRoleGrant;
 }
 
+export type PrototypeResponsibilityStatus = 'ASSIGNED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED' | 'ENDED';
+
+export interface PrototypeResponsibilityCycle {
+  id: string;
+  actionId: string;
+  caseId: string;
+  assignee: CaseParticipantRef;
+  assignedBy: CaseParticipantRef;
+  status: PrototypeResponsibilityStatus;
+  endedAt: string | null;
+}
+
 export interface PrototypeState {
   currentAccountId: string;
+  /** Exact demo session selection by Case; role labels never select authority paths. */
+  demoActorSelections: Record<string, { participant: CaseParticipantRef; displayRole: DemoRole }>;
   activeRole: DemoRole;
   identities: PrototypeIdentity[];
   identityDraft: IdentityRegistrationDraft;
@@ -309,8 +367,10 @@ export interface PrototypeState {
   privateTags: PrototypePrivateTag[];
   privateTagAssignments: PrototypeCaseTagAssignment[];
   responsibilityHistory: PrototypeResponsibilityHistory[];
+  responsibilityCycles: PrototypeResponsibilityCycle[];
   actionStatusHistory: PrototypeActionStatusHistory[];
   professionalRecordVersions: ProfessionalRecordVersion[];
+  readCursors: PrototypeReadCursor[];
   invitationSessionIds: string[];
   lastInvitationId: string | null;
   successMessage: string | null;

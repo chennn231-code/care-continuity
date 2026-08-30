@@ -3,18 +3,15 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { BASE_DOCUMENT_TITLE, V2_DOCUMENT_TITLE, V2_PRODUCT_LOGO, V2_PRODUCT_LOGO_ALT, V2_PRODUCT_LOGO_HEIGHT, V2_PRODUCT_LOGO_WIDTH, V2_PROTOTYPE_NOTICE } from '../data/branding';
 import { DEMO_ROLE_LABELS, IDENTITY_TYPE_LABELS, VERIFICATION_STATUS_LABELS } from '../data/mockData';
 import { usePrototype } from '../state/PrototypeProvider';
-import type { DemoRole } from '../types/prototype';
 import { canCurrentActorAccessCase, canViewInvitationPreview } from '../state/invitationWorkspaceState';
 import { currentCaseActorContext } from '../state/caseCollaborationSelectors';
-
-const roles = Object.keys(DEMO_ROLE_LABELS) as DemoRole[];
 
 export function shouldShowAccountSummary(pathname: string) {
   return !pathname.startsWith('/v2/prototype/register') || pathname.endsWith('/complete');
 }
 
 export function PrototypeShell() {
-  const { state, setRole } = usePrototype();
+  const { state, selectActor } = usePrototype();
   const location = useLocation();
   const caseId = location.pathname.match(/^\/v2\/prototype\/cases\/([^/]+)/)?.[1];
   const isCaseRoute = Boolean(caseId && canCurrentActorAccessCase(state, caseId));
@@ -22,6 +19,7 @@ export function PrototypeShell() {
   const invitationId = location.pathname.match(/^\/v2\/prototype\/invitations\/(?!new$|created$)([^/]+)/)?.[1];
   const showAccountSummary = shouldShowAccountSummary(location.pathname) && (!invitationId || canViewInvitationPreview(state, invitationId));
   const primaryIdentity = state.identities.find((identity) => identity.accountId === state.currentAccountId && identity.isPrimary);
+  const demoActors = caseId ? state.members.filter((member) => member.caseId === caseId && member.status === 'ACTIVE') : [];
 
   useEffect(() => {
     document.title = V2_DOCUMENT_TITLE;
@@ -42,7 +40,11 @@ export function PrototypeShell() {
         <summary>Prototype 權限預覽工具</summary>
         <p>僅供展示，不代表使用者可任意更換身分，也不是每次登入都要選擇</p>
         <div className="v2-demo-role" role="group" aria-label="Prototype 模擬檢視角色">
-          {roles.map((role) => <button type="button" className={state.activeRole === role ? 'active' : ''} aria-pressed={state.activeRole === role} onClick={() => setRole(role)} key={role}>{DEMO_ROLE_LABELS[role]}</button>)}
+          {demoActors.map((member) => {
+            const selected = state.demoActorSelections[caseId!]?.participant;
+            const active = selected?.identityId === member.participant.identityId && selected.membershipId === member.participant.membershipId;
+            return <button type="button" className={active ? 'active' : ''} aria-pressed={active} onClick={() => selectActor(caseId!, member.participant, member.role)} key={`${member.participant.identityId}:${member.participant.membershipId}`}>{member.name}（{DEMO_ROLE_LABELS[member.role]}）</button>;
+          })}
         </div>
       </details><nav className="v2-case-nav" aria-label="展示個案導覽">
         <NavLink to={`/v2/prototype/cases/${caseId}`} end>個案首頁</NavLink>

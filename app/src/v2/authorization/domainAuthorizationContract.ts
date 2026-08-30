@@ -24,27 +24,24 @@ export type VisibilityPolicy =
   | 'CASE_SHARED';
 
 export type AuthorizationCapability =
-  | 'VIEW_RECORD'
-  | 'CREATE_CARE_UPDATE'
-  | 'ASK_QUESTION'
-  | 'ANSWER_QUESTION'
-  | 'RESOLVE_QUESTION'
-  | 'CREATE_ACTION'
-  | 'ASSIGN_ACTION'
-  | 'ACCEPT_ASSIGNED_ACTION'
-  | 'START_ASSIGNED_ACTION'
-  | 'COMPLETE_ASSIGNED_ACTION'
-  | 'REASSIGN_ACTION'
-  | 'INVITE_MEMBER'
-  | 'REVOKE_ACCESS';
+  | 'RECORD_VIEW'
+  | 'CARE_UPDATE_CREATE'
+  | 'CARE_UPDATE_CORRECT'
+  | 'QUESTION_ASK'
+  | 'QUESTION_ANSWER'
+  | 'QUESTION_RESOLVE'
+  | 'ACTION_CREATE'
+  | 'ACTION_ASSIGN'
+  | 'ACTION_ACCEPT'
+  | 'ACTION_DECLINE'
+  | 'ACTION_START'
+  | 'ACTION_COMPLETE'
+  | 'ACTION_RELINQUISH'
+  | 'ACTION_REASSIGN'
+  | 'ACCESS_INVITE'
+  | 'ACCESS_REVOKE';
 
-export type AuthorizationScope =
-  | 'AUTHOR_ONLY'
-  | 'DIRECT_PARTICIPANTS'
-  | 'FAMILY_TEAM'
-  | 'PROFESSIONAL_TEAM'
-  | 'EXPLICIT_GRANT'
-  | 'CASE_SHARED';
+export type AuthorizationScope = 'CASE' | 'RECORD';
 
 export interface ActorContext {
   accountId: string;
@@ -88,10 +85,13 @@ export interface AuthorizationGrant {
   source: { type: 'INVITATION' | 'DIRECT_GRANT' | 'MIGRATION'; id: string };
 }
 
-export interface IdentityMembershipReference {
+export interface CaseParticipantRef {
   identityId: IdentityId;
   membershipId: MembershipId;
 }
+
+/** @deprecated Use CaseParticipantRef. Kept as a source-compatible alias during IA-2. */
+export type IdentityMembershipReference = CaseParticipantRef;
 
 export interface RecordAuthorizationContext {
   recordId: string;
@@ -120,9 +120,21 @@ export interface CareUpdateContract {
   status: 'DRAFT' | 'PUBLISHED';
   category: 'OBSERVATION' | 'ARRANGEMENT' | 'HANDOFF' | 'OTHER';
   participantIdentities: IdentityMembershipReference[];
-  currentVersionId: string;
   authorization: RecordAuthorizationContext;
   auditEventIds: string[];
+}
+
+/** Published Care Update head is derived from append-only versions, never stored as a mutable pointer. */
+export function deriveCurrentCareUpdateVersion(
+  careUpdateId: string,
+  versions: CareUpdateVersionContract[]
+): CareUpdateVersionContract | null {
+  const matching = versions.filter((version) => version.careUpdateId === careUpdateId);
+  if (matching.length === 0) return null;
+  const highestVersion = Math.max(...matching.map((version) => version.version));
+  const heads = matching.filter((version) => version.version === highestVersion);
+  if (heads.length > 1) throw new Error('MULTIPLE_CURRENT_CARE_UPDATE_VERSIONS');
+  return heads[0];
 }
 
 export interface GrantRequirement {
@@ -206,19 +218,16 @@ export function authorizeThroughAnySingleGrant(input: {
   requirement: GrantRequirement;
   serverNow: string;
 }): AuthorizationDecision {
-  for (const path of input.paths) {
-    const decision = evaluateSingleGrantPath({ ...input, ...path });
-    if (decision.allowed) return decision;
-  }
+  const decisions = input.paths
+    .map((path) => evaluateSingleGrantPath({ ...input, ...path }))
+    .filter((decision): decision is Extract<AuthorizationDecision, { allowed: true }> => decision.allowed);
+  if (decisions.length > 1) throw new Error('MULTIPLE_COMPLETE_GRANT_PATHS');
+  if (decisions.length === 1) return decisions[0];
   return { allowed: false, reason: 'NO_SINGLE_GRANT_PATH' };
 }
 
 function isExactReference(actor: ActorContext, reference: IdentityMembershipReference) {
   return actor.identityId === reference.identityId && actor.membershipId === reference.membershipId;
-}
-
-function visibilityScope(visibility: VisibilityPolicy): AuthorizationScope {
-  return visibility;
 }
 
 export function canViewRecord(input: {
@@ -230,7 +239,7 @@ export function canViewRecord(input: {
   const { actor, record } = input;
   if (actor.caseId !== record.caseId) return { allowed: false, reason: 'CASE_MISMATCH' };
 
-  // Identity checks narrow visibility; an active VIEW_RECORD grant remains mandatory.
+  // Identity checks narrow visibility; an active RECORD_VIEW grant remains mandatory.
   if (record.visibility === 'AUTHOR_ONLY' && !isExactReference(actor, record.author)) {
     return { allowed: false, reason: 'NOT_AUTHOR' };
   }
@@ -255,7 +264,7 @@ export function canViewRecord(input: {
   return authorizeThroughAnySingleGrant({
     actor,
     paths,
-    requirement: { capability: 'VIEW_RECORD', scope: visibilityScope(record.visibility) },
+    requirement: { capability: 'RECORD_VIEW', scope: 'RECORD' },
     serverNow: input.serverNow
   });
 }
@@ -286,19 +295,33 @@ export interface ActionContract {
   sourceCareUpdateId: string | null;
   creator: IdentityMembershipReference;
   authorization: RecordAuthorizationContext;
-  currentResponsibilityCycleId: string | null;
   linkedQuestionId: string | null;
   serverCreatedAt: string;
   serverUpdatedAt: string;
   auditEventIds: string[];
 }
 
+const EFFECTIVE_RESPONSIBILITY_STATUSES: ResponsibilityStatus[] = ['ASSIGNED', 'ACCEPTED', 'IN_PROGRESS'];
+
+/** Current responsibility is derived; Action never stores an authoritative cycle pointer. */
+export function deriveCurrentResponsibilityCycle(
+  actionId: string,
+  responsibilities: ResponsibilityCycle[]
+): ResponsibilityCycle | null {
+  const effective = responsibilities.filter((cycle) =>
+    cycle.actionId === actionId
+    && cycle.endedAt === null
+    && EFFECTIVE_RESPONSIBILITY_STATUSES.includes(cycle.status));
+  if (effective.length > 1) throw new Error('MULTIPLE_EFFECTIVE_RESPONSIBILITY_CYCLES');
+  return effective[0] ?? null;
+}
+
 export type AssigneeOperation = 'ACCEPT' | 'START' | 'COMPLETE';
 
 const operationCapability: Record<AssigneeOperation, AuthorizationCapability> = {
-  ACCEPT: 'ACCEPT_ASSIGNED_ACTION',
-  START: 'START_ASSIGNED_ACTION',
-  COMPLETE: 'COMPLETE_ASSIGNED_ACTION'
+  ACCEPT: 'ACTION_ACCEPT',
+  START: 'ACTION_START',
+  COMPLETE: 'ACTION_COMPLETE'
 };
 
 const operationStatus: Record<AssigneeOperation, ResponsibilityStatus> = {
@@ -311,27 +334,26 @@ const operationStatus: Record<AssigneeOperation, ResponsibilityStatus> = {
 export function canPerformAssigneeOperation(input: {
   actor: ActorContext;
   action: ActionContract;
-  responsibility: ResponsibilityCycle;
+  responsibilities: ResponsibilityCycle[];
   operation: AssigneeOperation;
   paths: GrantPath[];
   serverNow: string;
 }): AuthorizationDecision {
-  if (input.action.caseId !== input.actor.caseId || input.responsibility.caseId !== input.actor.caseId) {
+  const responsibility = deriveCurrentResponsibilityCycle(input.action.id, input.responsibilities);
+  if (!responsibility) return { allowed: false, reason: 'NO_CURRENT_RESPONSIBILITY' };
+  if (input.action.caseId !== input.actor.caseId || responsibility.caseId !== input.actor.caseId) {
     return { allowed: false, reason: 'CASE_MISMATCH' };
   }
-  if (input.action.currentResponsibilityCycleId !== input.responsibility.id) {
-    return { allowed: false, reason: 'NOT_CURRENT_RESPONSIBILITY' };
-  }
-  if (!isExactReference(input.actor, input.responsibility.assignee)) {
+  if (!isExactReference(input.actor, responsibility.assignee)) {
     return { allowed: false, reason: 'NOT_CURRENT_ASSIGNEE' };
   }
-  if (input.responsibility.status !== operationStatus[input.operation]) {
+  if (responsibility.status !== operationStatus[input.operation]) {
     return { allowed: false, reason: 'INVALID_RESPONSIBILITY_STATE' };
   }
   return authorizeThroughAnySingleGrant({
     actor: input.actor,
     paths: input.paths,
-    requirement: { capability: operationCapability[input.operation], scope: 'DIRECT_PARTICIPANTS' },
+    requirement: { capability: operationCapability[input.operation], scope: 'RECORD' },
     serverNow: input.serverNow
   });
 }
@@ -351,17 +373,16 @@ export function transitionResponsibility(
 
 export function reassignResponsibility(input: {
   action: ActionContract;
-  current: ResponsibilityCycle;
+  responsibilities: ResponsibilityCycle[];
   nextCycleId: string;
   nextAssignee: IdentityMembershipReference;
   actor: ActorContext;
   serverNow: string;
 }): { action: ActionContract; history: ResponsibilityCycle[]; current: ResponsibilityCycle } {
-  if (input.action.currentResponsibilityCycleId !== input.current.id || input.current.status === 'ENDED') {
-    throw new Error('RESPONSIBILITY_NOT_CURRENT');
-  }
+  const current = deriveCurrentResponsibilityCycle(input.action.id, input.responsibilities);
+  if (!current) throw new Error('RESPONSIBILITY_NOT_CURRENT');
   const ended: ResponsibilityCycle = {
-    ...input.current,
+    ...current,
     status: 'ENDED',
     endedAt: input.serverNow,
     endReason: 'REASSIGNED'
@@ -381,7 +402,7 @@ export function reassignResponsibility(input: {
     endReason: null
   };
   return {
-    action: { ...input.action, status: 'ASSIGNED', currentResponsibilityCycleId: next.id },
+    action: { ...input.action, status: 'ASSIGNED' },
     history: [ended],
     current: next
   };
@@ -477,42 +498,67 @@ export function materializeInvitationAcceptance(input: {
   return { membership, relationship, grant };
 }
 
+export interface CursorOwner {
+  identityId: IdentityId;
+  membershipId: MembershipId;
+  caseId: CaseId;
+}
+
 export interface ServerActivityBoundary {
   source: 'SERVER';
+  owner: CursorOwner;
+  /** Opaque token returned by the server together with its monotonic sequence. */
+  value: string;
   sequence: number;
   recordedAt: string;
 }
 
 export interface ReadCursor {
-  identityId: IdentityId;
-  membershipId: MembershipId;
-  caseId: CaseId;
-  lastVisibleSequence: number;
+  owner: CursorOwner;
+  boundary: ServerActivityBoundary;
   serverRecordedAt: string;
+}
+
+export interface ReadCursorAdvanceResult {
+  cursor: ReadCursor;
+  resultingBoundary: ServerActivityBoundary;
 }
 
 /** The caller supplies a server-issued monotonic boundary; client wall-clock time is not accepted. */
 export function advanceReadCursor(input: {
   actor: ActorContext;
   current: ReadCursor | null;
-  boundary: ServerActivityBoundary;
-}): ReadCursor {
-  if (input.boundary.source !== 'SERVER' || !Number.isSafeInteger(input.boundary.sequence) || input.boundary.sequence < 0) {
-    throw new Error('INVALID_SERVER_BOUNDARY');
-  }
-  if (input.current && (
-    input.current.identityId !== input.actor.identityId
-    || input.current.membershipId !== input.actor.membershipId
-    || input.current.caseId !== input.actor.caseId
-  )) throw new Error('CURSOR_ACTOR_MISMATCH');
-  const sequence = Math.max(input.current?.lastVisibleSequence ?? 0, input.boundary.sequence);
-  return {
+  requestedBoundary: ServerActivityBoundary;
+}): ReadCursorAdvanceResult {
+  const actorOwner: CursorOwner = {
     identityId: input.actor.identityId,
     membershipId: input.actor.membershipId,
-    caseId: input.actor.caseId,
-    lastVisibleSequence: sequence,
-    serverRecordedAt: input.boundary.recordedAt
+    caseId: input.actor.caseId
   };
+  if (
+    input.requestedBoundary.source !== 'SERVER'
+    || !Number.isSafeInteger(input.requestedBoundary.sequence)
+    || input.requestedBoundary.sequence < 0
+  ) {
+    throw new Error('INVALID_SERVER_BOUNDARY');
+  }
+  if (!sameCursorOwner(input.requestedBoundary.owner, actorOwner)) throw new Error('CURSOR_BOUNDARY_OWNER_MISMATCH');
+  if (input.current && !sameCursorOwner(input.current.owner, actorOwner)) throw new Error('CURSOR_ACTOR_MISMATCH');
+  const resultingBoundary = input.current && input.current.boundary.sequence > input.requestedBoundary.sequence
+    ? input.current.boundary
+    : input.requestedBoundary;
+  const cursor: ReadCursor = {
+    owner: actorOwner,
+    boundary: resultingBoundary,
+    serverRecordedAt: resultingBoundary.recordedAt
+  };
+  return { cursor, resultingBoundary };
+}
+
+function sameCursorOwner(left: CursorOwner, right: CursorOwner) {
+  return left.identityId === right.identityId
+    && left.membershipId === right.membershipId
+    && left.caseId === right.caseId;
 }
 
 export type AuditEventType =

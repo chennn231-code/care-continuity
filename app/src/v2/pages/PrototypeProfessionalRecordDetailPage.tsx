@@ -4,7 +4,7 @@ import { currentActorProfessionalRecordProjection, familyProfessionalRecordProje
 
 export function PrototypeProfessionalRecordDetailPage() {
   const { caseId = 'demo-case', recordId = '' } = useParams();
-  const { state, setRole } = usePrototype();
+  const { state, selectActor } = usePrototype();
   const access = professionalRecordAccess(state, recordId);
   const record = access?.record;
   const versions = professionalRecordVersions(state, recordId);
@@ -14,7 +14,7 @@ export function PrototypeProfessionalRecordDetailPage() {
   return (
     <section className="v2-page v2-record-detail-page">
       <header className="v2-page-heading v2-heading-actions"><div><p className="eyebrow">已發布・版本 {record.versionNumber}</p><h1>{record.content.serviceDate} 專業照顧紀錄</h1><p>已發布內容不能直接覆寫；原始版本、作者與時間會保留。</p></div>{!viewingAsFamily && <Link className="secondary-button" to={`/v2/prototype/cases/${caseId}/records/${recordId}/correct`}>追加更正</Link>}</header>
-      <div className="v2-record-view-switch" role="group" aria-label="紀錄檢視情境"><button type="button" aria-pressed={!viewingAsFamily} onClick={() => setRole('NURSE')}>專業人員檢視</button><button type="button" aria-pressed={viewingAsFamily} onClick={() => setRole('FAMILY')}>家屬可見預覽</button></div>
+      <div className="v2-record-view-switch" role="group" aria-label="紀錄檢視情境">{state.members.filter((member) => member.caseId === caseId && member.status === 'ACTIVE').map((member) => <button type="button" aria-pressed={state.demoActorSelections[caseId]?.participant.membershipId === member.participant.membershipId} onClick={() => selectActor(caseId, member.participant, member.role)} key={member.participant.membershipId}>{member.name}檢視</button>)}</div>
       {viewingAsFamily ? <FamilyRecordView projection={familyView} /> : <ProfessionalRecordView record={record} />}
       {!viewingAsFamily && <section className="v2-card v2-record-version-history"><h2>版本歷程</h2><p>共 {versions.length} 個版本。更正會新增版本，不會讓原始紀錄消失。</p><ol>{[...versions].reverse().map((version) => <li key={version.id}><strong>版本 {version.versionNumber}</strong><span>{version.authorName}｜{new Date(version.recordedAt).toLocaleString('zh-TW')}</span>{version.correctionReason && <small>更正原因：{version.correctionReason}</small>}</li>)}</ol></section>}
     </section>

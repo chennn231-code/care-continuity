@@ -4,6 +4,7 @@ import { usePrototype } from '../state/PrototypeProvider';
 import type { ActionStatus } from '../types/prototype';
 import { useParams } from 'react-router-dom';
 import { currentActorCanViewQuestion, visibleActionsForCurrentActor } from '../state/caseCollaborationSelectors';
+import { currentPrototypeAssigneeProjection, demoActionOperationAvailability, demoQuestionOperationAvailability } from '../state/prototypeState';
 
 const nextStep: Partial<Record<ActionStatus, { status: ActionStatus; label: string }>> = {
   PENDING_ACCEPTANCE: { status: 'ACCEPTED', label: '接受這項指派' },
@@ -22,13 +23,14 @@ export function PrototypeActionsPage() {
       <div className="v2-principles"><span>指派不等於接受</span><span>接受不等於開始處理</span><span>事項完成不會自動解決問題</span></div>
       <div className="v2-action-list">{caseActions.map((action) => {
         const step = nextStep[action.status];
-        const canAct = action.assigneeRole === state.activeRole && step;
+        const canAct = step && demoActionOperationAvailability(state, action.id, step.status).allowed;
+        const assignee = currentPrototypeAssigneeProjection(state, action.id);
         const question = state.questions.find((item) => item.id === action.linkedQuestionId && currentActorCanViewQuestion(state, item));
         return <article className="v2-card v2-action-card" id={`action-${action.id}`} key={action.id}>
-          <div className="v2-card-heading"><div><StatusPill tone={action.status === 'COMPLETED' ? 'complete' : action.status === 'PENDING_ACCEPTANCE' ? 'pending' : 'active'}>{ACTION_STATUS_LABELS[action.status]}</StatusPill><h2>{action.title}</h2></div><strong>{DEMO_ROLE_LABELS[action.assigneeRole]}</strong></div>
-          <p>{action.detail}</p><dl className="v2-meta-grid"><div><dt>虛構負責人</dt><dd>{action.assigneeName}</dd></div><div><dt>期限</dt><dd>{new Date(action.dueAt).toLocaleString('zh-TW')}</dd></div></dl>
-          {canAct ? <button className="primary-button" type="button" onClick={() => moveAction(action.id, step.status)}>{step.label}</button> : <p className="v2-scope-note">目前模擬身分不能執行這一步，請切換至 {DEMO_ROLE_LABELS[action.assigneeRole]}</p>}
-          {question && <section className="v2-linked-question" id={`question-${question.id}`}><h3>相關問題</h3><p>{question.text}</p><p>問題狀態：<strong>{QUESTION_STATUS_LABELS[question.status]}</strong></p>{question.status !== 'RESOLVED' && state.activeRole === 'FAMILY' && <button className="secondary-button" type="button" onClick={() => markQuestionResolved(question.id)}>標示問題已解決</button>}</section>}
+          <div className="v2-card-heading"><div><StatusPill tone={action.status === 'COMPLETED' ? 'complete' : action.status === 'PENDING_ACCEPTANCE' ? 'pending' : 'active'}>{ACTION_STATUS_LABELS[action.status]}</StatusPill><h2>{action.title}</h2></div>{assignee?.displayRole && <strong>{DEMO_ROLE_LABELS[assignee.displayRole]}</strong>}</div>
+          <p>{action.detail}</p><dl className="v2-meta-grid"><div><dt>目前虛構負責人</dt><dd>{assignee?.displayName ?? '目前沒有負責人'}</dd></div><div><dt>期限</dt><dd>{new Date(action.dueAt).toLocaleString('zh-TW')}</dd></div></dl>
+          {canAct && step ? <button className="primary-button" type="button" onClick={() => moveAction(action.id, step.status)}>{step.label}</button> : <p className="v2-scope-note">目前具體參與者的虛構授權路徑不能執行這一步</p>}
+          {question && <section className="v2-linked-question" id={`question-${question.id}`}><h3>相關問題</h3><p>{question.text}</p><p>問題狀態：<strong>{QUESTION_STATUS_LABELS[question.status]}</strong></p>{question.status !== 'RESOLVED' && demoQuestionOperationAvailability(state, question.id).allowed && <button className="secondary-button" type="button" onClick={() => markQuestionResolved(question.id)}>標示問題已解決</button>}</section>}
         </article>;
       })}</div>
       {caseActions.length === 0 && <section className="v2-empty-state"><h2>目前沒有可見的處理事項</h2><p>此頁不顯示未授權事項或其數量。</p></section>}

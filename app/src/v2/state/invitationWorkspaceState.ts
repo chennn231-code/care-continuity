@@ -1,8 +1,9 @@
-import { currentActorGrantPaths } from './prototypeState';
+import { currentActorGrantPaths, nextDemoActivitySequence, sameParticipant, type DemoOperationAvailability } from './prototypeState';
 import type {
   InvitationEffectiveStatus,
   PrototypeInvitation,
   PrototypeInvitationInput,
+  PrototypeResponsibilityHistory,
   PrototypeState,
   PrototypeWorkspaceCase,
   VerificationStatus,
@@ -10,6 +11,12 @@ import type {
 } from '../types/prototype';
 
 export const PROTOTYPE_CLOCK = new Date('2026-08-25T12:00:00+08:00');
+
+function invitationById(state: PrototypeState, invitationId: string) {
+  const matches = state.invitations.filter((item) => item.id === invitationId);
+  if (matches.length > 1) throw new Error('MULTIPLE_EXACT_INVITATIONS');
+  return matches[0] ?? null;
+}
 
 function dateOnlyStartsAt(value: string) {
   return new Date(`${value}T00:00:00+08:00`).getTime();
@@ -33,12 +40,10 @@ export function effectiveInvitationStatus(invitation: PrototypeInvitation, now =
 }
 
 function currentIdentityForRecipient(state: PrototypeState, invitation: PrototypeInvitation) {
-  const linked = invitation.recipientIdentityId
-    ? state.identities.find((identity) => identity.id === invitation.recipientIdentityId)
-    : null;
-  if (linked) return linked;
-  const expectedType = invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'FAMILY';
-  return state.identities.find((identity) => identity.accountId === state.currentAccountId && identity.identityType === expectedType) ?? null;
+  if (!invitation.recipientIdentityId) return null;
+  const matches = state.identities.filter((identity) => identity.id === invitation.recipientIdentityId);
+  if (matches.length > 1) throw new Error('MULTIPLE_INVITATION_RECIPIENT_IDENTITIES');
+  return matches[0] ?? null;
 }
 
 export function invitationVerificationStatus(state: PrototypeState, invitation: PrototypeInvitation): VerificationStatus {
@@ -65,7 +70,7 @@ export function invitationsForCurrentAccount(state: PrototypeState) {
 }
 
 export function canViewInvitationPreview(state: PrototypeState, invitationId: string) {
-  const invitation = state.invitations.find((item) => item.id === invitationId);
+  const invitation = invitationById(state, invitationId);
   return Boolean(invitation
     && effectiveInvitationStatus(invitation) === 'INVITED'
     && invitationBelongsToCurrentAccount(state, invitation)
@@ -74,18 +79,16 @@ export function canViewInvitationPreview(state: PrototypeState, invitationId: st
 
 export function invitationForPreview(state: PrototypeState, invitationId: string) {
   if (!canViewInvitationPreview(state, invitationId)) return null;
-  return state.invitations.find((item) => item.id === invitationId) ?? null;
+  return invitationById(state, invitationId);
 }
 
 export function simulateInvitationLogin(state: PrototypeState, invitationId: string): PrototypeState {
-  const invitation = state.invitations.find((item) => item.id === invitationId);
+  const invitation = invitationById(state, invitationId);
   if (!invitation || effectiveInvitationStatus(invitation) !== 'INVITED') {
     return { ...state, successMessage: '目前無法使用此邀請' };
   }
   const expectedType = invitation.recipientType === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'FAMILY';
-  let identity = invitation.recipientIdentityId
-    ? state.identities.find((item) => item.id === invitation.recipientIdentityId)
-    : state.identities.find((item) => item.accountId === state.currentAccountId && item.identityType === expectedType);
+  let identity = currentIdentityForRecipient(state, invitation) ?? undefined;
   let identities = [...state.identities];
   if (!identity) {
     identity = {
@@ -118,7 +121,22 @@ export function canCurrentActorAccessCase(state: PrototypeState, caseId: string,
 }
 
 export function canManageCaseInvitations(state: PrototypeState, caseId: string, now = PROTOTYPE_CLOCK) {
-  return currentActorGrantPaths(state, caseId, now).some(({ grant }) => grant.capabilities.includes('MANAGE_MEMBERS'));
+  return demoAccessOperationAvailability(state, caseId, 'INVITE', now).allowed;
+}
+
+export function demoAccessOperationAvailability(
+  state: PrototypeState,
+  caseId: string,
+  operation: 'INVITE' | 'REVOKE',
+  now = PROTOTYPE_CLOCK
+): DemoOperationAvailability {
+  const capability = operation === 'INVITE' ? 'ACCESS_INVITE' : 'ACCESS_REVOKE';
+  const paths = currentActorGrantPaths(state, caseId, now).filter(({ grant }) =>
+    grant.targetScopes.includes('CASE') && grant.capabilities.includes(capability));
+  if (paths.length > 1) return { source: 'DEMO_NON_AUTHORITATIVE', allowed: false, unavailableReason: 'AMBIGUOUS_DEMO_PATH' };
+  return paths.length === 1
+    ? { source: 'DEMO_NON_AUTHORITATIVE', allowed: true }
+    : { source: 'DEMO_NON_AUTHORITATIVE', allowed: false, unavailableReason: 'NO_DEMO_PATH' };
 }
 
 export function prototypeDemoCaseEntryPath(state: PrototypeState) {
@@ -126,17 +144,8 @@ export function prototypeDemoCaseEntryPath(state: PrototypeState) {
 }
 
 export function managerReassignmentItems(state: PrototypeState, caseId: string, now = PROTOTYPE_CLOCK) {
-  if (!canCurrentActorAccessCase(state, caseId, now)) return [];
-  const hasManagerPath = state.roleGrants.some((grant) => {
-    const membership = state.memberships.find((item) => item.id === grant.membershipId && item.caseId === caseId && item.status === 'ACTIVE');
-    if (!membership || !grant.capabilities.includes('MANAGE_MEMBERS')) return false;
-    const identity = state.identities.find((item) => item.id === membership.identityId && item.accountId === state.currentAccountId && item.verificationStatus === 'VERIFIED');
-    if (!identity) return false;
-    if (grant.actingRole !== state.activeRole) return false;
-    if (grant.startsAt && now.getTime() < dateOnlyStartsAt(grant.startsAt)) return false;
-    if (grant.validUntil && now.getTime() > dateOnlyEndsAt(grant.validUntil)) return false;
-    return true;
-  });
+  const hasManagerPath = currentActorGrantPaths(state, caseId, now)
+    .some(({ grant }) => grant.targetScopes.includes('RECORD') && grant.capabilities.includes('ACTION_REASSIGN'));
   if (!hasManagerPath) return [];
   return state.actions
     .filter((action) => action.caseId === caseId && action.status === 'NEEDS_REASSIGNMENT')
@@ -158,10 +167,7 @@ export function createPrototypeInvitation(
   input: PrototypeInvitationInput,
   now = PROTOTYPE_CLOCK
 ): PrototypeState {
-  const authorized = currentActorGrantPaths(state, input.caseId, now).some(({ grant }) =>
-    grant.capabilities.includes('MANAGE_MEMBERS')
-    && grant.sharingScopes.length > 0
-    && grant.purpose.trim().length > 0);
+  const authorized = demoAccessOperationAvailability(state, input.caseId, 'INVITE', now).allowed;
   if (!authorized) return { ...state, successMessage: '目前沒有建立此個案邀請的權限' };
   const serial = state.invitations.length + 1;
   const id = `invite-created-${serial}`;
@@ -177,6 +183,9 @@ export function createPrototypeInvitation(
     roleLabel: input.roleLabel,
     purpose: input.purpose,
     scopeSummary: input.scopeSummary,
+    proposedTargetScopes: ['RECORD'],
+    proposedSharingScopes: ['SHARED_CARE'],
+    proposedCapabilities: ['RECORD_VIEW'],
     serviceStartsAt: input.serviceStartsAt,
     serviceEndsAt: input.serviceEndsAt,
     expiresAt: addDays(now, 7).toISOString(),
@@ -193,7 +202,7 @@ export function createPrototypeInvitation(
 }
 
 export function declinePrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
-  const invitation = state.invitations.find((item) => item.id === invitationId);
+  const invitation = invitationById(state, invitationId);
   if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED' || !canViewInvitationPreview(state, invitationId)) return state;
   return {
     ...state,
@@ -203,8 +212,9 @@ export function declinePrototypeInvitation(state: PrototypeState, invitationId: 
 }
 
 export function revokePrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
-  const invitation = state.invitations.find((item) => item.id === invitationId);
-  if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED' || !canManageCaseInvitations(state, invitation.caseId, now)) return state;
+  const invitation = invitationById(state, invitationId);
+  const canRevoke = invitation && demoAccessOperationAvailability(state, invitation.caseId, 'REVOKE', now).allowed;
+  if (!invitation || effectiveInvitationStatus(invitation, now) !== 'INVITED' || !canRevoke) return state;
   return {
     ...state,
     invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, status: 'REVOKED' } : item),
@@ -213,7 +223,7 @@ export function revokePrototypeInvitation(state: PrototypeState, invitationId: s
 }
 
 export function resendPrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
-  const source = state.invitations.find((item) => item.id === invitationId);
+  const source = invitationById(state, invitationId);
   if (!source || effectiveInvitationStatus(source, now) === 'ACCEPTED' || !canManageCaseInvitations(state, source.caseId, now)) return state;
   const serial = state.invitations.length + 1;
   const replacementId = `invite-resent-${serial}`;
@@ -238,7 +248,7 @@ export function setProfessionalVerification(
   invitationId: string,
   verificationStatus: Extract<VerificationStatus, 'VERIFIED' | 'REJECTED'>
 ): PrototypeState {
-  const invitation = state.invitations.find((item) => item.id === invitationId);
+  const invitation = invitationById(state, invitationId);
   if (!invitation || invitation.recipientType !== 'PROFESSIONAL' || !invitation.recipientIdentityId || !canViewInvitationPreview(state, invitationId)) return state;
   return {
     ...state,
@@ -264,7 +274,7 @@ function workspaceCaseFromInvitation(invitation: PrototypeInvitation, accessStat
 }
 
 export function acceptPrototypeInvitation(state: PrototypeState, invitationId: string, now = PROTOTYPE_CLOCK): PrototypeState {
-  const invitation = state.invitations.find((item) => item.id === invitationId);
+  const invitation = invitationById(state, invitationId);
   if (!invitation || !canAcceptInvitation(state, invitation, now)) {
     return { ...state, successMessage: '目前不能接受此邀請，請檢查驗證、期限與服務期間' };
   }
@@ -283,6 +293,7 @@ export function acceptPrototypeInvitation(state: PrototypeState, invitationId: s
     caseId: invitation.caseId,
     name: invitation.recipientType === 'PROFESSIONAL' ? '陳護理師' : '受邀家屬',
     role: actingRole,
+    participant: { identityId: identity.id, membershipId },
     relationship: invitation.roleLabel,
     purpose: invitation.purpose,
     scopeSummary: invitation.scopeSummary,
@@ -307,14 +318,17 @@ export function acceptPrototypeInvitation(state: PrototypeState, invitationId: s
       membershipId,
       actingRole,
       purpose: invitation.purpose,
-      sharingScopes: ['SHARED_CARE', 'DIRECT_PARTICIPANTS'],
-      capabilities: invitation.recipientType === 'PROFESSIONAL'
-        ? ['VIEW_PROFESSIONAL_CASE', 'VIEW_SHARED_CARE', 'ADD_UPDATE', 'CREATE_PROFESSIONAL_RECORD']
-        : ['VIEW_SHARED_CARE', 'ADD_UPDATE', 'RESOLVE_QUESTION'],
+      targetScopes: [...invitation.proposedTargetScopes],
+      sharingScopes: [...invitation.proposedSharingScopes],
+      capabilities: [...invitation.proposedCapabilities],
       startsAt: invitation.serviceStartsAt,
       validUntil: invitation.serviceEndsAt
     }],
     members: [...state.members.filter((item) => item.id !== caseMember.id), caseMember],
+    demoActorSelections: {
+      ...state.demoActorSelections,
+      [invitation.caseId]: { participant: caseMember.participant, displayRole: actingRole }
+    },
     invitations: state.invitations.map((item) => item.id === invitationId ? { ...item, status: 'ACCEPTED' } : item),
     workspaceCases: [...state.workspaceCases.filter((item) => item.id !== invitation.caseId), workspaceCase],
     successMessage: isFuture ? '已接受，等待服務開始，目前不顯示個案內容' : '已接受虛構邀請，個案已加入我的個案'
@@ -354,44 +368,74 @@ export function removeWorkspaceCaseAccess(
   caseId: string,
   reason: Extract<WorkspaceCaseAccessStatus, 'EXPIRED' | 'REVOKED'>
 ): PrototypeState {
-  const lostMembershipIds = state.roleGrants
-    .filter((grant) => grant.actingRole === state.activeRole)
-    .map((grant) => grant.membershipId)
-    .filter((membershipId) => state.memberships.some((item) => item.id === membershipId && item.caseId === caseId));
-  const reassignedActions = state.actions.filter((item) => item.caseId === caseId && item.assigneeRole === state.activeRole && (item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS'));
-  const otherActivePathRemains = state.roleGrants.some((grant) => grant.actingRole !== state.activeRole && state.memberships.some((membership) => membership.id === grant.membershipId && membership.caseId === caseId && membership.status === 'ACTIVE'));
+  const lostParticipant = state.demoActorSelections[caseId]?.participant ?? null;
+  if (!lostParticipant) return state;
+  const exactMemberships = state.memberships.filter((membership) =>
+    membership.id === lostParticipant.membershipId
+    && membership.identityId === lostParticipant.identityId
+    && membership.caseId === caseId);
+  if (exactMemberships.length === 0) return state;
+  if (exactMemberships.length > 1) throw new Error('MULTIPLE_EXACT_ACCESS_REMOVAL_MEMBERSHIPS');
+  const affectedCycles = state.responsibilityCycles.filter((cycle) =>
+    cycle.caseId === caseId
+    && cycle.endedAt === null
+    && (cycle.status === 'ASSIGNED' || cycle.status === 'ACCEPTED' || cycle.status === 'IN_PROGRESS')
+    && sameParticipant(lostParticipant, cycle.assignee));
+  const reassignedActions = state.actions.filter((item) => affectedCycles.some((cycle) => cycle.actionId === item.id));
+  const firstActivitySequence = nextDemoActivitySequence(state, caseId);
   return {
     ...state,
-    workspaceCases: state.workspaceCases.map((item) => item.id === caseId ? { ...item, accessStatus: otherActivePathRemains ? 'ACTIVE' : reason } : item),
+    // Workspace Case metadata is shared fixture presentation, not per-participant
+    // access truth. Exact Membership status below removes only the target actor.
+    workspaceCases: state.workspaceCases,
     privateTagAssignments: state.privateTagAssignments.filter((item) => item.caseId !== caseId),
-    memberships: state.memberships.map((item) => lostMembershipIds.includes(item.id) ? { ...item, status: reason } : item),
+    memberships: state.memberships.map((item) =>
+      item.id === lostParticipant.membershipId
+      && item.identityId === lostParticipant.identityId
+      && item.caseId === caseId
+        ? { ...item, status: reason }
+        : item),
     actions: state.actions.map((item) => reassignedActions.some((action) => action.id === item.id)
       ? { ...item, status: 'NEEDS_REASSIGNMENT' }
       : item),
+    responsibilityCycles: state.responsibilityCycles.map((cycle) => affectedCycles.some((affected) => affected.id === cycle.id)
+      ? { ...cycle, status: 'ENDED', endedAt: PROTOTYPE_CLOCK.toISOString() }
+      : cycle),
     responsibilityHistory: [
       ...state.responsibilityHistory,
-      ...reassignedActions.map((item, index) => ({
+      ...affectedCycles.map((cycle, index) => {
+        const item = state.actions.find((action) => action.id === cycle.actionId)!;
+        const member = state.members.find((candidate) => sameParticipant(candidate.participant, cycle.assignee));
+        return {
         id: `responsibility-history-${item.id}-${state.responsibilityHistory.length + index + 1}`,
         caseId,
         actionId: item.id,
-        formerAssigneeName: item.assigneeName,
-        previousStatus: item.status as 'ACCEPTED' | 'IN_PROGRESS',
+        formerAssigneeName: member?.name ?? '虛構個案成員',
+        formerAssignee: cycle.assignee,
+        formerAssigneeDisplayRole: member?.role ?? state.activeRole,
+        previousStatus: cycle.status as PrototypeResponsibilityHistory['previousStatus'],
         endedAt: PROTOTYPE_CLOCK.toISOString(),
+        activitySequence: firstActivitySequence + index * 2,
         reason: reason === 'EXPIRED' ? 'SERVICE_EXPIRED' as const : 'MEMBERSHIP_REVOKED' as const,
         summary: reason === 'EXPIRED' ? '原負責人因服務到期而結束責任週期' : '原負責人因個案關係撤銷而結束責任週期'
-      }))
+      }; })
     ],
     actionStatusHistory: [
       ...state.actionStatusHistory,
-      ...reassignedActions.map((item, index) => ({
+      ...affectedCycles.map((cycle, index) => {
+        const item = state.actions.find((action) => action.id === cycle.actionId)!;
+        const member = state.members.find((candidate) => sameParticipant(candidate.participant, cycle.assignee));
+        return {
         id: `action-status-history-${item.id}-${state.actionStatusHistory.length + index + 1}`,
         caseId,
         actionId: item.id,
         fromStatus: item.status,
         toStatus: 'NEEDS_REASSIGNMENT' as const,
-        actorRole: state.activeRole,
-        changedAt: PROTOTYPE_CLOCK.toISOString()
-      }))
+        actor: cycle.assignee,
+        actorDisplayRole: member?.role ?? state.activeRole,
+        changedAt: PROTOTYPE_CLOCK.toISOString(),
+        activitySequence: firstActivitySequence + index * 2 + 1
+      }; })
     ],
     successMessage: reason === 'EXPIRED'
       ? '服務期間已結束，個案與私人分類關聯已從可見集合移除'

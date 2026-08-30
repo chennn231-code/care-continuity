@@ -56,8 +56,8 @@ describe('v2 prototype identity and permission contract', () => {
   it('does not equate case membership with access to every sharing scope', () => {
     const state = createInitialPrototypeState();
     const paths = validGrantPaths(state, 'demo-case');
-    expect(anySingleGrantPathAllows(paths, ['VIEW_SHARED_CARE'], 'SHARED_CARE')).toBe(true);
-    expect(anySingleGrantPathAllows(paths, ['VIEW_SHARED_CARE'], 'AUTHOR_ONLY')).toBe(false);
+    expect(anySingleGrantPathAllows(paths, ['RECORD_VIEW'], 'RECORD')).toBe(true);
+    expect(anySingleGrantPathAllows(paths, ['RECORD_VIEW'], 'CASE')).toBe(true);
   });
 
   it('does not give a case manager collaboration administration by profession title', () => {
@@ -88,12 +88,12 @@ describe('v2 prototype identity and permission contract', () => {
       { id: 'nurse-member', identityId: nurse.id, caseId: 'demo-case', relationship: 'PROFESSIONAL_SERVICE', status: 'ACTIVE', validUntil: null }
     ];
     const roleGrants: MockRoleGrant[] = [
-      { id: 'family-grant', membershipId: 'family-member', actingRole: 'FAMILY', purpose: '家庭共同照顧', sharingScopes: ['FAMILY_ONLY'], capabilities: ['RESOLVE_QUESTION'], validUntil: null },
-      { id: 'nurse-grant', membershipId: 'nurse-member', actingRole: 'NURSE', purpose: '護理服務', sharingScopes: ['SHARED_CARE'], capabilities: ['ADD_UPDATE'], validUntil: null }
+      { id: 'family-grant', membershipId: 'family-member', actingRole: 'FAMILY', purpose: '家庭共同照顧', targetScopes: ['RECORD'], sharingScopes: ['FAMILY_ONLY'], capabilities: ['QUESTION_RESOLVE'], validUntil: null },
+      { id: 'nurse-grant', membershipId: 'nurse-member', actingRole: 'NURSE', purpose: '護理服務', targetScopes: ['CASE'], sharingScopes: ['SHARED_CARE'], capabilities: ['CARE_UPDATE_CREATE'], validUntil: null }
     ];
     const paths = validGrantPaths({ ...createInitialPrototypeState(), identities: [family, nurse], memberships, roleGrants }, 'demo-case');
     expect(shouldChooseActingContext(paths)).toBe(true);
-    expect(anySingleGrantPathAllows(paths, ['RESOLVE_QUESTION', 'ADD_UPDATE'], 'SHARED_CARE')).toBe(false);
+    expect(anySingleGrantPathAllows(paths, ['QUESTION_RESOLVE', 'CARE_UPDATE_CREATE'], 'CASE')).toBe(false);
   });
 
   it('resets registration state when the in-memory prototype is recreated', () => {
