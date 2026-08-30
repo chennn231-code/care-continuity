@@ -10,6 +10,7 @@ export const REGISTRY_RESOLVER_ID = 'WINWIN_PUBLIC_REGISTRY_METADATA_V1';
 const CONTRACT_URL = new URL('../contracts/registry-digest-resolver-contract.json', import.meta.url);
 const MODULE_URL = new URL(import.meta.url);
 const SHA = /^sha256:[0-9a-f]{64}$/;
+const BEARER_TOKEN = /^[A-Za-z0-9._~+\/-]+=*$/;
 const REPOSITORY = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/;
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const PROTECTED_HEADER_RULES = Object.freeze({
@@ -43,7 +44,7 @@ const body = (response, maximum, code) => {
 const mediaType = value => typeof value === 'string' ? value.split(';', 1)[0].trim() : '';
 
 export function validateRegistryResolverContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'approved_sources', 'network_policy', 'protected_header_policy', 'response_cookie_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'approved_sources', 'network_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
   demand(contract.schema_version === '1' && contract.contract_type === REGISTRY_RESOLVER_TYPE && contract.resolver_id === REGISTRY_RESOLVER_ID && contract.resolver_version === '1.0.0', 'REGISTRY_CONTRACT_TYPE');
   exact(contract.target_platform, ['os', 'architecture', 'variant'], 'REGISTRY_PLATFORM');
   demand(contract.target_platform.os === 'linux' && contract.target_platform.architecture === 'arm64' && contract.target_platform.variant === 'v8', 'REGISTRY_PLATFORM_VALUE');
@@ -67,6 +68,11 @@ export function validateRegistryResolverContract(contract) {
   demand(cookies.mode === 'RECEIVE_NON_PARTICIPATING_RESPONSE_ONLY' && cookies.allowed_host === 'auth.docker.io' && cookies.allowed_endpoint === '/token' && cookies.allowed_request_purpose === 'ANONYMOUS_TOKEN', 'REGISTRY_COOKIE_CONTEXT');
   demand(cookies.request_credentials === 'NONE' && cookies.outbound_cookie_header === 'FORBIDDEN' && cookies.cookie_jar === 'FORBIDDEN' && cookies.replay === 'FORBIDDEN', 'REGISTRY_COOKIE_REQUEST_POLICY');
   demand(cookies.persistence === 'FORBIDDEN' && cookies.logging === 'FORBIDDEN' && cookies.trust === 'FORBIDDEN' && cookies.low_level_audit_projection === 'PRESENCE_COUNT_ONLY' && cookies.higher_level_visibility === 'NONE' && cookies.all_other_contexts === 'REJECT', 'REGISTRY_COOKIE_DATA_POLICY');
+  const tokens = exact(contract.token_response_policy, ['mode', 'content_type', 'accepted_fields', 'coexistence', 'value_type', 'minimum_length', 'maximum_length', 'whitespace', 'control_characters', 'duplicate_json_keys', 'allowed_metadata_fields', 'expires_in', 'issued_at', 'unknown_fields', 'token_interpretation', 'persistence'], 'REGISTRY_TOKEN_POLICY');
+  demand(tokens.mode === 'TOKEN_AND_ACCESS_TOKEN_EQUIVALENT_ALLOWED' && tokens.content_type === 'APPLICATION_JSON' && JSON.stringify(tokens.accepted_fields) === JSON.stringify(['token', 'access_token']) && tokens.coexistence === 'BYTE_IDENTICAL_REQUIRED', 'REGISTRY_TOKEN_FIELD_POLICY');
+  demand(tokens.value_type === 'OPAQUE_RFC6750_B64TOKEN_STRING' && tokens.minimum_length === 1 && tokens.maximum_length === 16384 && tokens.whitespace === 'FORBIDDEN' && tokens.control_characters === 'FORBIDDEN', 'REGISTRY_TOKEN_VALUE_POLICY');
+  demand(tokens.duplicate_json_keys === 'REJECT_ALL_DEPTHS' && JSON.stringify(tokens.allowed_metadata_fields) === JSON.stringify(['expires_in', 'issued_at']) && tokens.expires_in === 'OPTIONAL_SAFE_INTEGER_MINIMUM_60' && tokens.issued_at === 'OPTIONAL_RFC3339_UTC_STRING', 'REGISTRY_TOKEN_METADATA_POLICY');
+  demand(tokens.unknown_fields === 'REJECT' && tokens.token_interpretation === 'OPAQUE_NO_DECODE' && tokens.persistence === 'IN_MEMORY_ONLY', 'REGISTRY_TOKEN_HANDLING_POLICY');
   const layers = exact(contract.layer_policy, ['filesystem_layers', 'config_blob', 'config_blob_requests_per_role'], 'REGISTRY_LAYERS');
   demand(layers.filesystem_layers === 'FORBIDDEN' && layers.config_blob === 'ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR' && layers.config_blob_requests_per_role === 1, 'REGISTRY_LAYER_POLICY');
   const attempts = exact(contract.attempt_policy, ['logical_attempts_per_role', 'initial_manifest_requests', 'anonymous_token_exchanges', 'authenticated_manifest_requests', 'child_manifest_requests', 'config_blob_requests', 'retry', 'tag_substitution', 'fallback_registry'], 'REGISTRY_ATTEMPTS');
@@ -260,13 +266,37 @@ function safeConfigProjection(config, platform, platformProvenByIndex) {
   return { projection, sha256: hash(Buffer.from(canonical(projection), 'utf8')) };
 }
 
+function validRfc3339Utc(value) {
+  if (typeof value !== 'string') return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?Z$/.exec(value);
+  if (!match) return false;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) return false;
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+export function parseRegistryTokenResponse(bytes, contract) {
+  validateRegistryResolverContract(contract);
+  demand(Buffer.isBuffer(bytes) && bytes.length > 0 && bytes.length <= contract.bounds.token_body_bytes, 'REGISTRY_TOKEN_BODY');
+  const value = parseJson(bytes, 'REGISTRY_TOKEN_JSON');
+  demand(object(value), 'REGISTRY_TOKEN_JSON');
+  const policy = contract.token_response_policy;
+  const allowed = [...policy.accepted_fields, ...policy.allowed_metadata_fields];
+  demand(Object.keys(value).every(key => allowed.includes(key)), 'REGISTRY_TOKEN_FIELDS');
+  const present = policy.accepted_fields.filter(key => Object.hasOwn(value, key));
+  demand(present.length >= 1, 'REGISTRY_TOKEN_VALUE');
+  for (const key of present) demand(typeof value[key] === 'string' && value[key].length >= policy.minimum_length && value[key].length <= policy.maximum_length && BEARER_TOKEN.test(value[key]), 'REGISTRY_TOKEN_VALUE');
+  if (present.length === 2) demand(value.token === value.access_token, 'REGISTRY_TOKEN_CONFLICT');
+  if (Object.hasOwn(value, 'expires_in')) demand(Number.isSafeInteger(value.expires_in) && value.expires_in >= 60, 'REGISTRY_TOKEN_EXPIRES');
+  if (Object.hasOwn(value, 'issued_at')) demand(validRfc3339Utc(value.issued_at), 'REGISTRY_TOKEN_ISSUED_AT');
+  return value[present[0]];
+}
+
 function tokenFromResponse(response, contract) {
   responseStatus(response, 'REGISTRY_TOKEN_STATUS');
-  const value = parseJson(body(response, contract.bounds.token_body_bytes, 'REGISTRY_TOKEN_BODY'), 'REGISTRY_TOKEN_JSON');
-  demand(object(value), 'REGISTRY_TOKEN_JSON');
-  const present = ['token', 'access_token'].filter(key => typeof value[key] === 'string' && value[key].length > 0);
-  demand(present.length === 1 && value[present[0]].length <= 16384, 'REGISTRY_TOKEN_VALUE');
-  return value[present[0]];
+  demand(mediaType(header(response.headers, 'content-type')) === 'application/json', 'REGISTRY_TOKEN_CONTENT_TYPE');
+  return parseRegistryTokenResponse(body(response, contract.bounds.token_body_bytes, 'REGISTRY_TOKEN_BODY'), contract);
 }
 
 export async function resolveRegistryDigest({ contract, role, sourceReference, request, resolverSha256, clock = () => new Date() }) {

@@ -55,6 +55,24 @@
     "higher_level_visibility": "NONE",
     "all_other_contexts": "REJECT"
   },
+  "token_response_policy": {
+    "mode": "TOKEN_AND_ACCESS_TOKEN_EQUIVALENT_ALLOWED",
+    "content_type": "APPLICATION_JSON",
+    "accepted_fields": ["token", "access_token"],
+    "coexistence": "BYTE_IDENTICAL_REQUIRED",
+    "value_type": "OPAQUE_RFC6750_B64TOKEN_STRING",
+    "minimum_length": 1,
+    "maximum_length": 16384,
+    "whitespace": "FORBIDDEN",
+    "control_characters": "FORBIDDEN",
+    "duplicate_json_keys": "REJECT_ALL_DEPTHS",
+    "allowed_metadata_fields": ["expires_in", "issued_at"],
+    "expires_in": "OPTIONAL_SAFE_INTEGER_MINIMUM_60",
+    "issued_at": "OPTIONAL_RFC3339_UTC_STRING",
+    "unknown_fields": "REJECT",
+    "token_interpretation": "OPAQUE_NO_DECODE",
+    "persistence": "IN_MEMORY_ONLY"
+  },
   "layer_policy": {
     "filesystem_layers": "FORBIDDEN",
     "config_blob": "ALLOWED_AS_NON_FILESYSTEM_METADATA_BY_EXACT_CHILD_DESCRIPTOR",
