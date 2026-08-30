@@ -1,0 +1,85 @@
+{
+  "schema_version": "1",
+  "contract_type": "FOUNDATION_PLANNED_CONFIG",
+  "purpose": "IA-3A_SCHEMA_RUNTIME_VALIDATION",
+  "reservation_binding": {
+    "project_id": "wwfnd-20260830t060320z-b10f6599de24",
+    "session_root": "/private/tmp/winwin-fnd-spike.2e8c9584",
+    "required_state": "ACTIVE",
+    "required_active_count": 1,
+    "required_ended_count": 0
+  },
+  "destination": {
+    "project_root_relative": "project",
+    "config_directory_relative": "project/supabase",
+    "config_path_relative": "project/supabase/config.toml",
+    "config_path_absolute": "/private/tmp/winwin-fnd-spike.2e8c9584/project/supabase/config.toml",
+    "staging_path_relative": "evidence-private/config-materialization.source.toml",
+    "allowed_project_entries": ["supabase"],
+    "allowed_config_entries": ["config.toml"]
+  },
+  "format": {
+    "format_id": "FOUNDATION_MINIMAL_SUPABASE_TOML_V1",
+    "template_id": "GENERATED_FROM_FROZEN_CONTRACT_NO_SOURCE_COPY",
+    "encoding": "UTF-8_NO_BOM",
+    "line_ending": "LF",
+    "final_newline": true,
+    "authoritative_field": "project_id",
+    "authoritative_lexical_form": "project_id = \"<VALUE>\""
+  },
+  "static_values": {
+    "project_id": "wwfnd-20260830t060320z-b10f6599de24",
+    "db.port": 59322,
+    "db.shadow_port": 59320,
+    "api.port": 59321,
+    "studio.port": 59323,
+    "local_smtp.port": 59324,
+    "local_smtp.smtp_port": 59325,
+    "local_smtp.pop3_port": 59326,
+    "analytics.port": 59327,
+    "edge_runtime.inspector_port": 59328,
+    "db.pooler.port": 59329,
+    "db.migrations.enabled": false,
+    "db.seed.enabled": false,
+    "db.seed.sql_paths": [],
+    "db.migrations.schema_paths": [],
+    "analytics.enabled": false,
+    "experimental.pgdelta.enabled": false
+  },
+  "source_policy": {
+    "mode": "GENERATE_MINIMAL_ALLOWLIST_ONLY",
+    "copied_fields": [],
+    "forbidden_sources": [
+      "REPOSITORY_TRACKED_CONFIG",
+      "ENVIRONMENT",
+      "DOTENV",
+      "REMOTE_LINK",
+      "HISTORICAL_SESSION",
+      "FOREIGN_SESSION"
+    ]
+  },
+  "permissions": {
+    "directory_mode": "0700",
+    "file_mode": "0600"
+  },
+  "publication": {
+    "mode": "CREATE_NEW_ATOMIC_HARD_LINK",
+    "overwrite": "FORBIDDEN",
+    "retry": "FORBIDDEN",
+    "partial_target_accepted": false
+  },
+  "ambiguity_policy": {
+    "alternate_authoritative_sources": "FORBIDDEN",
+    "duplicate_project_id": "FAIL",
+    "unknown_key": "FAIL",
+    "symlink": "FAIL",
+    "normalization": "FORBIDDEN"
+  },
+  "provenance": {
+    "reservation_index_required": true,
+    "contract_sha256_required": true,
+    "config_sha256_required": true,
+    "raw_project_id_line_sha256_required": true,
+    "persistence": "IN_MEMORY_UNLESS_SEPARATELY_AUTHORIZED"
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winwin.invalid/schemas/foundation-planned-config-v1.json",
+  "title": "Foundation planned configuration contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_type",
+    "purpose",
+    "reservation_binding",
+    "destination",
+    "format",
+    "static_values",
+    "source_policy",
+    "permissions",
+    "publication",
+    "ambiguity_policy",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "contract_type": { "const": "FOUNDATION_PLANNED_CONFIG" },
+    "purpose": { "const": "IA-3A_SCHEMA_RUNTIME_VALIDATION" },
+    "reservation_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "session_root", "required_state", "required_active_count", "required_ended_count"],
+      "properties": {
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "session_root": { "type": "string", "pattern": "^/private/tmp/winwin-fnd-spike\\.[0-9a-f]{8}$" },
+        "required_state": { "const": "ACTIVE" },
+        "required_active_count": { "const": 1 },
+        "required_ended_count": { "const": 0 }
+      }
+    },
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_root_relative", "config_directory_relative", "config_path_relative", "config_path_absolute", "staging_path_relative", "allowed_project_entries", "allowed_config_entries"],
+      "properties": {
+        "project_root_relative": { "const": "project" },
+        "config_directory_relative": { "const": "project/supabase" },
+        "config_path_relative": { "const": "project/supabase/config.toml" },
+        "config_path_absolute": { "type": "string", "pattern": "^/private/tmp/winwin-fnd-spike\\.[0-9a-f]{8}/project/supabase/config\\.toml$" },
+        "staging_path_relative": { "const": "evidence-private/config-materialization.source.toml" },
+        "allowed_project_entries": { "const": ["supabase"] },
+        "allowed_config_entries": { "const": ["config.toml"] }
+      }
+    },
+    "format": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format_id", "template_id", "encoding", "line_ending", "final_newline", "authoritative_field", "authoritative_lexical_form"],
+      "properties": {
+        "format_id": { "const": "FOUNDATION_MINIMAL_SUPABASE_TOML_V1" },
+        "template_id": { "const": "GENERATED_FROM_FROZEN_CONTRACT_NO_SOURCE_COPY" },
+        "encoding": { "const": "UTF-8_NO_BOM" },
+        "line_ending": { "const": "LF" },
+        "final_newline": { "const": true },
+        "authoritative_field": { "const": "project_id" },
+        "authoritative_lexical_form": { "const": "project_id = \"<VALUE>\"" }
+      }
+    },
+    "static_values": { "$ref": "#/$defs/staticValues" },
+    "source_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "copied_fields", "forbidden_sources"],
+      "properties": {
+        "mode": { "const": "GENERATE_MINIMAL_ALLOWLIST_ONLY" },
+        "copied_fields": { "const": [] },
+        "forbidden_sources": { "const": ["REPOSITORY_TRACKED_CONFIG", "ENVIRONMENT", "DOTENV", "REMOTE_LINK", "HISTORICAL_SESSION", "FOREIGN_SESSION"] }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory_mode", "file_mode"],
+      "properties": { "directory_mode": { "const": "0700" }, "file_mode": { "const": "0600" } }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "overwrite", "retry", "partial_target_accepted"],
+      "properties": {
+        "mode": { "const": "CREATE_NEW_ATOMIC_HARD_LINK" },
+        "overwrite": { "const": "FORBIDDEN" },
+        "retry": { "const": "FORBIDDEN" },
+        "partial_target_accepted": { "const": false }
+      }
+    },
+    "ambiguity_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alternate_authoritative_sources", "duplicate_project_id", "unknown_key", "symlink", "normalization"],
+      "properties": {
+        "alternate_authoritative_sources": { "const": "FORBIDDEN" },
+        "duplicate_project_id": { "const": "FAIL" },
+        "unknown_key": { "const": "FAIL" },
+        "symlink": { "const": "FAIL" },
+        "normalization": { "const": "FORBIDDEN" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reservation_index_required", "contract_sha256_required", "config_sha256_required", "raw_project_id_line_sha256_required", "persistence"],
+      "properties": {
+        "reservation_index_required": { "const": true },
+        "contract_sha256_required": { "const": true },
+        "config_sha256_required": { "const": true },
+        "raw_project_id_line_sha256_required": { "const": true },
+        "persistence": { "const": "IN_MEMORY_UNLESS_SEPARATELY_AUTHORIZED" }
+      }
+    }
+  },
+  "$defs": {
+    "projectId": {
+      "type": "string",
+      "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$",
+      "minLength": 35,
+      "maxLength": 35
+    },
+    "staticValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "db.port", "db.shadow_port", "api.port", "studio.port", "local_smtp.port", "local_smtp.smtp_port", "local_smtp.pop3_port", "analytics.port", "edge_runtime.inspector_port", "db.pooler.port", "db.migrations.enabled", "db.seed.enabled", "db.seed.sql_paths", "db.migrations.schema_paths", "analytics.enabled", "experimental.pgdelta.enabled"],
+      "properties": {
+        "project_id": { "$ref": "#/$defs/projectId" },
+        "db.port": { "const": 59322 },
+        "db.shadow_port": { "const": 59320 },
+        "api.port": { "const": 59321 },
+        "studio.port": { "const": 59323 },
+        "local_smtp.port": { "const": 59324 },
+        "local_smtp.smtp_port": { "const": 59325 },
+        "local_smtp.pop3_port": { "const": 59326 },
+        "analytics.port": { "const": 59327 },
+        "edge_runtime.inspector_port": { "const": 59328 },
+        "db.pooler.port": { "const": 59329 },
+        "db.migrations.enabled": { "const": false },
+        "db.seed.enabled": { "const": false },
+        "db.seed.sql_paths": { "const": [] },
+        "db.migrations.schema_paths": { "const": [] },
+        "analytics.enabled": { "const": false },
+        "experimental.pgdelta.enabled": { "const": false }
+      }
+    }
+  }
+}
