@@ -5,6 +5,22 @@
   "resolver_id": "WINWIN_PUBLIC_REGISTRY_METADATA_V1",
   "resolver_version": "1.0.0",
   "target_platform": {"os": "linux", "architecture": "arm64", "variant": "v8"},
+  "platform_selection_policy": {
+    "mode": "RUNTIME_COMPATIBILITY_EXACT_UNIQUE",
+    "runtime_semantics": "CONTAINERD_PLATFORMS_NORMALIZE",
+    "arm64_v8_omitted_variant": "COMPATIBLE_WITH_V8",
+    "descriptor_null_variant": "EXCLUDE",
+    "config_null_variant": "EQUIVALENT_TO_OMITTED",
+    "explicit_variant": "EXACT",
+    "conflicting_explicit_arm64_variant": "AMBIGUOUS_IF_OMITTED_CANDIDATE_SELECTED",
+    "other_architecture_missing_variant": "NO_IMPLICIT_COMPATIBILITY",
+    "executable_descriptor_media_types": "CONTRACT_MANIFEST_MEDIA_TYPES_ONLY",
+    "non_runtime_descriptors": "EXCLUDE",
+    "uniqueness": "EXACTLY_ONE",
+    "zero_matches": "REGISTRY_PLATFORM_MISSING",
+    "multiple_matches": "REGISTRY_PLATFORM_AMBIGUOUS",
+    "config_cross_check": "SAME_PLATFORM_COMPATIBILITY_REQUIRED"
+  },
   "approved_sources": [
     {"role": "AUTH", "source_reference": "supabase/gotrue:v2.195.0", "registry_host": "registry-1.docker.io", "repository": "supabase/gotrue", "tag": "v2.195.0"},
     {"role": "EDGE", "source_reference": "supabase/edge-runtime:v1.74.3", "registry_host": "registry-1.docker.io", "repository": "supabase/edge-runtime", "tag": "v1.74.3"},

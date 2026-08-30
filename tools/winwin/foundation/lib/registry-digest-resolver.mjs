@@ -44,10 +44,16 @@ const body = (response, maximum, code) => {
 const mediaType = value => typeof value === 'string' ? value.split(';', 1)[0].trim() : '';
 
 export function validateRegistryResolverContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'approved_sources', 'network_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'resolver_id', 'resolver_version', 'target_platform', 'platform_selection_policy', 'approved_sources', 'network_policy', 'protected_header_policy', 'response_cookie_policy', 'token_response_policy', 'layer_policy', 'attempt_policy', 'bounds', 'media_types', 'evidence_policy'], 'REGISTRY_CONTRACT');
   demand(contract.schema_version === '1' && contract.contract_type === REGISTRY_RESOLVER_TYPE && contract.resolver_id === REGISTRY_RESOLVER_ID && contract.resolver_version === '1.0.0', 'REGISTRY_CONTRACT_TYPE');
   exact(contract.target_platform, ['os', 'architecture', 'variant'], 'REGISTRY_PLATFORM');
   demand(contract.target_platform.os === 'linux' && contract.target_platform.architecture === 'arm64' && contract.target_platform.variant === 'v8', 'REGISTRY_PLATFORM_VALUE');
+  const platformPolicy = exact(contract.platform_selection_policy, ['mode', 'runtime_semantics', 'arm64_v8_omitted_variant', 'descriptor_null_variant', 'config_null_variant', 'explicit_variant', 'conflicting_explicit_arm64_variant', 'other_architecture_missing_variant', 'executable_descriptor_media_types', 'non_runtime_descriptors', 'uniqueness', 'zero_matches', 'multiple_matches', 'config_cross_check'], 'REGISTRY_PLATFORM_POLICY');
+  demand(platformPolicy.mode === 'RUNTIME_COMPATIBILITY_EXACT_UNIQUE' && platformPolicy.runtime_semantics === 'CONTAINERD_PLATFORMS_NORMALIZE', 'REGISTRY_PLATFORM_POLICY_MODE');
+  demand(platformPolicy.arm64_v8_omitted_variant === 'COMPATIBLE_WITH_V8' && platformPolicy.descriptor_null_variant === 'EXCLUDE' && platformPolicy.config_null_variant === 'EQUIVALENT_TO_OMITTED' && platformPolicy.explicit_variant === 'EXACT', 'REGISTRY_PLATFORM_POLICY_VARIANT');
+  demand(platformPolicy.conflicting_explicit_arm64_variant === 'AMBIGUOUS_IF_OMITTED_CANDIDATE_SELECTED' && platformPolicy.other_architecture_missing_variant === 'NO_IMPLICIT_COMPATIBILITY', 'REGISTRY_PLATFORM_POLICY_SCOPE');
+  demand(platformPolicy.executable_descriptor_media_types === 'CONTRACT_MANIFEST_MEDIA_TYPES_ONLY' && platformPolicy.non_runtime_descriptors === 'EXCLUDE', 'REGISTRY_PLATFORM_POLICY_EXECUTABLE');
+  demand(platformPolicy.uniqueness === 'EXACTLY_ONE' && platformPolicy.zero_matches === 'REGISTRY_PLATFORM_MISSING' && platformPolicy.multiple_matches === 'REGISTRY_PLATFORM_AMBIGUOUS' && platformPolicy.config_cross_check === 'SAME_PLATFORM_COMPATIBILITY_REQUIRED', 'REGISTRY_PLATFORM_POLICY_UNIQUENESS');
   demand(Array.isArray(contract.approved_sources) && contract.approved_sources.length > 0, 'REGISTRY_SOURCES');
   const roles = [], references = [];
   for (const source of contract.approved_sources) {
@@ -222,13 +228,57 @@ function parseManifestResponse(response, contract, expectedDigest = null) {
   return { value, digest: digestHeader, media_type: value.mediaType, response_sha256: computed.slice(7) };
 }
 
-export function selectExactPlatform(index, platform) {
+const omittedVariant = platform => !Object.hasOwn(platform, 'variant');
+
+export function platformCompatible(candidate, requested, { nullIsOmitted = false } = {}) {
+  if (!object(candidate) || !object(requested) || candidate.os !== requested.os || candidate.architecture !== requested.architecture) return false;
+  if (requested.architecture === 'arm64' && requested.variant === 'v8' && (omittedVariant(candidate) || nullIsOmitted && candidate.variant === null)) return true;
+  return Object.hasOwn(candidate, 'variant') && typeof candidate.variant === 'string' && candidate.variant === requested.variant;
+}
+
+function descriptorClassification(row, contract) {
+  if (!object(row) || !contract.media_types.manifests.includes(row.mediaType)) return 'NON_RUNTIME_MEDIA_TYPE';
+  if (typeof row.artifactType === 'string' && row.artifactType.length > 0) return 'NON_RUNTIME_ARTIFACT';
+  if (object(row.annotations) && row.annotations['vnd.docker.reference.type'] === 'attestation-manifest') return 'NON_RUNTIME_ATTESTATION';
+  if (!object(row.platform) || typeof row.platform.os !== 'string' || row.platform.os.length === 0 || typeof row.platform.architecture !== 'string' || row.platform.architecture.length === 0) return 'NON_RUNTIME_MISSING_PLATFORM';
+  if (row.platform.os === 'unknown' || row.platform.architecture === 'unknown') return 'NON_RUNTIME_UNKNOWN_PLATFORM';
+  if (Object.hasOwn(row.platform, 'variant') && typeof row.platform.variant !== 'string') return 'NON_RUNTIME_INVALID_VARIANT';
+  return 'EXECUTABLE';
+}
+
+export function projectIndexPlatformDescriptors(index, contract) {
+  validateRegistryResolverContract(contract);
   demand(object(index) && Array.isArray(index.manifests), 'REGISTRY_INDEX');
-  const matches = index.manifests.filter(row => object(row) && object(row.platform) && row.platform.os === platform.os && row.platform.architecture === platform.architecture && (row.platform.variant ?? '') === platform.variant);
-  demand(matches.length === 1, matches.length === 0 ? 'REGISTRY_PLATFORM_MISSING' : 'REGISTRY_PLATFORM_DUPLICATE');
-  const descriptor = matches[0];
+  return index.manifests.map((row, offset) => {
+    const platform = object(row?.platform) ? row.platform : {};
+    const annotations = object(row?.annotations) ? row.annotations : {};
+    const dockerReferenceType = annotations['vnd.docker.reference.type'] === 'attestation-manifest' ? 'attestation-manifest' : null;
+    const dockerReferenceDigest = typeof annotations['vnd.docker.reference.digest'] === 'string' && SHA.test(annotations['vnd.docker.reference.digest']) ? annotations['vnd.docker.reference.digest'] : null;
+    const classification = descriptorClassification(row, contract);
+    return {
+      ordinal: offset + 1,
+      media_type: typeof row?.mediaType === 'string' ? row.mediaType : null,
+      os: typeof platform.os === 'string' ? platform.os : null,
+      architecture: typeof platform.architecture === 'string' ? platform.architecture : null,
+      variant_present: Object.hasOwn(platform, 'variant'),
+      variant_value: Object.hasOwn(platform, 'variant') && (platform.variant === null || typeof platform.variant === 'string') ? platform.variant : null,
+      digest: typeof row?.digest === 'string' && SHA.test(row.digest) ? row.digest : null,
+      annotations: { docker_reference_type: dockerReferenceType, docker_reference_digest: dockerReferenceDigest },
+      executable_candidate: classification === 'EXECUTABLE', classification,
+    };
+  });
+}
+
+export function selectCompatiblePlatform(index, contract) {
+  const projections = projectIndexPlatformDescriptors(index, contract);
+  const executable = projections.filter(row => row.executable_candidate);
+  const matches = executable.filter(row => platformCompatible({ os: row.os, architecture: row.architecture, ...(row.variant_present ? { variant: row.variant_value } : {}) }, contract.target_platform));
+  const omittedArm64Match = matches.some(row => row.os === 'linux' && row.architecture === 'arm64' && (row.variant_present === false || row.variant_value === null));
+  const conflictingExplicitArm64 = omittedArm64Match && executable.some(row => row.os === 'linux' && row.architecture === 'arm64' && row.variant_present && row.variant_value !== null && row.variant_value !== 'v8');
+  demand(matches.length === 1 && !conflictingExplicitArm64, matches.length === 0 ? 'REGISTRY_PLATFORM_MISSING' : 'REGISTRY_PLATFORM_AMBIGUOUS');
+  const selected = matches[0], descriptor = index.manifests[selected.ordinal - 1];
   demand(SHA.test(descriptor.digest) && Number.isSafeInteger(descriptor.size) && descriptor.size > 0, 'REGISTRY_PLATFORM_DESCRIPTOR');
-  return { digest: descriptor.digest, media_type: descriptor.mediaType, size: descriptor.size, platform: structuredClone(platform) };
+  return { digest: descriptor.digest, media_type: descriptor.mediaType, size: descriptor.size, platform: structuredClone(contract.target_platform), descriptor_platform: structuredClone(descriptor.platform), ordinal: selected.ordinal };
 }
 
 function descriptor(value, mediaTypes, code) {
@@ -241,10 +291,9 @@ function nullableStringArray(value, code) {
   return value === undefined ? null : value;
 }
 
-function safeConfigProjection(config, platform, platformProvenByIndex) {
+function safeConfigProjection(config, platform) {
   demand(object(config) && config.os === platform.os && config.architecture === platform.architecture, 'REGISTRY_CONFIG_PLATFORM');
-  if (!platformProvenByIndex) demand((config.variant ?? '') === platform.variant, 'REGISTRY_CONFIG_VARIANT');
-  if (config.variant !== undefined) demand(config.variant === platform.variant, 'REGISTRY_CONFIG_VARIANT');
+  demand(platformCompatible(config, platform, { nullIsOmitted: true }), 'REGISTRY_CONFIG_VARIANT');
   const selected = object(config.config) ? config.config : {};
   const entrypoint = nullableStringArray(selected.Entrypoint, 'REGISTRY_CONFIG_ENTRYPOINT');
   const cmd = nullableStringArray(selected.Cmd, 'REGISTRY_CONFIG_CMD');
@@ -313,11 +362,9 @@ export async function resolveRegistryDigest({ contract, role, sourceReference, r
     initial = await request({ host: source.registry_host, path: manifestPath, headers: { accept, authorization: `Bearer ${token}` }, maximum_body_bytes: contract.bounds.manifest_body_bytes, timeout_ms: contract.bounds.timeout_ms, purpose: 'TOP_LEVEL_MANIFEST_AUTHENTICATED' });
   }
   const top = parseManifestResponse(initial, contract);
-  let child = top, selectedByIndex = false;
+  let child = top;
   if (contract.media_types.indexes.includes(top.media_type)) {
-    selectedByIndex = true;
-    const selected = selectExactPlatform(top.value, contract.target_platform);
-    demand(contract.media_types.manifests.includes(selected.media_type), 'REGISTRY_CHILD_MEDIA_TYPE');
+    const selected = selectCompatiblePlatform(top.value, contract);
     const response = await request({ host: source.registry_host, path: `/v2/${source.repository}/manifests/${selected.digest}`, headers: { accept, ...(token === null ? {} : { authorization: `Bearer ${token}` }) }, maximum_body_bytes: contract.bounds.manifest_body_bytes, timeout_ms: contract.bounds.timeout_ms, purpose: 'PLATFORM_CHILD_MANIFEST' });
     child = parseManifestResponse(response, contract, selected.digest);
   }
@@ -330,7 +377,7 @@ export async function resolveRegistryDigest({ contract, role, sourceReference, r
   const configHash = sha256(configBytes);
   demand(configHash === configDescriptor.digest, 'REGISTRY_CONFIG_DIGEST_MISMATCH');
   const config = parseJson(configBytes, 'REGISTRY_CONFIG_JSON');
-  const safe = safeConfigProjection(config, contract.target_platform, selectedByIndex);
+  const safe = safeConfigProjection(config, contract.target_platform);
   const resolution = {
     schema_version: '1', role, source_reference: source.source_reference, registry_host: source.registry_host,
     repository: source.repository, requested_tag: source.tag, manifest_media_type: top.media_type,
