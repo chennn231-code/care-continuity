@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { LABELS, validateSchemaDocumentHeader } from '../lib/contracts.mjs';
+import { LABELS, hash, validateSchemaDocumentHeader } from '../lib/contracts.mjs';
+import { candidateHealthcheckEvidence, canonicalHealthcheck, createHealthcheckLayerProjection, deriveEffectiveHealthcheck } from '../lib/effective-healthcheck.mjs';
+import { CURRENT_BASELINE } from '../lib/current-baseline.mjs';
+import { LOST_SESSION } from '../lib/durable-evidence.mjs';
 import {
   IMAGE_APPROVAL_SET_TYPE, PREREQUISITE_PURPOSE,
   compareApprovedImage, compareResourceExpectation, deriveEffectiveStartProfile,
-  planImagePreparation, produceImageApprovalSet, produceResourceExpectationInstance,
+  foundationPrerequisiteService, planImagePreparation, produceImageApprovalSet, produceResourceExpectationInstance,
   validateImageApprovalSet, validateResourceExpectationContract, validateResourceExpectationInstance,
 } from '../lib/resource-image-prerequisites.mjs';
 
@@ -26,9 +29,7 @@ const config = () => ({
   'db.migrations.enabled': false, 'db.migrations.schema_paths': [], 'db.seed.enabled': false,
   'db.seed.sql_paths': [], 'analytics.enabled': false, 'experimental.pgdelta.enabled': false,
 });
-const absentHealthcheck = () => ({ state:'ABSENT', test_form:null, executable:false, argv_element_count:null, payload_sha256:null, payload_byte_length:0,
-  interval:{present:false,value_nanoseconds:null}, timeout:{present:false,value_nanoseconds:null}, start_period:{present:false,value_nanoseconds:null},
-  start_interval:{present:false,value_nanoseconds:null}, retries:{present:false,value:null}, unknown_keys:[], projection_sha256:H('8') });
+const absentHealthcheck = () => createHealthcheckLayerProjection();
 const profile = (value = contract(), input = config()) => deriveEffectiveStartProfile({
   contract: value, config: input, projectId: input.project_id, configSha256: H('a'), configContractSha256: H('b'), resourceContractSha256: H('c'),
 });
@@ -42,6 +43,10 @@ const resolvedContract = () => {
   for (const row of [...value.roles, ...value.volumes, ...value.networks]) {
     if (row.reachability.kind === 'UNRESOLVED_EFFECTIVE_INPUT') row.reachability = { kind: 'ALWAYS_FRESH', evidence: 'SYNTHETIC_RESOLVED_SOURCE_MODEL' };
   }
+  const bound = new Set(value.runtime_healthcheck_overrides.map(row => row.role_id));
+  for (const row of [...value.roles, ...value.transient_jobs].filter(row => row.image_role !== null && !bound.has(row.role_id))) value.runtime_healthcheck_overrides.push({
+    role_id: row.role_id, source_binding: { authority: 'SYNTHETIC_TEST', source_commit: value.source_binding.source_commit, source_paths: ['SYNTHETIC_ABSENT_RUNTIME_HEALTHCHECK'] }, projection: absentHealthcheck(),
+  });
   return value;
 };
 const approval = (role, reference, volume = []) => ({
@@ -97,7 +102,9 @@ const candidate = expectation => ({
   role_id: expectation.role_id, matched_expectation_ids: [expectation.expectation_id], resource_class: expectation.resource_class, lifecycle: expectation.lifecycle,
   labels: Object.fromEntries(LABELS.map(label => [label, { present: true, value: P }])),
   image_role: expectation.image_role, relationships: clone(expectation.relationships), ports: clone(expectation.ports),
-  health_policy: expectation.health_policy, disposition: 'CANDIDATE_FOR_EXPECTATION',
+  health_policy: expectation.health_policy,
+  healthcheck_configuration: expectation.healthcheck_configuration === null ? null : candidateHealthcheckEvidence(expectation.healthcheck_configuration.effective_healthcheck),
+  disposition: 'CANDIDATE_FOR_EXPECTATION',
 });
 
 test('production resource model is strict and valid', () => assert.equal(validateResourceExpectationContract(contract()).contract_type, 'FOUNDATION_RESOURCE_EXPECTATION_MODEL'));
@@ -135,11 +142,47 @@ test('resource expectation generation is deterministic', () => { const a=resolve
 test('resource expectation binds profile approval and producer', () => { const {instance,p}=resolved(); assert.equal(instance.project_id,P); assert.equal(instance.profile_sha256,p.profile_sha256); assert.equal(instance.producer_sha256,H('9')); assert.match(instance.instance_sha256,/^[0-9a-f]{64}$/); });
 test('resource expectation reader validates the complete synthetic instance', () => { const {instance}=resolved(); assert.equal(validateResourceExpectationInstance(instance).instance_sha256,instance.instance_sha256); });
 test('resource expectation reader rejects provenance-integrity drift', () => { const {instance}=resolved(); instance.profile_sha256=H('8'); rejects(() => validateResourceExpectationInstance(instance),'EXPECTATION_INSTANCE_INTEGRITY'); });
+test('Resource Expectation contract and instance explicitly use version 2', () => { const {model,instance}=resolved(); assert.equal(model.schema_version,'2'); assert.equal(instance.schema_version,'2'); model.schema_version='1'; rejects(()=>validateResourceExpectationContract(model),'RESOURCE_CONTRACT_TYPE'); });
+test('producer fails closed when a reachable runtime override is unavailable', () => { const x=resolved(); x.model.runtime_healthcheck_overrides=x.model.runtime_healthcheck_overrides.filter(row=>row.role_id!=='MAILPIT'); rejects(()=>produceResourceExpectationInstance({contract:x.model,profile:x.p,config:config(),configSha256:H('a'),approvalSet:x.approvals,producerSha256:H('9')}),'EXPECTATION_RUNTIME_HEALTHCHECK_UNAVAILABLE'); });
+test('producer fails closed when required image Healthcheck projection is unavailable', () => { const x=resolved(); delete x.approvals.approvals[0].healthcheck; rejects(()=>produceResourceExpectationInstance({contract:x.model,profile:x.p,config:config(),configSha256:H('a'),approvalSet:x.approvals,producerSha256:H('9')})); });
+test('duplicate runtime bindings are rejected as ambiguous', () => { const c=contract(); c.runtime_healthcheck_overrides.push(clone(c.runtime_healthcheck_overrides[0])); rejects(()=>validateResourceExpectationContract(c),'RUNTIME_HEALTHCHECK_DUPLICATE_ROLE'); });
+test('instance reader recomputes effective derivation even when outer hashes are refreshed', () => {
+  const {instance}=resolved(), binding=instance.expectations.find(row=>row.role_id==='MAILPIT').healthcheck_configuration;
+  binding.effective_healthcheck=deriveEffectiveHealthcheck(binding.image_healthcheck_projection,absentHealthcheck(),instance.healthcheck_binding_policy);
+  const unsigned=clone(instance); delete unsigned.instance_sha256; instance.instance_sha256=hash(Buffer.from(canonicalHealthcheck(unsigned),'utf8'));
+  rejects(()=>validateResourceExpectationInstance(instance),'EXPECTATION_HEALTHCHECK_DERIVATION_MISMATCH');
+});
+test('lifecycle health_policy remains separate from Healthcheck configuration', () => { const {instance}=resolved(); const row=instance.expectations.find(row=>row.role_id==='MAILPIT'); assert.equal(row.health_policy,'RUNNING_HEALTHY'); assert.equal(row.healthcheck_configuration.effective_healthcheck.behavior.enabled,true); assert.equal(Object.hasOwn(row.healthcheck_configuration,'health_policy'),false); });
+test('transient image-backed jobs also require explicit Healthcheck bindings', () => {
+  const x=resolved(); const row=x.instance.expectations.find(row=>row.role_id==='AUTH_MIGRATION_JOB');
+  assert.equal(row.health_policy,'TRANSIENT_EXIT_ZERO_REMOVED'); assert.ok(row.healthcheck_configuration);
+  x.model.runtime_healthcheck_overrides=x.model.runtime_healthcheck_overrides.filter(row=>row.role_id!=='AUTH_MIGRATION_JOB');
+  rejects(()=>produceResourceExpectationInstance({contract:x.model,profile:x.p,config:config(),configSha256:H('a'),approvalSet:x.approvals,producerSha256:H('9')}),'EXPECTATION_RUNTIME_HEALTHCHECK_UNAVAILABLE');
+});
+test('transient job cannot hide Healthcheck mismatch behind exit-zero lifecycle policy', () => {
+  const {instance}=resolved(), rows=instance.expectations.map(candidate);
+  rows.find(row=>row.role_id==='AUTH_MIGRATION_JOB').healthcheck_configuration=null;
+  rejects(()=>compareResourceExpectation(instance,rows));
+});
+test('historical ID cannot be reinstated as current contract authority', () => {
+  const c=contract(); c.identity_policy.production_project_id=LOST_SESSION; rejects(()=>validateResourceExpectationContract(c),'HISTORICAL_OR_FOREIGN_BASELINE');
+});
+test('synthetic instance explicitly has no production durable authority', () => assert.equal(resolved().instance.foundation_baseline_binding,null));
+test('current ID cannot be laundered through an unbound synthetic instance', () => {
+  const {instance}=resolved(); instance.project_id=CURRENT_BASELINE.project_id; rejects(()=>validateResourceExpectationInstance(instance),'CURRENT_BASELINE_BINDING_REQUIRED');
+});
+test('historical profile cannot produce new approval output', () => {
+  const p=profile(); p.project_id=LOST_SESSION; rejects(()=>produceImageApprovalSet({profile:p,resolutions:resolutionRows(p),resolverContract:resolverContract(),resolverContractSha256:H('4')}),'HISTORICAL_OR_FOREIGN_BASELINE');
+});
+test('producer rejects config ID mismatch independently of config hash', () => {
+  const x=resolved(); rejects(()=>produceResourceExpectationInstance({contract:x.model,profile:x.p,config:{...config(),project_id:OTHER},configSha256:H('a'),approvalSet:x.approvals,producerSha256:H('9')}),'EXPECTATION_CONFIG_ID');
+});
 test('expectation generation rejects blocked profile', () => rejects(() => produceResourceExpectationInstance({contract:contract(),profile:blockedProfile(),config:config(),configSha256:H('a'),approvalSet:{},producerSha256:H('9')})));
 test('expectation generation rejects config drift', () => { const x=resolved(); rejects(() => produceResourceExpectationInstance({contract:x.model,profile:x.p,config:config(),configSha256:H('0'),approvalSet:x.approvals,producerSha256:H('9')}),'EXPECTATION_INPUT_DRIFT'); });
 test('uncovered image declared volume fails closed', () => { const x=resolved(); x.approvals.approvals.find(a=>a.role==='POSTGRES').declared_volumes.push('/uncovered'); rejects(() => produceResourceExpectationInstance({contract:x.model,profile:x.p,config:config(),configSha256:H('a'),approvalSet:x.approvals,producerSha256:H('9')}),'UNLABELLED_ANONYMOUS_VOLUME_RISK'); });
 
 test('complete expected candidates pass', () => { const {instance}=resolved(); assert.equal(compareResourceExpectation(instance,instance.expectations.map(candidate)).result,'PASS'); });
+test('resource candidate Healthcheck mismatch cannot pass on RUNNING_HEALTHY alone', () => { const {instance}=resolved(), rows=instance.expectations.map(candidate); rows.find(row=>row.role_id==='MAILPIT').healthcheck_configuration=candidateHealthcheckEvidence(deriveEffectiveHealthcheck(absentHealthcheck(),absentHealthcheck(),instance.healthcheck_binding_policy)); rejects(()=>compareResourceExpectation(instance,rows),'CANDIDATE_HEALTHCHECK_MISMATCH'); });
 test('missing expected role fails cardinality', () => { const {instance}=resolved(); const rows=instance.expectations.map(candidate); rows.pop(); rejects(() => compareResourceExpectation(instance,rows),'CARDINALITY_MISMATCH'); });
 test('duplicate candidate identity fails', () => { const {instance}=resolved(); const rows=instance.expectations.map(candidate); rows.push(clone(rows[0])); rejects(() => compareResourceExpectation(instance,rows),'DUPLICATE_CANDIDATE'); });
 test('unexpected candidate fails', () => { const {instance}=resolved(); const rows=instance.expectations.map(candidate); const extra=clone(rows[0]); extra.candidate_id='extra'; extra.role_id='UNKNOWN_ROLE'; extra.matched_expectation_ids=[]; rows.push(extra); rejects(() => compareResourceExpectation(instance,rows),'UNEXPECTED_CANDIDATE'); });
@@ -184,7 +227,51 @@ test('image preparation rejects incomplete approval coverage', () => { const p=p
 test('image preparation contract forbids retry cleanup and tag-only acceptance', () => { const x=preparation(); assert.equal(x.attempt_policy.retry,'FORBIDDEN'); assert.equal(x.cleanup_policy.remove_partial,'FORBIDDEN'); assert.equal(x.cleanup_policy.remove_unapproved_local,'FORBIDDEN'); assert.equal(x.acceptance_policy.tag_only,'REJECTED'); });
 test('image preparation contract rejects nested extension fields', () => { const p=profile(resolvedContract()), set=approvalSet(p), x=preparation(); x.attempt_policy.unreviewed=true; rejects(() => planImagePreparation({profile:p,approvalSet:set,preparationContract:x}),'PREPARATION_ATTEMPTS'); });
 
-test('frozen profile derives without depending on a live production reservation', () => { const derived=profile(); assert.equal(derived.result,'PASS'); assert.equal(derived.reachable_image_roles.length,10); assert.equal(derived.unresolved_roles.length,0); });
+test('production profile passes while approval and instance materialization remain blocked', () => { const service=foundationPrerequisiteService(); assert.equal(service.profile().result,'PASS'); assert.equal(service.materializationReadiness().reason,'INDEPENDENT_IMAGE_APPROVAL_SET_MISSING'); assert.equal(service.materializationReadiness().image_approval_set,'NOT_MATERIALIZED'); });
+
+// Offline schema evaluator limited to the exact keywords used by these documents.
+// External references resolve only to the two local allowlisted schema documents.
+function acceptsSchema(value, schema, documentName, documents) {
+  const keywords=['$schema','$id','title','$defs','$ref','type','additionalProperties','required','properties','items','const','enum','pattern','minimum','maximum','minLength','maxLength','minItems','maxItems','uniqueItems','oneOf','allOf','if','then','else','not'];
+  for(const key of Object.keys(schema)) assert.ok(keywords.includes(key),`unsupported schema keyword ${key}`);
+  if(schema.$ref){ const [external,fragment]=schema.$ref.split('#'); const name=external||documentName; assert.ok(Object.hasOwn(documents,name),'unapproved schema reference'); const target=fragment.split('/').slice(1).reduce((v,k)=>v[k],documents[name]); return acceptsSchema(value,target,name,documents); }
+  const check=child=>acceptsSchema(value,child,documentName,documents);
+  if(schema.oneOf&&schema.oneOf.filter(check).length!==1)return false;
+  if(schema.allOf&&!schema.allOf.every(check))return false;
+  if(schema.not&&check(schema.not))return false;
+  if(schema.if){const selected=check(schema.if)?schema.then:schema.else;if(selected&&!check(selected))return false;}
+  if(Object.hasOwn(schema,'const')&&canonicalHealthcheck(value)!==canonicalHealthcheck(schema.const))return false;
+  if(schema.enum&&!schema.enum.some(x=>canonicalHealthcheck(x)===canonicalHealthcheck(value)))return false;
+  if(schema.type){const types=Array.isArray(schema.type)?schema.type:[schema.type];if(!types.some(type=>type==='null'?value===null:type==='array'?Array.isArray(value):type==='object'?value!==null&&typeof value==='object'&&!Array.isArray(value):type==='integer'?Number.isSafeInteger(value):typeof value===type))return false;}
+  if(value!==null&&typeof value==='object'&&!Array.isArray(value)){
+    if(schema.required?.some(k=>!Object.hasOwn(value,k)))return false;
+    if(schema.additionalProperties===false&&Object.keys(value).some(k=>!Object.hasOwn(schema.properties??{},k)))return false;
+    for(const [key,child]of Object.entries(schema.properties??{}))if(Object.hasOwn(value,key)&&!acceptsSchema(value[key],child,documentName,documents))return false;
+  }
+  if(Array.isArray(value)){
+    if(schema.minItems!==undefined&&value.length<schema.minItems||schema.maxItems!==undefined&&value.length>schema.maxItems)return false;
+    if(schema.uniqueItems&&new Set(value.map(canonicalHealthcheck)).size!==value.length)return false;
+    if(schema.items&&!value.every(x=>acceptsSchema(x,schema.items,documentName,documents)))return false;
+  }
+  if(typeof value==='string'){
+    if(schema.pattern&&!new RegExp(schema.pattern).test(value))return false;
+    if(schema.minLength!==undefined&&value.length<schema.minLength||schema.maxLength!==undefined&&value.length>schema.maxLength)return false;
+  }
+  if(typeof value==='number'&&(schema.minimum!==undefined&&value<schema.minimum||schema.maximum!==undefined&&value>schema.maximum))return false;
+  return true;
+}
+test('v2 contract and synthetic producer output conform to bounded local JSON Schemas',()=>{
+  const documents=Object.fromEntries(['resource-expectation.schema.json','resource-expectation-instance.schema.json'].map(name=>[name,load('../schemas/'+name)]));
+  const {model,instance}=resolved();
+  for(const [name,value]of [['resource-expectation.schema.json',model],['resource-expectation-instance.schema.json',instance]]){
+    assert.equal(acceptsSchema(value,documents[name],name,documents),true);
+    assert.equal(acceptsSchema({...value,unexpected:true},documents[name],name,documents),false);
+  }
+  const bad=clone(instance);bad.project_id=CURRENT_BASELINE.project_id;
+  assert.equal(acceptsSchema(bad,documents['resource-expectation-instance.schema.json'],'resource-expectation-instance.schema.json',documents),false);
+  const job=clone(instance);job.expectations.find(row=>row.resource_class==='TRANSIENT_JOB').healthcheck_configuration=null;
+  assert.equal(acceptsSchema(job,documents['resource-expectation-instance.schema.json'],'resource-expectation-instance.schema.json',documents),false);
+});
 test('all new schemas are supported strict JSON Schema documents', () => { for(const [path,title] of [['../schemas/resource-expectation.schema.json','Foundation resource expectation model'],['../schemas/resource-expectation-instance.schema.json','Foundation frozen resource expectation instance'],['../schemas/effective-start-profile.schema.json','Foundation effective start profile'],['../schemas/image-approval.schema.json','Foundation immutable image approval set'],['../schemas/image-preparation.schema.json','Foundation image preparation contract'],['../schemas/registry-digest-resolver.schema.json','Foundation bounded public registry metadata resolver']]) assert.equal(validateSchemaDocumentHeader(load(path),title).result,'PASS'); });
 test('every object node in the new schemas rejects additional properties', () => {
   const inspect = value => {

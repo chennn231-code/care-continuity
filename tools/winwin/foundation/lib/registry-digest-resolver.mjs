@@ -347,31 +347,6 @@ export function projectHealthcheckConfig(value, policy) {
   return { ...projection, projection_sha256: hash(Buffer.from(canonical(projection), 'utf8')) };
 }
 
-export function classifyHealthcheckRuntime({ imageHealthcheck, runtimeHealthcheck, policy }) {
-  const image = projectHealthcheckConfig(imageHealthcheck, policy);
-  if (runtimeHealthcheck === undefined || runtimeHealthcheck === null) {
-    return { classification: image.executable ? 'C_EXECUTABLE_AND_INHERITED' : 'A_NON_EXECUTING_OR_DISABLED', runtime_effect: 'INHERITED',
-      image, runtime: null, effective: image, field_sources: { Test: image.state === 'ABSENT' ? 'ABSENT' : 'IMAGE', Interval: 'IMAGE_OR_ENGINE_DEFAULT', Timeout: 'IMAGE_OR_ENGINE_DEFAULT', StartPeriod: 'IMAGE_OR_ENGINE_DEFAULT', StartInterval: 'IMAGE_OR_ENGINE_DEFAULT', Retries: 'IMAGE_OR_ENGINE_DEFAULT' } };
-  }
-  const runtime = projectHealthcheckConfig(runtimeHealthcheck, policy);
-  const imageRaw = object(imageHealthcheck) ? imageHealthcheck : {};
-  const runtimeRaw = object(runtimeHealthcheck) ? runtimeHealthcheck : {};
-  const effectiveRaw = {};
-  const fieldSources = {};
-  if (Array.isArray(runtimeRaw.Test) && runtimeRaw.Test.length > 0) { effectiveRaw.Test = structuredClone(runtimeRaw.Test); fieldSources.Test = 'RUNTIME'; }
-  else if (Array.isArray(imageRaw.Test) && imageRaw.Test.length > 0) { effectiveRaw.Test = structuredClone(imageRaw.Test); fieldSources.Test = 'IMAGE'; }
-  else fieldSources.Test = 'ABSENT';
-  for (const key of ['Interval', 'Timeout', 'StartPeriod', 'StartInterval', 'Retries']) {
-    if (Number.isSafeInteger(runtimeRaw[key]) && runtimeRaw[key] !== 0) { effectiveRaw[key] = runtimeRaw[key]; fieldSources[key] = 'RUNTIME'; }
-    else if (Number.isSafeInteger(imageRaw[key]) && imageRaw[key] !== 0) { effectiveRaw[key] = imageRaw[key]; fieldSources[key] = 'IMAGE'; }
-    else fieldSources[key] = 'ENGINE_DEFAULT';
-  }
-  const effective = projectHealthcheckConfig(Object.hasOwn(effectiveRaw, 'Test') ? effectiveRaw : undefined, policy);
-  const testOverridden = fieldSources.Test === 'RUNTIME';
-  return { classification: image.executable ? (testOverridden ? 'B_EXECUTABLE_BUT_OVERRIDDEN_OR_DISABLED' : 'C_EXECUTABLE_AND_INHERITED') : 'A_NON_EXECUTING_OR_DISABLED',
-    runtime_effect: runtime.state === 'DISABLED' ? 'DISABLED' : testOverridden ? 'OVERRIDDEN' : 'INHERITED', image, runtime, effective, field_sources: fieldSources };
-}
-
 function safeConfigProjection(config, platform, healthcheckPolicy) {
   demand(object(config) && config.os === platform.os && config.architecture === platform.architecture, 'REGISTRY_CONFIG_PLATFORM');
   demand(platformCompatible(config, platform, { nullIsOmitted: true }), 'REGISTRY_CONFIG_VARIANT');

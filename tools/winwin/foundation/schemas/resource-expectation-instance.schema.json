@@ -1,14 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://winwin.invalid/schemas/foundation-resource-expectation-instance-v1.json",
+  "$id": "https://winwin.invalid/schemas/foundation-resource-expectation-instance-v2.json",
   "title": "Foundation frozen resource expectation instance",
+  "allOf": [
+    {"if": {"properties": {"project_id": {"const": "wwfnd-20260831t120908z-c0e3f4af1a3d"}}}, "then": {"properties": {"foundation_baseline_binding": {"$ref": "resource-expectation.schema.json#/$defs/baselineBinding"}, "config_sha256": {"const": "3447d63e5fe674227af31184550992985052d6af74223c9372ebd8394785765a"}, "profile_sha256": {"const": "565993c10026c175560c1f28dee391502e8d77ee08a5a3f36b5491f98c0c3193"}}}, "else": {"properties": {"foundation_baseline_binding": {"type": "null"}, "project_id": {"not": {"const": "wwfnd-20260830t060320z-b10f6599de24"}}}}}
+  ],
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "contract_type", "purpose", "project_id", "config_sha256", "resource_contract_sha256", "producer_sha256", "profile_sha256", "image_approval_set_sha256", "expectations", "candidate_policy", "generated_at", "instance_sha256"],
+  "required": ["schema_version", "contract_type", "purpose", "foundation_baseline_binding", "project_id", "config_sha256", "resource_contract_sha256", "producer_sha256", "profile_sha256", "image_approval_set_sha256", "expectations", "healthcheck_binding_policy", "candidate_policy", "generated_at", "instance_sha256"],
   "properties": {
-    "schema_version": {"const": "1"},
+    "schema_version": {"const": "2"},
     "contract_type": {"const": "FOUNDATION_RESOURCE_EXPECTATION_INSTANCE"},
     "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "foundation_baseline_binding": {"oneOf":[{"$ref":"resource-expectation.schema.json#/$defs/baselineBinding"},{"type":"null"}]},
     "project_id": {"$ref": "#/$defs/projectId"},
     "config_sha256": {"$ref": "#/$defs/sha256"},
     "resource_contract_sha256": {"$ref": "#/$defs/sha256"},
@@ -16,6 +20,7 @@
     "profile_sha256": {"$ref": "#/$defs/sha256"},
     "image_approval_set_sha256": {"$ref": "#/$defs/sha256"},
     "expectations": {"type": "array", "items": {"$ref": "#/$defs/expectation"}},
+    "healthcheck_binding_policy": {"$ref": "resource-expectation.schema.json#/$defs/healthcheckBindingPolicy"},
     "candidate_policy": {"$ref": "#/$defs/candidatePolicy"},
     "generated_at": {"const": "NON_AUTHORITATIVE_OMITTED_FOR_DETERMINISM"},
     "instance_sha256": {"$ref": "#/$defs/sha256"}
@@ -65,10 +70,30 @@
         "unrelated_preexisting": {"const": "OUTSIDE_UNLESS_COLLISION_OR_CANDIDATE_SCOPE"}
       }
     },
+    "healthcheckTiming": {"type": "object", "additionalProperties": false, "required": ["present", "value_nanoseconds"], "properties": {"present": {"type": "boolean"}, "value_nanoseconds": {"type": ["integer", "null"], "minimum": 0}}},
+    "healthcheckRetries": {"type": "object", "additionalProperties": false, "required": ["present", "value"], "properties": {"present": {"type": "boolean"}, "value": {"type": ["integer", "null"], "minimum": 0}}},
+    "healthcheckLayerProjection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "test_form", "executable", "argv_element_count", "payload_sha256", "payload_byte_length", "interval", "timeout", "start_period", "start_interval", "retries", "unknown_keys", "projection_sha256"],
+      "properties": {
+        "state": {"enum": ["ABSENT", "PARTIAL", "DISABLED", "EXECUTABLE"]}, "test_form": {"type": ["string", "null"], "enum": [null, "NONE", "CMD", "CMD-SHELL"]}, "executable": {"type": "boolean"},
+        "argv_element_count": {"type": ["integer", "null"], "minimum": 1}, "payload_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "payload_byte_length": {"type": "integer", "minimum": 0},
+        "interval": {"$ref": "#/$defs/healthcheckTiming"}, "timeout": {"$ref": "#/$defs/healthcheckTiming"}, "start_period": {"$ref": "#/$defs/healthcheckTiming"}, "start_interval": {"$ref": "#/$defs/healthcheckTiming"}, "retries": {"$ref": "#/$defs/healthcheckRetries"}, "unknown_keys": {"const": []}, "projection_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "effectiveTest": {"type": "object", "additionalProperties": false, "required": ["form", "argv_element_count", "payload_sha256", "payload_byte_length"], "properties": {"form": {"type": ["string", "null"], "enum": [null, "CMD", "CMD-SHELL"]}, "argv_element_count": {"type": ["integer", "null"], "minimum": 1}, "payload_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "payload_byte_length": {"type": "integer", "minimum": 0}}},
+    "effectiveTiming": {"type": "object", "additionalProperties": false, "required": ["value_nanoseconds"], "properties": {"value_nanoseconds": {"type": ["integer", "null"], "minimum": 0}}},
+    "effectiveRetries": {"type": "object", "additionalProperties": false, "required": ["value"], "properties": {"value": {"type": ["integer", "null"], "minimum": 0}}},
+    "effectiveBehavior": {"type": "object", "additionalProperties": false, "required": ["enabled", "test", "interval", "timeout", "start_period", "start_interval", "retries"], "properties": {"enabled": {"type": "boolean"}, "test": {"$ref": "#/$defs/effectiveTest"}, "interval": {"$ref": "#/$defs/effectiveTiming"}, "timeout": {"$ref": "#/$defs/effectiveTiming"}, "start_period": {"$ref": "#/$defs/effectiveTiming"}, "start_interval": {"$ref": "#/$defs/effectiveTiming"}, "retries": {"$ref": "#/$defs/effectiveRetries"}}},
+    "fieldProvenance": {"type": "object", "additionalProperties": false, "required": ["enabled", "test", "interval", "timeout", "start_period", "start_interval", "retries"], "properties": {"enabled": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "test": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "interval": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "timeout": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "start_period": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "start_interval": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "retries": {"enum": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}}},
+    "effectiveEngine": {"type": "object", "additionalProperties": false, "required": ["implementation", "version"], "properties": {"implementation": {"const": "MOBY_DOCKER_ENGINE"}, "version": {"const": "29.6.2"}}},
+    "effectiveHealthcheck": {"type": "object", "additionalProperties": false, "required": ["binding_version", "engine", "behavior", "field_provenance", "behavior_projection_sha256", "projection_sha256"], "properties": {"binding_version": {"const": "1"}, "engine": {"$ref": "#/$defs/effectiveEngine"}, "behavior": {"$ref": "#/$defs/effectiveBehavior"}, "field_provenance": {"$ref": "#/$defs/fieldProvenance"}, "behavior_projection_sha256": {"$ref": "#/$defs/sha256"}, "projection_sha256": {"$ref": "#/$defs/sha256"}}},
+    "healthcheckConfiguration": {"type": "object", "additionalProperties": false, "required": ["binding_version", "image_healthcheck_projection", "runtime_healthcheck_override_projection", "effective_healthcheck", "candidate_verification"], "properties": {"binding_version": {"const": "1"}, "image_healthcheck_projection": {"$ref": "#/$defs/healthcheckLayerProjection"}, "runtime_healthcheck_override_projection": {"$ref": "#/$defs/healthcheckLayerProjection"}, "effective_healthcheck": {"$ref": "#/$defs/effectiveHealthcheck"}, "candidate_verification": {"type": "object", "additionalProperties": false, "required": ["comparison", "required_fields"], "properties": {"comparison": {"const": "EXACT_BEHAVIOR_FIELDS_AND_SHA256"}, "required_fields": {"const": ["enabled", "test", "interval", "timeout", "start_period", "start_interval", "retries"]}}}}},
     "expectation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["expectation_id", "role_id", "resource_class", "lifecycle", "cardinality", "discovery_hint", "required_labels", "image_role", "relationships", "ports", "health_policy"],
+      "allOf": [{"if": {"properties": {"resource_class": {"enum": ["CONTAINER", "TRANSIENT_JOB"]}}}, "then": {"properties": {"healthcheck_configuration": {"$ref": "#/$defs/healthcheckConfiguration"}}}, "else": {"properties": {"healthcheck_configuration": {"type": "null"}}}}],
+      "required": ["expectation_id", "role_id", "resource_class", "lifecycle", "cardinality", "discovery_hint", "required_labels", "image_role", "relationships", "ports", "health_policy", "healthcheck_configuration"],
       "properties": {
         "expectation_id": {"$ref": "#/$defs/roleId"},
         "role_id": {"$ref": "#/$defs/roleId"},
@@ -88,7 +113,8 @@
         "image_role": {"oneOf": [{"$ref": "#/$defs/roleId"}, {"type": "null"}]},
         "relationships": {"$ref": "#/$defs/relationships"},
         "ports": {"type": "array", "items": {"$ref": "#/$defs/port"}},
-        "health_policy": {"enum": ["RUNNING_HEALTHY", "TRANSIENT_EXIT_ZERO_REMOVED", "PRESENT", "NOT_APPLICABLE"]}
+        "health_policy": {"enum": ["RUNNING_HEALTHY", "TRANSIENT_EXIT_ZERO_REMOVED", "PRESENT", "NOT_APPLICABLE"]},
+        "healthcheck_configuration": {"oneOf": [{"$ref": "#/$defs/healthcheckConfiguration"}, {"type": "null"}]}
       }
     }
   }

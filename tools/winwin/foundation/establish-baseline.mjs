@@ -7,6 +7,7 @@ import { demand, hash } from './lib/contracts.mjs';
 import { foundationReservationService, inspectEphemeralReservationIndex } from './lib/reservations.mjs';
 import { foundationConfigService, renderPlannedConfig } from './lib/configuration.mjs';
 import { deriveEffectiveStartProfile } from './lib/resource-image-prerequisites.mjs';
+import { assertStartModelUnchanged } from './lib/current-baseline.mjs';
 import { ACCEPTED_CHECKPOINT, LOST_SESSION, HISTORICAL_CONFIG_SHA256, HISTORICAL_PROFILE_SHA256,
   RESERVED_PORTS, canonical, foundationDurableStore, initializeProductionDurableEvidence, productionDurableRoot } from './lib/durable-evidence.mjs';
 
@@ -24,7 +25,7 @@ export function historicalProfile() {
     source_research_sha256: hash(read('docs/winwin/WINWIN_FOUNDATION_RESOURCE_ACCEPTANCE_EVIDENCE_RESEARCH_V2.md')),
   };
   const profile = deriveEffectiveStartProfile({ contract: resource, config: planned.static_values, projectId: LOST_SESSION,
-    configSha256: HISTORICAL_CONFIG_SHA256, configContractSha256: hash(read(PLANNED)), resourceContractSha256: hash(read(RESOURCE)), sourceEvidence });
+    configSha256: HISTORICAL_CONFIG_SHA256, configContractSha256: hash(read(PLANNED)), resourceContractSha256: assertStartModelUnchanged(resource), sourceEvidence });
   demand(profile.result === 'PASS' && profile.profile_sha256 === HISTORICAL_PROFILE_SHA256, 'HISTORICAL_PROFILE_DRIFT');
   return profile;
 }
@@ -38,7 +39,7 @@ export function verifyNewProfile(configRead) {
   const historical = historicalProfile();
   const current = deriveEffectiveStartProfile({ contract: json(RESOURCE), config: configRead.effective,
     projectId: configRead.lexical.raw_project_id, configSha256: configRead.verification.config_sha256,
-    configContractSha256: configRead.verification.contract_sha256, resourceContractSha256: hash(read(RESOURCE)) });
+    configContractSha256: configRead.verification.contract_sha256, resourceContractSha256: assertStartModelUnchanged(json(RESOURCE)) });
   demand(current.result === 'PASS' && canonical(semanticProfile(current)) === canonical(semanticProfile(historical)), 'PROFILE_SEMANTICS_DRIFT');
   return { profile: current, semantic_profile_sha256: hash(Buffer.from(canonical(semanticProfile(current)))), semantic_unchanged: true };
 }

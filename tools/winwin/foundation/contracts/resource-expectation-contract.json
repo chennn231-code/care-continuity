@@ -1,7 +1,15 @@
 {
-  "schema_version": "1",
+  "schema_version": "2",
   "contract_type": "FOUNDATION_RESOURCE_EXPECTATION_MODEL",
   "purpose": "IA-3A_SCHEMA_RUNTIME_VALIDATION",
+  "foundation_baseline_binding": {
+    "tooling_checkpoint": "c71aa65bf83142e3f4d730f14fd258c1f14720d5",
+    "project_id": "wwfnd-20260831t120908z-c0e3f4af1a3d",
+    "config_sha256": "3447d63e5fe674227af31184550992985052d6af74223c9372ebd8394785765a",
+    "profile_sha256": "565993c10026c175560c1f28dee391502e8d77ee08a5a3f36b5491f98c0c3193",
+    "active_witness_sha256": "ff41152de6a9ced15b9214084e5b168cc4ea5fe5b473824872c4eb2f1cf96f66",
+    "baseline_witness_sha256": "8899dedbb6d399214ce3af55d7dbdbe73cfd8be09975b97757a9c4fe8f170cf5"
+  },
   "start_input_binding": {
     "command": "supabase start --workdir <FROZEN_PROJECT_ROOT>",
     "excluded_services": [],
@@ -21,7 +29,7 @@
   },
   "identity_policy": {
     "project_id_format": "FROZEN_35_BYTE_ASCII",
-    "production_project_id": "wwfnd-20260830t060320z-b10f6599de24",
+    "production_project_id": "wwfnd-20260831t120908z-c0e3f4af1a3d",
     "required_labels": ["com.supabase.cli.project", "com.docker.compose.project"],
     "comparison": "BYTE_EXACT",
     "names_are_authority": false
@@ -40,6 +48,56 @@
     "protocol": "tcp",
     "unexpected_binding": "FAIL"
   },
+  "healthcheck_binding_policy": {
+    "binding_version": "1",
+    "engine": {
+      "implementation": "MOBY_DOCKER_ENGINE",
+      "version": "29.6.2",
+      "merge_semantics": "NONZERO_FIELD_MERGE_AT_CONTAINER_CREATE",
+      "minimum_nonzero_duration_ns": 1000000,
+      "defaults": {
+        "interval_ns": 30000000000,
+        "timeout_ns": 30000000000,
+        "start_period_ns": 0,
+        "start_interval_ns": 5000000000,
+        "retries": 3
+      },
+      "evidence_sha256": "6adc11757a248e3179bd1c721cd66ded40d6f5c53581bf0b4d747b6f142ea5aa"
+    },
+    "provenance_values": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"],
+    "canonical_serialization": "UTF8_JSON_RECURSIVE_SORTED_OBJECT_KEYS_PRESERVE_ARRAY_ORDER",
+    "candidate_comparison": "EXACT_BEHAVIOR_FIELDS_AND_SHA256",
+    "missing_runtime_override": "FAIL_CLOSED",
+    "health_status_separation": "CONFIGURATION_DISTINCT_FROM_RUNNING_HEALTHY_LIFECYCLE"
+  },
+  "runtime_healthcheck_overrides": [
+    {
+      "role_id": "MAILPIT",
+      "source_binding": {
+        "authority": "FROZEN_SUPABASE_EFFECTIVE_START_DEFINITION",
+        "source_commit": "18ae43a34a2257458197b62f74e2a97e2b5cf7f9",
+        "source_paths": [
+          "apps/cli/src/legacy/commands/start/services/mailpit.service.ts",
+          "apps/cli/src/legacy/shared/db-bootstrap/docker-create-args.ts"
+        ]
+      },
+      "projection": {
+        "state": "EXECUTABLE",
+        "test_form": "CMD-SHELL",
+        "executable": true,
+        "argv_element_count": null,
+        "payload_sha256": "fbcbcb277c0369deaa481679867308f3e88ec37de9b95af4920653f3bc6e9d92",
+        "payload_byte_length": 15,
+        "interval": {"present": true, "value_nanoseconds": 10000000000},
+        "timeout": {"present": true, "value_nanoseconds": 2000000000},
+        "start_period": {"present": true, "value_nanoseconds": 10000000000},
+        "start_interval": {"present": false, "value_nanoseconds": null},
+        "retries": {"present": true, "value": 3},
+        "unknown_keys": [],
+        "projection_sha256": "f9480f7b160406900e24c35dd001eedafebd99bf5ebb1f4386e0e0e8dffb4d9c"
+      }
+    }
+  ],
   "roles": [
     {
       "role_id": "POSTGRES",

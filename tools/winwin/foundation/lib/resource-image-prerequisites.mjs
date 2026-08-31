@@ -3,10 +3,16 @@
 // network, environment, image acquisition, Supabase, SQL or writer.
 import fs from 'node:fs';
 
-import { foundationConfigService } from './configuration.mjs';
+import { CURRENT_BASELINE, readCurrentFoundationBaseline, validateCurrentBaselineBinding, assertStartModelUnchanged, verifyCurrentProfile } from './current-baseline.mjs';
+import { LOST_SESSION } from './durable-evidence.mjs';
 import { ContractError, demand, exactSet, hash, object, ownership, parseJSON, projectId, safeText, shape } from './contracts.mjs';
+import {
+  HEALTHCHECK_BEHAVIOR_FIELDS, HEALTHCHECK_BINDING_VERSION, compareCandidateHealthcheck,
+  deriveEffectiveHealthcheck, validateEffectiveHealthcheck, validateHealthcheckBindingPolicy, validateHealthcheckLayerProjection,
+} from './effective-healthcheck.mjs';
 
 export const PREREQUISITE_SCHEMA_VERSION = '1';
+export const RESOURCE_EXPECTATION_SCHEMA_VERSION = '2';
 export const PREREQUISITE_PURPOSE = 'IA-3A_SCHEMA_RUNTIME_VALIDATION';
 export const RESOURCE_CONTRACT_TYPE = 'FOUNDATION_RESOURCE_EXPECTATION_MODEL';
 export const PROFILE_TYPE = 'FOUNDATION_EFFECTIVE_START_PROFILE';
@@ -18,6 +24,7 @@ const RESOURCE_URL = new URL('../contracts/resource-expectation-contract.json', 
 const PREPARATION_URL = new URL('../contracts/image-preparation-contract.json', import.meta.url);
 const DESIGN_URL = new URL('../../../../docs/winwin/WINWIN_FOUNDATION_SECURITY_CONCURRENCY_FEASIBILITY_SPIKE_DESIGN.md', import.meta.url);
 const RESEARCH_URL = new URL('../../../../docs/winwin/WINWIN_FOUNDATION_RESOURCE_ACCEPTANCE_EVIDENCE_RESEARCH_V2.md', import.meta.url);
+const ENGINE_EVIDENCE_URL = new URL('../../../../docs/winwin/WINWIN_FOUNDATION_HELPER_IMPLEMENTATION_PRESTART_EVIDENCE_REPORT.md', import.meta.url);
 const MODULE_URL = new URL(import.meta.url);
 const LABELS = ['com.supabase.cli.project', 'com.docker.compose.project'];
 const CLASSES = ['CONTAINER', 'VOLUME', 'NETWORK', 'TRANSIENT_JOB'];
@@ -99,8 +106,8 @@ function validateStartInputBinding(value, installedBinarySha256) {
 }
 
 export function validateResourceExpectationContract(contract) {
-  exact(contract, ['schema_version', 'contract_type', 'purpose', 'start_input_binding', 'source_binding', 'identity_policy', 'candidate_policy', 'port_policy', 'roles', 'volumes', 'networks', 'transient_jobs'], 'RESOURCE_CONTRACT');
-  demand(contract.schema_version === PREREQUISITE_SCHEMA_VERSION && contract.contract_type === RESOURCE_CONTRACT_TYPE && contract.purpose === PREREQUISITE_PURPOSE, 'RESOURCE_CONTRACT_TYPE');
+  exact(contract, ['schema_version', 'contract_type', 'purpose', 'foundation_baseline_binding', 'start_input_binding', 'source_binding', 'identity_policy', 'candidate_policy', 'port_policy', 'healthcheck_binding_policy', 'runtime_healthcheck_overrides', 'roles', 'volumes', 'networks', 'transient_jobs'], 'RESOURCE_CONTRACT');
+  demand(contract.schema_version === RESOURCE_EXPECTATION_SCHEMA_VERSION && contract.contract_type === RESOURCE_CONTRACT_TYPE && contract.purpose === PREREQUISITE_PURPOSE, 'RESOURCE_CONTRACT_TYPE');
   const source = exact(contract.source_binding, ['supabase_cli_version', 'source_commit', 'installed_binary_sha256', 'normative_design_sha256', 'source_research_sha256'], 'RESOURCE_SOURCE');
   demand(source.supabase_cli_version === '2.115.0' && /^[0-9a-f]{40}$/.test(source.source_commit), 'RESOURCE_SOURCE_VERSION');
   for (const key of ['installed_binary_sha256', 'normative_design_sha256', 'source_research_sha256']) sha(source[key], 'RESOURCE_SOURCE_HASH');
@@ -108,12 +115,24 @@ export function validateResourceExpectationContract(contract) {
   const identity = exact(contract.identity_policy, ['project_id_format', 'production_project_id', 'required_labels', 'comparison', 'names_are_authority'], 'RESOURCE_IDENTITY');
   demand(identity.project_id_format === 'FROZEN_35_BYTE_ASCII' && identity.comparison === 'BYTE_EXACT' && identity.names_are_authority === false, 'RESOURCE_IDENTITY_VALUE');
   projectId(identity.production_project_id);
+  validateCurrentBaselineBinding(contract.foundation_baseline_binding, identity.production_project_id);
   demand(JSON.stringify(identity.required_labels) === JSON.stringify(LABELS), 'RESOURCE_LABELS');
   const candidate = exact(contract.candidate_policy, ['complete_disposition_required', 'unexpected_candidate', 'ambiguous_role', 'unclassified_candidate', 'foreign_or_mixed_ownership', 'unrelated_preexisting'], 'CANDIDATE_POLICY');
   demand(candidate.complete_disposition_required === true && candidate.unrelated_preexisting === 'OUTSIDE_UNLESS_COLLISION_OR_CANDIDATE_SCOPE', 'CANDIDATE_POLICY_VALUE');
   demand([candidate.unexpected_candidate, candidate.ambiguous_role, candidate.unclassified_candidate, candidate.foreign_or_mixed_ownership].every(value => value === 'FAIL'), 'CANDIDATE_FAIL_CLOSED');
   const ports = exact(contract.port_policy, ['allowed_host_ports', 'host_ip_policy', 'protocol', 'unexpected_binding'], 'PORT_POLICY');
   demand(JSON.stringify(ports.allowed_host_ports) === JSON.stringify([59320,59321,59322,59323,59324,59325,59326,59327,59328,59329]) && ports.host_ip_policy === 'LOOPBACK_ONLY' && ports.protocol === 'tcp' && ports.unexpected_binding === 'FAIL', 'PORT_POLICY_VALUE');
+  validateHealthcheckBindingPolicy(contract.healthcheck_binding_policy);
+  demand(Array.isArray(contract.runtime_healthcheck_overrides), 'RUNTIME_HEALTHCHECK_BINDINGS');
+  const overrideRoles = [];
+  for (const binding of contract.runtime_healthcheck_overrides) {
+    exact(binding, ['role_id', 'source_binding', 'projection'], 'RUNTIME_HEALTHCHECK_BINDING'); roleId(binding.role_id); overrideRoles.push(binding.role_id);
+    const bindingSource = exact(binding.source_binding, ['authority', 'source_commit', 'source_paths'], 'RUNTIME_HEALTHCHECK_SOURCE');
+    demand(['FROZEN_SUPABASE_EFFECTIVE_START_DEFINITION', 'SYNTHETIC_TEST'].includes(bindingSource.authority) && /^[0-9a-f]{40}$/.test(bindingSource.source_commit), 'RUNTIME_HEALTHCHECK_SOURCE');
+    demand(Array.isArray(bindingSource.source_paths) && bindingSource.source_paths.length > 0 && bindingSource.source_paths.every(path => typeof path === 'string' && path.length > 0), 'RUNTIME_HEALTHCHECK_SOURCE');
+    bindingSource.source_paths.forEach(safeText); validateHealthcheckLayerProjection(binding.projection, { runtime: true });
+  }
+  demand(new Set(overrideRoles).size === overrideRoles.length, 'RUNTIME_HEALTHCHECK_DUPLICATE_ROLE');
   for (const collection of ['roles', 'volumes', 'networks', 'transient_jobs']) demand(Array.isArray(contract[collection]), 'RESOURCE_COLLECTION');
   const all = [...contract.roles, ...contract.volumes, ...contract.networks, ...contract.transient_jobs];
   const ids = [];
@@ -132,13 +151,15 @@ export function validateResourceExpectationContract(contract) {
     demand(row.resource_class === 'CONTAINER' || row.resource_class === 'TRANSIENT_JOB' ? row.image_role !== null && row.image_reference !== null : row.image_role === null && row.image_reference === null, 'RESOURCE_IMAGE_APPLICABILITY');
   }
   demand(new Set(ids).size === ids.length, 'DUPLICATE_ROLE');
+  demand(overrideRoles.every(id => all.some(row => row.role_id === id && ['CONTAINER', 'TRANSIENT_JOB'].includes(row.resource_class))), 'RUNTIME_HEALTHCHECK_ROLE');
   return contract;
 }
 
 function verifyProductionSource(contract) {
-  const design = fs.readFileSync(DESIGN_URL), research = fs.readFileSync(RESEARCH_URL);
+  const design = fs.readFileSync(DESIGN_URL), research = fs.readFileSync(RESEARCH_URL), engineEvidence = fs.readFileSync(ENGINE_EVIDENCE_URL);
   demand(hash(design) === contract.source_binding.normative_design_sha256, 'NORMATIVE_DESIGN_DRIFT');
   demand(hash(research) === contract.source_binding.source_research_sha256, 'SOURCE_RESEARCH_DRIFT');
+  demand(hash(engineEvidence) === contract.healthcheck_binding_policy.engine.evidence_sha256, 'HEALTHCHECK_ENGINE_EVIDENCE_DRIFT');
   return { normative_design_sha256: hash(design), source_research_sha256: hash(research) };
 }
 
@@ -171,7 +192,7 @@ function roleDecision(row, config, decisions) {
   return { role_id: row.role_id, state: 'REACHABLE', reason: 'FRESH_PG_PLATFORM_JOB_REACHABLE', evidence: `${rule.parent_role};pg>=${rule.fresh_pg_minimum_major}` };
 }
 
-export function deriveEffectiveStartProfile({ contract, config, projectId: requestedId, configSha256, configContractSha256, resourceContractSha256 = sha256(canonical(contract)), sourceEvidence = null }) {
+export function deriveEffectiveStartProfile({ contract, config, projectId: requestedId, configSha256, configContractSha256, resourceContractSha256 = requestedId === CURRENT_BASELINE.project_id ? assertStartModelUnchanged(contract) : sha256(canonical(contract)), sourceEvidence = null }) {
   validateResourceExpectationContract(contract); projectId(requestedId); sha(configSha256); sha(configContractSha256); sha(resourceContractSha256);
   demand(object(config) && config.project_id === requestedId, 'PROFILE_CONFIG_ID');
   demand(config['db.migrations.enabled'] === false && config['db.seed.enabled'] === false && config['analytics.enabled'] === false && config['experimental.pgdelta.enabled'] === false, 'PROFILE_FROZEN_FLAGS');
@@ -209,6 +230,7 @@ export function deriveEffectiveStartProfile({ contract, config, projectId: reque
     generated_at: 'NON_AUTHORITATIVE_OMITTED_FOR_DETERMINISM',
   };
   profile.profile_sha256 = sha256(canonical(profile));
+  if (requestedId === CURRENT_BASELINE.project_id) verifyCurrentProfile(profile);
   return profile;
 }
 
@@ -235,7 +257,7 @@ export function validateImageApprovalSet(set) {
     demand(typeof row.platform.variant === 'string', 'APPROVAL_VARIANT'); sha(row.selected_config_sha256, 'APPROVAL_CONFIG_PROJECTION');
     demand(Array.isArray(row.declared_volumes) && new Set(row.declared_volumes).size === row.declared_volumes.length, 'APPROVAL_VOLUMES');
     for (const destination of row.declared_volumes) demand(typeof destination === 'string' && destination.startsWith('/') && !destination.includes('..'), 'APPROVAL_VOLUME');
-    validateHealthcheckProjection(row.healthcheck);
+    validateHealthcheckLayerProjection(row.healthcheck);
     demand(['NO_NETWORK_BOOTSTRAP', 'REVIEWED_STRUCTURAL_ENTRYPOINT'].includes(row.entrypoint_policy), 'APPROVAL_ENTRYPOINT');
     exact(row.provenance, ['independent', 'source_class', 'source_record_sha256', 'resolver_id', 'resolver_version', 'resolver_sha256', 'resolver_contract_sha256', 'manifest_response_sha256', 'child_manifest_response_sha256', 'config_response_sha256', 'approved_at_utc'], 'APPROVAL_PROVENANCE');
     demand(row.provenance.independent === true && row.provenance.source_class === 'REVIEWED_REGISTRY_METADATA' && row.provenance.resolver_id === set.independent_source_policy.resolver_id, 'APPROVAL_PROVENANCE_VALUE');
@@ -247,29 +269,10 @@ export function validateImageApprovalSet(set) {
   return set;
 }
 
-function validateHealthcheckProjection(value) {
-  exact(value, ['state', 'test_form', 'executable', 'argv_element_count', 'payload_sha256', 'payload_byte_length', 'interval', 'timeout', 'start_period', 'start_interval', 'retries', 'unknown_keys', 'projection_sha256'], 'APPROVAL_HEALTHCHECK');
-  demand(['ABSENT', 'DISABLED', 'EXECUTABLE'].includes(value.state) && [null, 'NONE', 'CMD', 'CMD-SHELL'].includes(value.test_form), 'APPROVAL_HEALTHCHECK_STATE');
-  demand(typeof value.executable === 'boolean' && Number.isSafeInteger(value.payload_byte_length) && value.payload_byte_length >= 0, 'APPROVAL_HEALTHCHECK_PAYLOAD');
-  demand(Array.isArray(value.unknown_keys) && value.unknown_keys.length === 0, 'APPROVAL_HEALTHCHECK_UNKNOWN');
-  for (const key of ['interval', 'timeout', 'start_period', 'start_interval']) {
-    exact(value[key], ['present', 'value_nanoseconds'], 'APPROVAL_HEALTHCHECK_TIMING');
-    demand(typeof value[key].present === 'boolean', 'APPROVAL_HEALTHCHECK_TIMING');
-    demand(value[key].present ? Number.isSafeInteger(value[key].value_nanoseconds) && value[key].value_nanoseconds >= 0 : value[key].value_nanoseconds === null, 'APPROVAL_HEALTHCHECK_TIMING');
-  }
-  exact(value.retries, ['present', 'value'], 'APPROVAL_HEALTHCHECK_RETRIES');
-  demand(typeof value.retries.present === 'boolean' && (value.retries.present ? Number.isSafeInteger(value.retries.value) && value.retries.value >= 0 : value.retries.value === null), 'APPROVAL_HEALTHCHECK_RETRIES');
-  if (value.state === 'ABSENT') demand(value.test_form === null && value.executable === false && value.argv_element_count === null && value.payload_sha256 === null && value.payload_byte_length === 0, 'APPROVAL_HEALTHCHECK_ABSENT');
-  if (value.state === 'DISABLED') demand(value.test_form === 'NONE' && value.executable === false && value.argv_element_count === null && value.payload_sha256 === null && value.payload_byte_length === 0, 'APPROVAL_HEALTHCHECK_DISABLED');
-  if (value.state === 'EXECUTABLE') {
-    demand(['CMD', 'CMD-SHELL'].includes(value.test_form) && value.executable === true && /^[0-9a-f]{64}$/.test(value.payload_sha256) && value.payload_byte_length > 0, 'APPROVAL_HEALTHCHECK_EXECUTABLE');
-    demand(value.test_form === 'CMD' ? Number.isSafeInteger(value.argv_element_count) && value.argv_element_count >= 1 : value.argv_element_count === null, 'APPROVAL_HEALTHCHECK_ARGV');
-  }
-  sha(value.projection_sha256, 'APPROVAL_HEALTHCHECK_HASH');
-}
-
 export function produceImageApprovalSet({ profile, resolutions, resolverContract, resolverContractSha256 }) {
   demand(profile?.profile_type === PROFILE_TYPE && profile.result === 'PASS', 'APPROVAL_PROFILE_BLOCKED');
+  verifyCurrentProfile(profile);
+  if (profile.project_id === CURRENT_BASELINE.project_id) readCurrentFoundationBaseline(profile.project_id);
   demand(Array.isArray(resolutions) && object(resolverContract), 'APPROVAL_PRODUCER_INPUT'); sha(resolverContractSha256, 'APPROVAL_RESOLVER_CONTRACT_HASH');
   demand(resolverContract.resolver_id === 'WINWIN_PUBLIC_REGISTRY_METADATA_V1' && resolverContract.resolver_version === '1.0.0', 'APPROVAL_RESOLVER_CONTRACT');
   exactSet(resolutions.map(row => row.role).sort(), [...profile.reachable_image_roles].sort());
@@ -338,30 +341,57 @@ function validatePreparationContract(contract) {
 export function planImagePreparation({ profile, approvalSet, preparationContract }) {
   validatePreparationContract(preparationContract); validateImageApprovalSet(approvalSet);
   demand(profile?.profile_type === PROFILE_TYPE && profile.result === 'PASS', 'PREPARATION_PROFILE_BLOCKED');
+  verifyCurrentProfile(profile);
+  if (profile.project_id === CURRENT_BASELINE.project_id) readCurrentFoundationBaseline(profile.project_id);
   demand(approvalSet.profile_sha256 === profile.profile_sha256, 'PREPARATION_PROFILE_DRIFT');
   const expected = [...profile.reachable_image_roles].sort(), approvals = [...approvalSet.approvals].sort((a,b) => a.role.localeCompare(b.role));
   exactSet(approvals.map(x => x.role), expected);
   return { result: 'PASS', mode: preparationContract.mode, attempts_per_image: 1, retry: 'FORBIDDEN', actions: approvals.map(row => ({ role: row.role, immutable_reference: row.approved_registry_manifest_digest, expected_config_digest: row.approved_config_digest, mutation: 'REQUIRES_SEPARATE_AUTHORIZATION' })) };
 }
 
-function expectedRow(row, requestedId, config) {
+function expectedRow(row, requestedId, config, healthcheckConfiguration) {
   const ports = row.ports.map(port => ({ ...port, host_port: config[port.config_key] }));
   ports.forEach(port => demand(Number.isSafeInteger(port.host_port) && port.host_port >= 59320 && port.host_port <= 59329, 'EXPECTATION_HOST_PORT'));
   return {
     expectation_id: row.role_id, role_id: row.role_id, resource_class: row.resource_class, lifecycle: row.lifecycle,
     cardinality: copy(row.cardinality_when_reachable), discovery_hint: row.discovery_hint,
     required_labels: Object.fromEntries(LABELS.map(label => [label, requestedId])), image_role: row.image_role,
-    relationships: copy(row.relationships), ports, health_policy: row.health_policy,
+    relationships: copy(row.relationships), ports, health_policy: row.health_policy, healthcheck_configuration: healthcheckConfiguration,
+  };
+}
+
+function healthcheckConfiguration(approval, runtimeBinding, policy) {
+  demand(approval, 'EXPECTATION_IMAGE_APPROVAL'); demand(runtimeBinding, 'EXPECTATION_RUNTIME_HEALTHCHECK_UNAVAILABLE');
+  const effective = deriveEffectiveHealthcheck(approval.healthcheck, runtimeBinding.projection, policy);
+  return {
+    binding_version: HEALTHCHECK_BINDING_VERSION,
+    image_healthcheck_projection: copy(approval.healthcheck),
+    runtime_healthcheck_override_projection: copy(runtimeBinding.projection),
+    effective_healthcheck: effective,
+    candidate_verification: { comparison: 'EXACT_BEHAVIOR_FIELDS_AND_SHA256', required_fields: copy(HEALTHCHECK_BEHAVIOR_FIELDS) },
   };
 }
 
 export function produceResourceExpectationInstance({ contract, profile, config, configSha256, approvalSet, producerSha256 }) {
   validateResourceExpectationContract(contract); validateImageApprovalSet(approvalSet); sha(producerSha256, 'PRODUCER_HASH'); sha(configSha256, 'INSTANCE_CONFIG_HASH');
   demand(profile?.profile_type === PROFILE_TYPE && profile.result === 'PASS', 'EXPECTATION_PROFILE_BLOCKED');
+  verifyCurrentProfile(profile);
+  demand(config?.project_id === profile.project_id, 'EXPECTATION_CONFIG_ID');
+  const baselineBinding = profile.project_id === CURRENT_BASELINE.project_id ? readCurrentFoundationBaseline(profile.project_id).binding : null;
+  if (baselineBinding) assertStartModelUnchanged(contract);
   demand(profile.config_sha256 === configSha256 && approvalSet.profile_sha256 === profile.profile_sha256, 'EXPECTATION_INPUT_DRIFT');
   exactSet(approvalSet.approvals.map(x => x.role).sort(), [...profile.reachable_image_roles].sort());
   const byRole = new Map([...contract.roles, ...contract.volumes, ...contract.networks, ...contract.transient_jobs].map(row => [row.role_id, row]));
-  const expectations = profile.reachable_roles.map(id => expectedRow(byRole.get(id), profile.project_id, config));
+  const approvalsByRole = new Map(approvalSet.approvals.map(row => [row.role, row]));
+  const overridesByRole = new Map(contract.runtime_healthcheck_overrides.map(row => [row.role_id, row]));
+  if (profile.project_id === contract.identity_policy.production_project_id) demand(contract.runtime_healthcheck_overrides.every(row => row.source_binding.authority === 'FROZEN_SUPABASE_EFFECTIVE_START_DEFINITION' && row.source_binding.source_commit === contract.source_binding.source_commit), 'EXPECTATION_RUNTIME_HEALTHCHECK_SOURCE');
+  const expectations = profile.reachable_roles.map(id => {
+    const row = byRole.get(id);
+    demand(row, 'EXPECTATION_UNKNOWN_PROFILE_ROLE');
+    if (row.image_role !== null) demand(approvalsByRole.get(row.image_role)?.source_reference === row.image_reference, 'EXPECTATION_IMAGE_REFERENCE');
+    const healthcheck = row.image_role !== null ? healthcheckConfiguration(approvalsByRole.get(row.image_role), overridesByRole.get(row.role_id), contract.healthcheck_binding_policy) : null;
+    return expectedRow(row, profile.project_id, config, healthcheck);
+  });
   for (const expectation of expectations.filter(x => x.image_role !== null)) {
     const approval = approvalSet.approvals.find(x => x.role === expectation.image_role);
     demand(approval, 'EXPECTATION_IMAGE_APPROVAL');
@@ -369,10 +399,12 @@ export function produceResourceExpectationInstance({ contract, profile, config, 
     demand(uncovered.length === 0, 'UNLABELLED_ANONYMOUS_VOLUME_RISK');
   }
   const instance = {
-    schema_version: '1', contract_type: EXPECTATION_INSTANCE_TYPE, purpose: PREREQUISITE_PURPOSE,
-    project_id: profile.project_id, config_sha256: configSha256, resource_contract_sha256: profile.resource_contract_sha256,
+    schema_version: RESOURCE_EXPECTATION_SCHEMA_VERSION, contract_type: EXPECTATION_INSTANCE_TYPE, purpose: PREREQUISITE_PURPOSE,
+    project_id: profile.project_id, config_sha256: configSha256, resource_contract_sha256: sha256(canonical(contract)),
+    foundation_baseline_binding: baselineBinding,
     producer_sha256: producerSha256, profile_sha256: profile.profile_sha256,
     image_approval_set_sha256: sha256(canonical(approvalSet)), expectations,
+    healthcheck_binding_policy: copy(contract.healthcheck_binding_policy),
     candidate_policy: copy(contract.candidate_policy), generated_at: 'NON_AUTHORITATIVE_OMITTED_FOR_DETERMINISM',
   };
   instance.instance_sha256 = sha256(canonical(instance));
@@ -380,9 +412,15 @@ export function produceResourceExpectationInstance({ contract, profile, config, 
 }
 
 export function validateResourceExpectationInstance(instance) {
-  exact(instance, ['schema_version', 'contract_type', 'purpose', 'project_id', 'config_sha256', 'resource_contract_sha256', 'producer_sha256', 'profile_sha256', 'image_approval_set_sha256', 'expectations', 'candidate_policy', 'generated_at', 'instance_sha256'], 'EXPECTATION_INSTANCE');
-  demand(instance.schema_version === '1' && instance.contract_type === EXPECTATION_INSTANCE_TYPE && instance.purpose === PREREQUISITE_PURPOSE, 'EXPECTATION_INSTANCE_TYPE');
+  exact(instance, ['schema_version', 'contract_type', 'purpose', 'project_id', 'foundation_baseline_binding', 'config_sha256', 'resource_contract_sha256', 'producer_sha256', 'profile_sha256', 'image_approval_set_sha256', 'expectations', 'healthcheck_binding_policy', 'candidate_policy', 'generated_at', 'instance_sha256'], 'EXPECTATION_INSTANCE');
+  validateHealthcheckBindingPolicy(instance.healthcheck_binding_policy);
+  demand(instance.schema_version === RESOURCE_EXPECTATION_SCHEMA_VERSION && instance.contract_type === EXPECTATION_INSTANCE_TYPE && instance.purpose === PREREQUISITE_PURPOSE, 'EXPECTATION_INSTANCE_TYPE');
   projectId(instance.project_id);
+  demand(instance.project_id !== LOST_SESSION, 'HISTORICAL_OR_FOREIGN_BASELINE');
+  if (instance.foundation_baseline_binding !== null) {
+    validateCurrentBaselineBinding(instance.foundation_baseline_binding, instance.project_id);
+    demand(instance.config_sha256 === CURRENT_BASELINE.config_sha256 && instance.profile_sha256 === CURRENT_BASELINE.profile_sha256, 'CURRENT_PROFILE_BINDING_MISMATCH');
+  } else demand(instance.project_id !== CURRENT_BASELINE.project_id, 'CURRENT_BASELINE_BINDING_REQUIRED');
   for (const key of ['config_sha256', 'resource_contract_sha256', 'producer_sha256', 'profile_sha256', 'image_approval_set_sha256', 'instance_sha256']) sha(instance[key], 'EXPECTATION_INSTANCE_HASH');
   demand(instance.generated_at === 'NON_AUTHORITATIVE_OMITTED_FOR_DETERMINISM', 'EXPECTATION_INSTANCE_TIME');
   const candidate = exact(instance.candidate_policy, ['complete_disposition_required', 'unexpected_candidate', 'ambiguous_role', 'unclassified_candidate', 'foreign_or_mixed_ownership', 'unrelated_preexisting'], 'EXPECTATION_CANDIDATE_POLICY');
@@ -391,7 +429,7 @@ export function validateResourceExpectationInstance(instance) {
   demand(Array.isArray(instance.expectations), 'EXPECTATION_ROWS');
   const ids = [];
   for (const row of instance.expectations) {
-    exact(row, ['expectation_id', 'role_id', 'resource_class', 'lifecycle', 'cardinality', 'discovery_hint', 'required_labels', 'image_role', 'relationships', 'ports', 'health_policy'], 'EXPECTATION_ROW');
+    exact(row, ['expectation_id', 'role_id', 'resource_class', 'lifecycle', 'cardinality', 'discovery_hint', 'required_labels', 'image_role', 'relationships', 'ports', 'health_policy', 'healthcheck_configuration'], 'EXPECTATION_ROW');
     roleId(row.expectation_id); roleId(row.role_id); demand(row.expectation_id === row.role_id, 'EXPECTATION_ROLE_ID'); ids.push(row.role_id);
     demand(CLASSES.includes(row.resource_class) && LIFECYCLES.includes(row.lifecycle), 'EXPECTATION_CLASS'); validateCardinality(row.cardinality);
     demand(typeof row.discovery_hint === 'string' && row.discovery_hint.length > 0, 'EXPECTATION_HINT'); safeText(row.discovery_hint);
@@ -407,6 +445,14 @@ export function validateResourceExpectationInstance(instance) {
       demand(Number.isSafeInteger(port.host_port) && port.host_port >= 59320 && port.host_port <= 59329, 'EXPECTATION_HOST_PORT');
     }
     demand(['RUNNING_HEALTHY', 'TRANSIENT_EXIT_ZERO_REMOVED', 'PRESENT', 'NOT_APPLICABLE'].includes(row.health_policy), 'EXPECTATION_HEALTH');
+    if (row.image_role !== null) {
+      const binding = exact(row.healthcheck_configuration, ['binding_version', 'image_healthcheck_projection', 'runtime_healthcheck_override_projection', 'effective_healthcheck', 'candidate_verification'], 'EXPECTATION_HEALTHCHECK_BINDING');
+      demand(binding.binding_version === HEALTHCHECK_BINDING_VERSION, 'EXPECTATION_HEALTHCHECK_VERSION');
+      validateHealthcheckLayerProjection(binding.image_healthcheck_projection); validateHealthcheckLayerProjection(binding.runtime_healthcheck_override_projection, { runtime: true }); validateEffectiveHealthcheck(binding.effective_healthcheck);
+      demand(canonical(binding.effective_healthcheck) === canonical(deriveEffectiveHealthcheck(binding.image_healthcheck_projection, binding.runtime_healthcheck_override_projection, instance.healthcheck_binding_policy)), 'EXPECTATION_HEALTHCHECK_DERIVATION_MISMATCH');
+      const candidateVerification = exact(binding.candidate_verification, ['comparison', 'required_fields'], 'EXPECTATION_HEALTHCHECK_CANDIDATE_POLICY');
+      demand(candidateVerification.comparison === 'EXACT_BEHAVIOR_FIELDS_AND_SHA256' && canonical(candidateVerification.required_fields) === canonical(HEALTHCHECK_BEHAVIOR_FIELDS), 'EXPECTATION_HEALTHCHECK_CANDIDATE_POLICY');
+    } else demand(row.healthcheck_configuration === null, 'EXPECTATION_HEALTHCHECK_APPLICABILITY');
   }
   demand(new Set(ids).size === ids.length, 'EXPECTATION_DUPLICATE_ROLE');
   const unsigned = copy(instance); delete unsigned.instance_sha256;
@@ -416,9 +462,10 @@ export function validateResourceExpectationInstance(instance) {
 
 export function compareResourceExpectation(instance, candidates) {
   validateResourceExpectationInstance(instance); demand(Array.isArray(candidates), 'CANDIDATES');
+  if (instance.foundation_baseline_binding !== null) readCurrentFoundationBaseline(instance.project_id);
   const candidateIds = new Set();
   for (const candidate of candidates) {
-    exact(candidate, ['candidate_id', 'role_id', 'matched_expectation_ids', 'resource_class', 'lifecycle', 'labels', 'image_role', 'relationships', 'ports', 'health_policy', 'disposition'], 'CANDIDATE');
+    exact(candidate, ['candidate_id', 'role_id', 'matched_expectation_ids', 'resource_class', 'lifecycle', 'labels', 'image_role', 'relationships', 'ports', 'health_policy', 'healthcheck_configuration', 'disposition'], 'CANDIDATE');
     safeText(candidate.candidate_id); roleId(candidate.role_id); demand(CLASSES.includes(candidate.resource_class) && LIFECYCLES.includes(candidate.lifecycle), 'CANDIDATE_CLASS');
     demand(Array.isArray(candidate.matched_expectation_ids) && new Set(candidate.matched_expectation_ids).size === candidate.matched_expectation_ids.length, 'CANDIDATE_MATCHES');
     candidate.matched_expectation_ids.forEach(roleId);
@@ -431,6 +478,8 @@ export function compareResourceExpectation(instance, candidates) {
     const expected = matches[0]; ownership(candidate.labels, instance.project_id);
     demand(candidate.lifecycle === expected.lifecycle && candidate.image_role === expected.image_role && candidate.health_policy === expected.health_policy, 'CANDIDATE_SEMANTIC_MISMATCH');
     demand(canonical(candidate.relationships) === canonical(expected.relationships) && canonical(candidate.ports) === canonical(expected.ports), 'CANDIDATE_RELATIONSHIP_MISMATCH');
+    if (expected.image_role !== null) compareCandidateHealthcheck(expected.healthcheck_configuration.effective_healthcheck, candidate.healthcheck_configuration);
+    else demand(candidate.healthcheck_configuration === null, 'CANDIDATE_HEALTHCHECK_APPLICABILITY');
   }
   const counts = [];
   for (const expected of instance.expectations) {
@@ -445,9 +494,12 @@ export function foundationPrerequisiteService() {
   const resource = loadJSON(RESOURCE_URL), preparation = loadJSON(PREPARATION_URL);
   validateResourceExpectationContract(resource.value); validatePreparationContract(preparation.value);
   const sourceEvidence = verifyProductionSource(resource.value);
-  const configRead = foundationConfigService().readAndVerify(resource.value.identity_policy.production_project_id);
-  const profile = deriveEffectiveStartProfile({ contract: resource.value, config: configRead.effective, projectId: configRead.lexical.raw_project_id, configSha256: configRead.verification.config_sha256, configContractSha256: configRead.verification.contract_sha256, resourceContractSha256: resource.sha256, sourceEvidence });
+  const baseline = readCurrentFoundationBaseline(resource.value.identity_policy.production_project_id);
+  const configRead = baseline.configRead;
+  const profile = deriveEffectiveStartProfile({ contract: resource.value, config: configRead.effective, projectId: configRead.lexical.raw_project_id, configSha256: configRead.verification.config_sha256, configContractSha256: configRead.verification.contract_sha256, resourceContractSha256: assertStartModelUnchanged(resource.value), sourceEvidence });
+  verifyCurrentProfile(profile);
   return Object.freeze({
+    baselineBinding: () => copy(baseline.binding),
     contract: () => copy(resource.value), contractSha256: resource.sha256,
     preparationContract: () => copy(preparation.value), preparationContractSha256: preparation.sha256,
     profile: () => copy(profile), producerSha256: hash(fs.readFileSync(MODULE_URL)),

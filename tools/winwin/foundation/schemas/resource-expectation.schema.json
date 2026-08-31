@@ -1,25 +1,29 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://winwin.invalid/schemas/foundation-resource-expectation-v1.json",
+  "$id": "https://winwin.invalid/schemas/foundation-resource-expectation-v2.json",
   "title": "Foundation resource expectation model",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "contract_type", "purpose", "start_input_binding", "source_binding", "identity_policy", "candidate_policy", "port_policy", "roles", "volumes", "networks", "transient_jobs"],
+  "required": ["schema_version", "contract_type", "purpose", "foundation_baseline_binding", "start_input_binding", "source_binding", "identity_policy", "candidate_policy", "port_policy", "healthcheck_binding_policy", "runtime_healthcheck_overrides", "roles", "volumes", "networks", "transient_jobs"],
   "properties": {
-    "schema_version": {"const": "1"},
+    "schema_version": {"const": "2"},
     "contract_type": {"const": "FOUNDATION_RESOURCE_EXPECTATION_MODEL"},
     "purpose": {"const": "IA-3A_SCHEMA_RUNTIME_VALIDATION"},
+    "foundation_baseline_binding": {"$ref":"#/$defs/baselineBinding"},
     "start_input_binding": {"$ref": "#/$defs/startInputBinding"},
     "source_binding": {"$ref": "#/$defs/sourceBinding"},
     "identity_policy": {"$ref": "#/$defs/identityPolicy"},
     "candidate_policy": {"$ref": "#/$defs/candidatePolicy"},
     "port_policy": {"$ref": "#/$defs/portPolicy"},
+    "healthcheck_binding_policy": {"$ref": "#/$defs/healthcheckBindingPolicy"},
+    "runtime_healthcheck_overrides": {"type": "array", "items": {"$ref": "#/$defs/runtimeHealthcheckBinding"}},
     "roles": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/role"}},
     "volumes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/role"}},
     "networks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/role"}},
     "transient_jobs": {"type": "array", "items": {"$ref": "#/$defs/role"}}
   },
   "$defs": {
+    "baselineBinding": {"type":"object","additionalProperties":false,"required":["tooling_checkpoint","project_id","config_sha256","profile_sha256","active_witness_sha256","baseline_witness_sha256"],"properties":{"tooling_checkpoint":{"const":"c71aa65bf83142e3f4d730f14fd258c1f14720d5"},"project_id":{"const":"wwfnd-20260831t120908z-c0e3f4af1a3d"},"config_sha256":{"const":"3447d63e5fe674227af31184550992985052d6af74223c9372ebd8394785765a"},"profile_sha256":{"const":"565993c10026c175560c1f28dee391502e8d77ee08a5a3f36b5491f98c0c3193"},"active_witness_sha256":{"const":"ff41152de6a9ced15b9214084e5b168cc4ea5fe5b473824872c4eb2f1cf96f66"},"baseline_witness_sha256":{"const":"8899dedbb6d399214ce3af55d7dbdbe73cfd8be09975b97757a9c4fe8f170cf5"}}},
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "projectId": {"type": "string", "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$", "minLength": 35, "maxLength": 35},
     "roleId": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$"},
@@ -79,6 +83,40 @@
         "host_ip_policy": {"const": "LOOPBACK_ONLY"},
         "protocol": {"const": "tcp"},
         "unexpected_binding": {"const": "FAIL"}
+      }
+    },
+    "healthcheckTiming": {"type": "object", "additionalProperties": false, "required": ["present", "value_nanoseconds"], "properties": {"present": {"type": "boolean"}, "value_nanoseconds": {"type": ["integer", "null"], "minimum": 0}}},
+    "healthcheckRetries": {"type": "object", "additionalProperties": false, "required": ["present", "value"], "properties": {"present": {"type": "boolean"}, "value": {"type": ["integer", "null"], "minimum": 0}}},
+    "healthcheckLayerProjection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "test_form", "executable", "argv_element_count", "payload_sha256", "payload_byte_length", "interval", "timeout", "start_period", "start_interval", "retries", "unknown_keys", "projection_sha256"],
+      "properties": {
+        "state": {"enum": ["ABSENT", "PARTIAL", "DISABLED", "EXECUTABLE"]}, "test_form": {"type": ["string", "null"], "enum": [null, "NONE", "CMD", "CMD-SHELL"]},
+        "executable": {"type": "boolean"}, "argv_element_count": {"type": ["integer", "null"], "minimum": 1}, "payload_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "payload_byte_length": {"type": "integer", "minimum": 0},
+        "interval": {"$ref": "#/$defs/healthcheckTiming"}, "timeout": {"$ref": "#/$defs/healthcheckTiming"}, "start_period": {"$ref": "#/$defs/healthcheckTiming"}, "start_interval": {"$ref": "#/$defs/healthcheckTiming"}, "retries": {"$ref": "#/$defs/healthcheckRetries"},
+        "unknown_keys": {"const": []}, "projection_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "healthcheckBindingPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["binding_version", "engine", "provenance_values", "canonical_serialization", "candidate_comparison", "missing_runtime_override", "health_status_separation"],
+      "properties": {
+        "binding_version": {"const": "1"},
+        "engine": {"type": "object", "additionalProperties": false, "required": ["implementation", "version", "merge_semantics", "minimum_nonzero_duration_ns", "defaults", "evidence_sha256"], "properties": {
+          "implementation": {"const": "MOBY_DOCKER_ENGINE"}, "version": {"const": "29.6.2"}, "merge_semantics": {"const": "NONZERO_FIELD_MERGE_AT_CONTAINER_CREATE"}, "minimum_nonzero_duration_ns": {"const": 1000000},
+          "defaults": {"type": "object", "additionalProperties": false, "required": ["interval_ns", "timeout_ns", "start_period_ns", "start_interval_ns", "retries"], "properties": {"interval_ns": {"const": 30000000000}, "timeout_ns": {"const": 30000000000}, "start_period_ns": {"const": 0}, "start_interval_ns": {"const": 5000000000}, "retries": {"const": 3}}},
+          "evidence_sha256": {"$ref": "#/$defs/sha256"}
+        }},
+        "provenance_values": {"const": ["IMAGE", "RUNTIME", "ENGINE_DEFAULT", "DISABLED"]}, "canonical_serialization": {"const": "UTF8_JSON_RECURSIVE_SORTED_OBJECT_KEYS_PRESERVE_ARRAY_ORDER"},
+        "candidate_comparison": {"const": "EXACT_BEHAVIOR_FIELDS_AND_SHA256"}, "missing_runtime_override": {"const": "FAIL_CLOSED"}, "health_status_separation": {"const": "CONFIGURATION_DISTINCT_FROM_RUNNING_HEALTHY_LIFECYCLE"}
+      }
+    },
+    "runtimeHealthcheckBinding": {
+      "type": "object", "additionalProperties": false, "required": ["role_id", "source_binding", "projection"],
+      "properties": {
+        "role_id": {"$ref": "#/$defs/roleId"},
+        "source_binding": {"type": "object", "additionalProperties": false, "required": ["authority", "source_commit", "source_paths"], "properties": {"authority": {"enum": ["FROZEN_SUPABASE_EFFECTIVE_START_DEFINITION", "SYNTHETIC_TEST"]}, "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "source_paths": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}},
+        "projection": {"$ref": "#/$defs/healthcheckLayerProjection"}
       }
     },
     "cardinality": {
