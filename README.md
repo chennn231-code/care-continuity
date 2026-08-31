@@ -1,5 +1,7 @@
 # WinWin（高齡支持照顧系統）
 
+最新權威狀態：[WinWin Project Status — 2026-08-31](docs/project-status/WINWIN_CURRENT_STATUS.md)。以下較早的狀態快照僅供歷史參照；Foundation/backend 與 Product/UX 尚未合併。
+
 > 讓不同時間、不同照顧者留下的變化，可以被下一位理解、接受並追蹤到完成
 
 WinWin 以長者／個案為中心，連結家屬與專業照護團隊，在受控權限下支援照顧更新、交接與行動協作，並保留作者、時間與責任狀態，降低跨人員、跨班次與跨服務的資訊斷裂。
