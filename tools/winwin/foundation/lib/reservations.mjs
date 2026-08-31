@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ContractError, demand, hash, object, parseJSON, projectId, shape } from './contracts.mjs';
+import { foundationDurableStore, syntheticDurableStore, syncDirectory, ACCEPTED_CHECKPOINT } from './durable-evidence.mjs';
 
 export const RESERVATION_PURPOSE = 'IA-3A_SCHEMA_RUNTIME_VALIDATION';
 export const RESERVATION_SCHEMA_VERSION = '1';
@@ -215,6 +216,7 @@ function writeExclusiveJson(file, value) {
   try { fs.writeFileSync(descriptor, bytes); fs.fsyncSync(descriptor); }
   finally { fs.closeSync(descriptor); }
   safeFile(file);
+  syncDirectory(path.dirname(file));
   return { bytes, sha256: hash(bytes) };
 }
 
@@ -312,23 +314,55 @@ function reserve(scope, candidate, decision, clock, randomBytes, beforeActiveLin
   if (beforeActiveLink) beforeActiveLink();
   const activeFile = path.join(scope.indexRoot, 'active', PURPOSE_FILE);
   fs.linkSync(stagingFile, activeFile);
+  syncDirectory(path.dirname(activeFile));
+  syncDirectory(scope.indexRoot);
+  syncDirectory(sessionRoot);
+  syncDirectory(scope.reservationParent);
   const after = readIndex(scope);
   demand(after.active.length === 1 && after.active[0].project_id === candidate.project_id, 'RESERVATION_ACCEPTANCE_MISSING');
   return { result: 'PASS', project_id: candidate.project_id, session_root: sessionRoot, reservation_state: 'ACTIVE', created_at_utc: createdAt, index_sha256: after.index_sha256, evidence: activeRecord.evidence };
 }
 
-function service(scope, { clock = () => new Date(), randomBytes = size => crypto.randomBytes(size), beforeActiveLink = null } = {}) {
+function durableIndex(scope) {
+  const index = readIndex(scope);
+  if (index.active.length === 0) return index;
+  const statIdentity = file => {
+    const stat = fs.lstatSync(file);
+    return { device: stat.dev, inode: stat.ino, birthtime_ms: stat.birthtimeMs };
+  };
+  return { ...index, filesystem_identity: {
+    session_directory: statIdentity(index.active[0].session_root),
+    active_entry: statIdentity(path.join(scope.indexRoot, 'active', PURPOSE_FILE)),
+  } };
+}
+
+function service(scope, { clock = () => new Date(), randomBytes = size => crypto.randomBytes(size), beforeActiveLink = null, durable = null } = {}) {
   validateScope(scope);
   return Object.freeze({
     generateCandidate: () => generateCandidate(clock, randomBytes),
-    readIndex: () => readIndex(scope),
-    reserve: (candidate, decision) => reserve(scope, candidate, decision, clock, randomBytes, beforeActiveLink),
+    readIndex: () => durable ? durable.verifyEphemeral(durableIndex(scope)) : readIndex(scope),
+    reserve: (candidate, decision) => {
+      if (!durable) return reserve(scope, candidate, decision, clock, randomBytes, beforeActiveLink);
+      validateCandidate(candidate);
+      const before = durable.verifyEphemeral(durableIndex(scope));
+      demand(before.entry_count === decision.expected_entry_count && before.index_sha256 === decision.expected_index_sha256, 'RESERVATION_INDEX_DRIFT');
+      demand(decision.freshness_result === 'FRESH-QUALIFIED' && decision.collision_result === 'PASS', 'RESERVATION_DECISION_REJECTED');
+      durable.claim(candidate);
+      const result = reserve(scope, candidate, decision, clock, randomBytes, beforeActiveLink);
+      const raw = durableIndex(scope);
+      durable.publishActive(raw.active[0], raw.filesystem_identity);
+      const after = durable.verifyEphemeral(raw);
+      return { ...result, durable_witness_sha256: after.durable_witness_sha256 };
+    },
   });
 }
 
 export function foundationReservationService() {
-  return service(PRODUCTION_SCOPE);
+  return service(PRODUCTION_SCOPE, { durable: foundationDurableStore() });
 }
+
+// Read-only bootstrap preflight, explicitly NOT reservation authority.
+export function inspectEphemeralReservationIndex() { return readIndex(PRODUCTION_SCOPE); }
 
 export function syntheticReservationHarness(options = {}) {
   const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), TEST_ROOT_PREFIX));
@@ -336,7 +370,10 @@ export function syntheticReservationHarness(options = {}) {
   const sessions = path.join(parent, 'sessions');
   fs.mkdirSync(sessions, { mode: 0o700 });
   const scope = makeScope(sessions, path.join(sessions, 'reservation-index-v1'), 'SYNTHETIC_TEST');
-  return Object.freeze({ root: parent, sessions, indexRoot: scope.indexRoot, service: service(scope, options) });
+  const durable = options.withDurability ? syntheticDurableStore(parent, options.durableFault) : null;
+  if (durable && options.initializeDurable !== false) durable.initialize({ toolingCheckpoint: ACCEPTED_CHECKPOINT,
+    createdAtUtc: '2000-01-01T00:00:00.000Z', records: options.history ?? [] });
+  return Object.freeze({ root: parent, sessions, indexRoot: scope.indexRoot, durable, service: service(scope, { ...options, durable }) });
 }
 
 export const reservationEvidenceFiles = EVIDENCE_FILES;

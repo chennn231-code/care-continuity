@@ -6,7 +6,7 @@ import { LABELS, validateSchemaDocumentHeader } from '../lib/contracts.mjs';
 import {
   IMAGE_APPROVAL_SET_TYPE, PREREQUISITE_PURPOSE,
   compareApprovedImage, compareResourceExpectation, deriveEffectiveStartProfile,
-  foundationPrerequisiteService, planImagePreparation, produceImageApprovalSet, produceResourceExpectationInstance,
+  planImagePreparation, produceImageApprovalSet, produceResourceExpectationInstance,
   validateImageApprovalSet, validateResourceExpectationContract, validateResourceExpectationInstance,
 } from '../lib/resource-image-prerequisites.mjs';
 
@@ -184,7 +184,7 @@ test('image preparation rejects incomplete approval coverage', () => { const p=p
 test('image preparation contract forbids retry cleanup and tag-only acceptance', () => { const x=preparation(); assert.equal(x.attempt_policy.retry,'FORBIDDEN'); assert.equal(x.cleanup_policy.remove_partial,'FORBIDDEN'); assert.equal(x.cleanup_policy.remove_unapproved_local,'FORBIDDEN'); assert.equal(x.acceptance_policy.tag_only,'REJECTED'); });
 test('image preparation contract rejects nested extension fields', () => { const p=profile(resolvedContract()), set=approvalSet(p), x=preparation(); x.attempt_policy.unreviewed=true; rejects(() => planImagePreparation({profile:p,approvalSet:set,preparationContract:x}),'PREPARATION_ATTEMPTS'); });
 
-test('production profile passes while approval and instance materialization remain blocked', () => { const service=foundationPrerequisiteService(); assert.equal(service.profile().result,'PASS'); assert.equal(service.materializationReadiness().reason,'INDEPENDENT_IMAGE_APPROVAL_SET_MISSING'); assert.equal(service.materializationReadiness().image_approval_set,'NOT_MATERIALIZED'); });
+test('frozen profile derives without depending on a live production reservation', () => { const derived=profile(); assert.equal(derived.result,'PASS'); assert.equal(derived.reachable_image_roles.length,10); assert.equal(derived.unresolved_roles.length,0); });
 test('all new schemas are supported strict JSON Schema documents', () => { for(const [path,title] of [['../schemas/resource-expectation.schema.json','Foundation resource expectation model'],['../schemas/resource-expectation-instance.schema.json','Foundation frozen resource expectation instance'],['../schemas/effective-start-profile.schema.json','Foundation effective start profile'],['../schemas/image-approval.schema.json','Foundation immutable image approval set'],['../schemas/image-preparation.schema.json','Foundation image preparation contract'],['../schemas/registry-digest-resolver.schema.json','Foundation bounded public registry metadata resolver']]) assert.equal(validateSchemaDocumentHeader(load(path),title).result,'PASS'); });
 test('every object node in the new schemas rejects additional properties', () => {
   const inspect = value => {

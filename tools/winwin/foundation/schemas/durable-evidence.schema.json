@@ -1,0 +1,461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Foundation durable witness v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/HISTORY"
+    },
+    {
+      "$ref": "#/$defs/MANIFEST"
+    },
+    {
+      "$ref": "#/$defs/INTENT"
+    },
+    {
+      "$ref": "#/$defs/ACTIVE"
+    },
+    {
+      "$ref": "#/$defs/BASELINE"
+    }
+  ],
+  "$defs": {
+    "HISTORY": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "witness_sha256",
+        "evidence_type",
+        "records"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "witness_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_type": {
+          "const": "HISTORY"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "project_id",
+              "state",
+              "config_sha256",
+              "basis"
+            ],
+            "properties": {
+              "project_id": {
+                "type": "string",
+                "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$"
+              },
+              "state": {
+                "enum": [
+                  "ACTIVE",
+                  "ENDED",
+                  "CONTINUITY_LOST"
+                ]
+              },
+              "config_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "basis": {
+                "enum": [
+                  "HISTORICAL_ATTESTATION",
+                  "FILESYSTEM_ARTIFACTS_MISSING_AFTER_REBOOT_BYTES_REPRODUCIBLE_CONTINUITY_UNPROVEN"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "MANIFEST": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "witness_sha256",
+        "evidence_type",
+        "created_at_utc",
+        "repository_checkpoint",
+        "tooling_checkpoint",
+        "history_sha256",
+        "tool_hashes",
+        "reserved_ports"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "witness_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_type": {
+          "const": "MANIFEST"
+        },
+        "created_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "repository_checkpoint": {
+          "const": "f2f1505a2a950a4270d6616b1196288e163f23f5"
+        },
+        "tooling_checkpoint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "history_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tool_hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tools/winwin/foundation/lib/durable-evidence.mjs",
+            "tools/winwin/foundation/lib/reservations.mjs",
+            "tools/winwin/foundation/lib/configuration.mjs",
+            "tools/winwin/foundation/lib/contracts.mjs",
+            "tools/winwin/foundation/lib/auditors.mjs",
+            "tools/winwin/foundation/lib/resource-image-prerequisites.mjs",
+            "tools/winwin/foundation/establish-baseline.mjs",
+            "tools/winwin/foundation/schemas/durable-evidence.schema.json",
+            "tools/winwin/foundation/contracts/planned-config-contract.json",
+            "tools/winwin/foundation/contracts/resource-expectation-contract.json",
+            "docs/winwin/WINWIN_FOUNDATION_SECURITY_CONCURRENCY_FEASIBILITY_SPIKE_DESIGN.md",
+            "docs/winwin/WINWIN_FOUNDATION_RESOURCE_ACCEPTANCE_EVIDENCE_RESEARCH_V2.md"
+          ],
+          "properties": {
+            "tools/winwin/foundation/lib/durable-evidence.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/lib/reservations.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/lib/configuration.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/lib/contracts.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/lib/auditors.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/lib/resource-image-prerequisites.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/establish-baseline.mjs": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/schemas/durable-evidence.schema.json": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/contracts/planned-config-contract.json": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "tools/winwin/foundation/contracts/resource-expectation-contract.json": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "docs/winwin/WINWIN_FOUNDATION_SECURITY_CONCURRENCY_FEASIBILITY_SPIKE_DESIGN.md": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "docs/winwin/WINWIN_FOUNDATION_RESOURCE_ACCEPTANCE_EVIDENCE_RESEARCH_V2.md": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "reserved_ports": {
+          "const": [
+            59320,
+            59321,
+            59322,
+            59323,
+            59324,
+            59325,
+            59326,
+            59327,
+            59328,
+            59329
+          ]
+        }
+      }
+    },
+    "INTENT": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "witness_sha256",
+        "evidence_type",
+        "project_id",
+        "created_at_utc",
+        "history_sha256",
+        "manifest_sha256",
+        "state"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "witness_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_type": {
+          "const": "INTENT"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$"
+        },
+        "created_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "history_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "state": {
+          "const": "PREPARING"
+        }
+      }
+    },
+    "ACTIVE": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "witness_sha256",
+        "evidence_type",
+        "project_id",
+        "created_at_utc",
+        "session_root",
+        "intent_sha256",
+        "ephemeral_record_sha256",
+        "filesystem_identity",
+        "state"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "witness_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_type": {
+          "const": "ACTIVE"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$"
+        },
+        "created_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session_root": {
+          "type": "string",
+          "pattern": "^/.*winwin-fnd-spike\\.[0-9a-f]{8}$"
+        },
+        "intent_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "ephemeral_record_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "filesystem_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "session_directory",
+            "active_entry"
+          ],
+          "properties": {
+            "session_directory": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "device",
+                "inode",
+                "birthtime_ms"
+              ],
+              "properties": {
+                "device": {
+                  "type": "integer"
+                },
+                "inode": {
+                  "type": "integer"
+                },
+                "birthtime_ms": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            "active_entry": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "device",
+                "inode",
+                "birthtime_ms"
+              ],
+              "properties": {
+                "device": {
+                  "type": "integer"
+                },
+                "inode": {
+                  "type": "integer"
+                },
+                "birthtime_ms": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            }
+          }
+        },
+        "state": {
+          "const": "ACTIVE"
+        }
+      }
+    },
+    "BASELINE": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "witness_sha256",
+        "evidence_type",
+        "project_id",
+        "created_at_utc",
+        "active_witness_sha256",
+        "config_sha256",
+        "config_source_sha256",
+        "config_contract_sha256",
+        "config_bytes",
+        "source_path",
+        "config_path",
+        "session_local_link",
+        "effective_profile_sha256",
+        "historical_profile_sha256",
+        "semantic_profile_sha256",
+        "semantic_unchanged"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1"
+        },
+        "witness_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_type": {
+          "const": "BASELINE"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^wwfnd-[0-9]{8}t[0-9]{6}z-[0-9a-f]{12}$"
+        },
+        "created_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "active_witness_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "config_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "config_source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "config_contract_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "config_bytes": {
+          "const": 436
+        },
+        "source_path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "config_path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "session_local_link": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "device",
+            "inode",
+            "link_count",
+            "mode"
+          ],
+          "properties": {
+            "device": {
+              "type": "integer"
+            },
+            "inode": {
+              "type": "integer"
+            },
+            "link_count": {
+              "const": 2
+            },
+            "mode": {
+              "const": "0600"
+            }
+          }
+        },
+        "effective_profile_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "historical_profile_sha256": {
+          "const": "68fa1b17a24ef293af6dedeea831664f13eead394a3866e0df47416b1bc511ab"
+        },
+        "semantic_profile_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "semantic_unchanged": {
+          "const": true
+        }
+      }
+    }
+  }
+}

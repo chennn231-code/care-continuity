@@ -140,6 +140,15 @@ function loadProductionContract() {
   return { contract, bytes, sha256: hash(bytes) };
 }
 
+function boundContract(reservationReader) {
+  const index = reservationReader();
+  demand(index.active.length === 1 && index.ended.length === 0, 'CONFIG_RESERVATION_CARDINALITY');
+  const active = index.active[0];
+  demand(active.reservation_state === 'ACTIVE' && typeof index.durable_witness_sha256 === 'string', 'CONFIG_DURABLE_RESERVATION_REQUIRED');
+  // Rebind only identity/destination fields; renderer, flags, ports and template stay frozen.
+  return syntheticContract(active.session_root, active.project_id);
+}
+
 function makeScope(contractRecord, kind, reservationReader, beforePublish = null, ownerRoot = null) {
   demand(typeof reservationReader === 'function', 'CONFIG_RESERVATION_READER');
   return Object.freeze({ contractRecord, kind, reservationReader, beforePublish, ownerRoot, [SCOPE_BRAND]: true });
@@ -149,8 +158,14 @@ function validateScope(scope) {
   demand(scope?.[SCOPE_BRAND] === true, 'UNAPPROVED_CONFIG_SCOPE');
   const contract = validatePlannedConfigContract(scope.contractRecord.contract);
   if (scope.kind === 'PRODUCTION') {
-    const frozen = loadProductionContract();
+    const frozen = boundContract(scope.reservationReader);
     demand(scope.contractRecord.sha256 === frozen.sha256 && canonical(contract) === canonical(frozen.contract), 'PRODUCTION_CONFIG_CONTRACT_SUBSTITUTION');
+  } else if (scope.kind === 'DURABLE_RESERVATION_TEST') {
+    safeDirectory(scope.ownerRoot);
+    demand(fs.realpathSync(path.dirname(scope.ownerRoot)) === fs.realpathSync(os.tmpdir()) && path.basename(scope.ownerRoot).startsWith('winwin-foundation-reservation-test.'), 'SYNTHETIC_CONFIG_SCOPE');
+    demand(path.dirname(contract.reservation_binding.session_root) === path.join(scope.ownerRoot, 'sessions'), 'SYNTHETIC_CONFIG_SESSION_PARENT');
+    const frozen = boundContract(scope.reservationReader);
+    demand(canonical(contract) === canonical(frozen.contract), 'CONFIG_RESERVATION_BINDING');
   } else {
     demand(scope.kind === 'SYNTHETIC_TEST', 'CONFIG_SCOPE_KIND');
     safeDirectory(scope.ownerRoot);
@@ -180,7 +195,8 @@ function validateReservation(scope, contract) {
   const ended = index.ended.filter(record => record.project_id === id);
   demand(active.length === 1 && ended.length === 0 && index.active.length === 1, 'CONFIG_RESERVATION_CARDINALITY');
   demand(active[0].reservation_state === 'ACTIVE' && active[0].session_root === contract.reservation_binding.session_root && active[0].project_id === id, 'CONFIG_RESERVATION_BINDING');
-  return { result: 'PASS', project_id: id, session_root: active[0].session_root, active_count: 1, ended_count: 0, index_sha256: index.index_sha256 };
+  return { result: 'PASS', project_id: id, session_root: active[0].session_root, active_count: 1, ended_count: 0, index_sha256: index.index_sha256,
+    durable_baseline: index.durable_baseline ?? null };
 }
 
 export function renderPlannedConfig(contract) {
@@ -310,8 +326,16 @@ function inspectConfig(scope, requestedId) {
   same(fs.readdirSync(paths.projectRoot).sort(), contract.destination.allowed_project_entries, 'CONFIG_PROJECT_AMBIGUITY');
   same(fs.readdirSync(paths.configDirectory).sort(), contract.destination.allowed_config_entries, 'CONFIG_DIRECTORY_AMBIGUITY');
   safeFile(paths.configFile); safeFile(paths.sourceFile);
+  const sourceStat = fs.lstatSync(paths.sourceFile), targetStat = fs.lstatSync(paths.configFile);
+  demand(sourceStat.dev === targetStat.dev && sourceStat.ino === targetStat.ino && sourceStat.nlink === 2 && targetStat.nlink === 2, 'CONFIG_PUBLICATION_LINK_IDENTITY');
   const bytes = fs.readFileSync(paths.configFile), sourceBytes = fs.readFileSync(paths.sourceFile);
   demand(bytes.equals(sourceBytes), 'CONFIG_PUBLICATION_SOURCE_MISMATCH');
+  if (reservation.durable_baseline) {
+    const baseline = reservation.durable_baseline;
+    demand(hash(bytes) === baseline.config_sha256 && hash(sourceBytes) === baseline.config_source_sha256 &&
+      sourceStat.dev === baseline.session_local_link.device && sourceStat.ino === baseline.session_local_link.inode,
+    'CONFIG_DURABLE_CONTINUITY_LOST');
+  }
   const lexical = parseExactProjectId(bytes, requestedId);
   const readers = parseEffectiveConfig(bytes, contract, lexical);
   const verification = compareGeneratedConfig({ reservation, requestedId, contract, lexical, ...readers, configSha256: hash(bytes), contractSha256: scope.contractRecord.sha256 });
@@ -349,9 +373,12 @@ function materialize(scope, requestedId, clock) {
   fs.mkdirSync(paths.configDirectory, { mode: 0o700 });
   safeDirectory(paths.configDirectory);
   writeExclusive(paths.sourceFile, bytes);
+  fsyncDirectory(paths.evidencePrivate);
   if (scope.beforePublish) scope.beforePublish();
+  validateReservation(scope, contract);
   fs.linkSync(paths.sourceFile, paths.configFile);
   fsyncDirectory(paths.configDirectory);
+  fsyncDirectory(paths.projectRoot);
   const verified = inspectConfig(scope, requestedId);
   demand(fs.lstatSync(paths.sourceFile).ino === fs.lstatSync(paths.configFile).ino, 'CONFIG_PUBLICATION_NOT_ATOMIC');
   return {
@@ -373,9 +400,14 @@ function service(scope, { clock = () => new Date() } = {}) {
 }
 
 export function foundationConfigService() {
-  const record = loadProductionContract();
   const reader = () => foundationReservationService().readIndex();
+  const record = boundContract(reader);
   return service(makeScope(record, 'PRODUCTION', reader));
+}
+
+export function syntheticReservedConfigService(harness) {
+  const reader = () => harness.service.readIndex();
+  return service(makeScope(boundContract(reader), 'DURABLE_RESERVATION_TEST', reader, null, harness.root));
 }
 
 function syntheticContract(sessionRoot, syntheticId) {
