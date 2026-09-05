@@ -99,6 +99,11 @@ export type CaseHomeView = Readonly<{
   inProgressSummary?: string;
   continuityGaps: readonly ContinuityGapView[];
   allowedOperations: AllowedOperationSet;
+  careUpdateCreateOptions?: readonly Readonly<{
+    value: CareUpdateVisibility;
+    label: string;
+    description: string;
+  }>[];
 }>;
 
 export type TimelineTarget = Readonly<{

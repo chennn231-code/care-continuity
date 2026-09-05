@@ -106,7 +106,20 @@ const caseHome: CaseHomeView = {
   latestVisibleActivity: caseSummary.latestVisibleActivity,
   assignedSummary: caseSummary.responsibilitySummary,
   continuityGaps: [],
-  allowedOperations: operations(['CREATE_CARE_UPDATE'])
+  allowedOperations: operations(['CREATE_CARE_UPDATE']),
+  careUpdateCreateOptions: [{
+    value: 'AUTHOR_ONLY',
+    label: '只有我目前可查看',
+    description: '仍需保有目前有效的個案存取權'
+  }, {
+    value: 'DIRECT_PARTICIPANTS',
+    label: '只限這筆內容指定的協作者',
+    description: '依具體協作者身分，不依角色名稱'
+  }, {
+    value: 'CASE_SHARED',
+    label: '此個案中目前有權查看共享內容的協作者',
+    description: '不包含曾經參與但目前已失去存取權的人'
+  }]
 };
 
 const timeline: TimelineView = {
@@ -144,6 +157,9 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private readonly caseHomeResult?: ProjectionResult<CaseHomeView>;
   private readonly timelineResult?: ProjectionResult<TimelineView>;
   private readonly cursorResult?: CommandResult<ReadCursorAdvanceView>;
+  private createdCareUpdate?: CareUpdateDetailView;
+  private readonly committedCareUpdates = new Map<OperationKey, CareUpdateDetailView>();
+  private readonly careUpdateFingerprints = new Map<OperationKey, string>();
 
   constructor(options: DemoAdapterOptions = {}) {
     this.operationOutcomes = options.operationOutcomes ?? {};
@@ -179,8 +195,20 @@ export class DemoVerticalSliceService implements VerticalSliceService {
 
   async getTimeline(caseId: string): Promise<ProjectionResult<TimelineView>> {
     if (this.timelineResult) return this.timelineResult;
+    const created = this.createdCareUpdate;
     return caseId === CASE_ID
-      ? { result: 'SUCCESS', data: timeline }
+      ? { result: 'SUCCESS', data: created ? {
+          ...timeline,
+          entries: [...timeline.entries, {
+            activityId: `activity-${created.careUpdateId}`,
+            eventDisplay: '發布了一筆照顧變化',
+            actorDisplay: created.authorDisplay,
+            serverRecordedAt: created.serverPublishedAt,
+            target: { kind: 'CARE_UPDATE', id: created.careUpdateId },
+            sourceDisplay: created.sourceDisplay
+          }],
+          mergedCareUpdates: [...timeline.mergedCareUpdates, created]
+        } : timeline }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
 
@@ -201,7 +229,18 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       visibilityDisplay: input.visibility,
       linkedAction: undefined
     };
-    return this.commandOutcome(operationKey, result);
+    const prior = this.committedCareUpdates.get(operationKey);
+    const requestFingerprint = JSON.stringify(input);
+    if (prior) return this.careUpdateFingerprints.get(operationKey) === requestFingerprint
+      ? { result: 'SUCCESS', data: prior }
+      : { result: 'IDEMPOTENCY_CONFLICT' };
+    const outcome = this.commandOutcome(operationKey, result);
+    if (outcome.result === 'SUCCESS') {
+      this.createdCareUpdate = result;
+      this.committedCareUpdates.set(operationKey, result);
+      this.careUpdateFingerprints.set(operationKey, requestFingerprint);
+    }
+    return outcome;
   }
 
   async getEligibleActionAssignees(
@@ -292,10 +331,15 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   }
 
   async lookupOperationStatus(operationKey: OperationKey): Promise<OperationStatusView> {
-    return this.operationOutcomes[operationKey] ?? {
+    const committed = this.committedCareUpdates.get(operationKey);
+    return this.operationOutcomes[operationKey] ?? (committed ? {
+      operationKey,
+      outcome: 'COMMITTED',
+      authoritativeResult: committed
+    } : {
       operationKey,
       outcome: 'UNKNOWN'
-    };
+    });
   }
 
   async advanceReadCursor(

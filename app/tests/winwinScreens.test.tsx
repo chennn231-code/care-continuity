@@ -9,7 +9,11 @@ import { DemoVerticalSliceService } from '../src/winwin/adapters/demo/DemoVertic
 import type {
   AuthorizedCaseSummary,
   CaseHomeView,
+  CareUpdateDetailView,
   CommandResult,
+  CreateCareUpdateInput,
+  OperationKey,
+  OperationStatusView,
   ProjectionResult,
   ReadCursorAdvanceView,
   TimelineView
@@ -51,6 +55,397 @@ describe('CP-F0 DOM interaction foundation', () => {
     await user.click(button);
     expect(button).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('已確認');
+  });
+});
+
+async function fillCareUpdateForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.selectOptions(await screen.findByLabelText('類別 *'), 'CARE_ARRANGEMENT_CHANGE');
+  await user.type(screen.getByLabelText('發生了什麼變化？ *'), '今天開始需要兩人協助移位');
+  await user.type(screen.getByLabelText('資訊來源 *'), '本人直接觀察');
+  await user.type(screen.getByLabelText('發生日期 *'), '2026-09-05');
+  await user.click(screen.getByRole('radio', { name: '約略時間' }));
+  await user.click(screen.getByRole('radio', { name: /只有我目前可查看/ }));
+}
+
+describe('CP-F3 Create Care Update', () => {
+  it('renders only from an authorized Case capability with accessible, publication-only fields', async () => {
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/updates/new');
+    expect(await screen.findByLabelText('發生了什麼變化？ *')).toHaveAttribute('maxlength', '1000');
+    expect(screen.getByRole('heading', { level: 1, name: '新增照顧變化' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '發布照顧變化' })).toBeEnabled();
+    expect(screen.getByText(/發布後不會直接覆寫/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/指派|負責人|完成狀態/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Action|診斷結果|風險分數/)).not.toBeInTheDocument();
+  });
+
+  it('fails closed when the projection does not allow creation', async () => {
+    renderWinWin(new DemoVerticalSliceService({
+      caseHomeResult: { result: 'SUCCESS', data: caseHomeProjection }
+    }), '/winwin/cases/demo-case-1/updates/new');
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(screen.queryByRole('button', { name: '發布照顧變化' })).not.toBeInTheDocument();
+  });
+
+  it('associates required validation messages and supports keyboard form submission', async () => {
+    const user = userEvent.setup();
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/updates/new');
+    const submit = await screen.findByRole('button', { name: '發布照顧變化' });
+    submit.focus();
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText('請填寫照顧情況的變化')).toHaveAttribute('id', 'content-error');
+    expect(screen.getByLabelText('發生了什麼變化？ *')).toHaveAttribute('aria-describedby', expect.stringContaining('content-error'));
+    expect(screen.getByText('請明確選擇可見範圍')).toHaveAttribute('role', 'alert');
+  });
+
+  it('submits once, then refreshes authoritative Timeline before showing success', async () => {
+    class CommitProbe extends DemoVerticalSliceService {
+      createCalls: OperationKey[] = [];
+      timelineCalls = 0;
+      override createCareUpdate(input: CreateCareUpdateInput, key: OperationKey) {
+        this.createCalls.push(key);
+        return super.createCareUpdate(input, key);
+      }
+      override getTimeline(caseId: string) { this.timelineCalls++; return super.getTimeline(caseId); }
+    }
+    const service = new CommitProbe();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await screen.findByRole('heading', { name: '新增照顧變化' });
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    expect(await screen.findByRole('heading', { name: '已儲存' })).toBeInTheDocument();
+    expect(service.createCalls).toHaveLength(1);
+    expect(service.timelineCalls).toBe(1);
+    expect(screen.getByText('目前未建立處理事項。')).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: '查看照顧活動' }));
+    expect(await screen.findByText('今天開始需要兩人協助移位')).toBeInTheDocument();
+    expect(service.createCalls).toHaveLength(1);
+  });
+
+  it('keeps UNKNOWN distinct, checks status with the same key, and never replays the mutation', async () => {
+    class UnknownProbe extends DemoVerticalSliceService {
+      createKeys: OperationKey[] = [];
+      lookupKeys: OperationKey[] = [];
+      override async createCareUpdate(_input: CreateCareUpdateInput, key: OperationKey) {
+        this.createKeys.push(key);
+        return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+      }
+      override async lookupOperationStatus(key: OperationKey): Promise<OperationStatusView> {
+        this.lookupKeys.push(key);
+        return { operationKey: key, outcome: 'UNKNOWN' };
+      }
+    }
+    const service = new UnknownProbe();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await screen.findByRole('heading', { name: '新增照顧變化' });
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    expect(await screen.findByRole('heading', { name: '尚未確認是否已儲存' })).toBeInTheDocument();
+    expect(screen.queryByText(/一定失敗|直接再送一次/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查詢發布狀態' }));
+    expect(service.createKeys).toHaveLength(1);
+    expect(service.lookupKeys).toEqual(service.createKeys);
+  });
+
+  it('owns one pending UNKNOWN lookup and disables repeated activation', async () => {
+    let settleLookup!: (value: OperationStatusView) => void;
+    const pendingLookup = new Promise<OperationStatusView>((resolve) => { settleLookup = resolve; });
+    class PendingLookupProbe extends DemoVerticalSliceService {
+      operationKey?: OperationKey;
+      lookupCalls = 0;
+      override async createCareUpdate(_input: CreateCareUpdateInput, key: OperationKey) {
+        this.operationKey = key;
+        return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+      }
+      override lookupOperationStatus() { this.lookupCalls++; return pendingLookup; }
+    }
+    const service = new PendingLookupProbe();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    await user.click(await screen.findByRole('button', { name: '查詢發布狀態' }));
+    const busy = screen.getByRole('button', { name: '正在查詢發布狀態…' });
+    expect(busy).toBeDisabled();
+    expect(busy.closest('[role="alert"]')).toHaveAttribute('aria-busy', 'true');
+    busy.click();
+    expect(service.lookupCalls).toBe(1);
+    settleLookup({ operationKey: service.operationKey!, outcome: 'UNKNOWN' });
+    expect(await screen.findByRole('button', { name: '查詢發布狀態' })).toBeEnabled();
+    expect(service.lookupCalls).toBe(1);
+  });
+
+  it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
+    'keeps a mismatched-key %s lookup response completely inert',
+    async (outcome) => {
+      class MismatchedLookupProbe extends DemoVerticalSliceService {
+        timelineCalls = 0;
+        createCalls = 0;
+        override async createCareUpdate() {
+          this.createCalls++;
+          return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+        }
+        override getTimeline(caseId: string) { this.timelineCalls++; return super.getTimeline(caseId); }
+        override async lookupOperationStatus(): Promise<OperationStatusView> {
+          const committed = await new DemoVerticalSliceService().createCareUpdate({
+            caseId: 'demo-case-1', category: 'OBSERVATION', content: 'mismatched result', source: 'fixture',
+            occurredDate: '2026-09-05', timePrecision: 'UNKNOWN', visibility: 'AUTHOR_ONLY'
+          }, 'mismatched-fixture-key');
+          return {
+            operationKey: 'different-operation-key',
+            outcome,
+            authoritativeResult: outcome === 'COMMITTED' && committed.result === 'SUCCESS' ? committed.data : undefined
+          };
+        }
+      }
+      const service = new MismatchedLookupProbe();
+      const user = userEvent.setup();
+      renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+      await fillCareUpdateForm(user);
+      await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+      await user.click(await screen.findByRole('button', { name: '查詢發布狀態' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '查詢發布狀態' })).toBeEnabled());
+      expect(screen.getByDisplayValue('今天開始需要兩人協助移位')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '尚未確認是否已儲存' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '已儲存' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '未儲存' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '這次發布無法安全完成' })).not.toBeInTheDocument();
+      expect(service.timelineCalls).toBe(0);
+      expect(service.createCalls).toBe(1);
+    }
+  );
+
+  it.each(['COMMITTED', 'IDEMPOTENCY_CONFLICT'] as const)(
+    'applies a correctly correlated %s lookup outcome',
+    async (outcome) => {
+      class CorrelatedLookupProbe extends DemoVerticalSliceService {
+        operationKey?: OperationKey;
+        timelineCalls = 0;
+        override async createCareUpdate(_input: CreateCareUpdateInput, key: OperationKey) {
+          this.operationKey = key;
+          return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+        }
+        override getTimeline(caseId: string) { this.timelineCalls++; return super.getTimeline(caseId); }
+        override async lookupOperationStatus(key: OperationKey): Promise<OperationStatusView> {
+          const committed = await new DemoVerticalSliceService().createCareUpdate({
+            caseId: 'demo-case-1', category: 'OBSERVATION', content: 'correlated result', source: 'fixture',
+            occurredDate: '2026-09-05', timePrecision: 'UNKNOWN', visibility: 'AUTHOR_ONLY'
+          }, 'correlated-fixture-key');
+          return {
+            operationKey: key,
+            outcome,
+            authoritativeResult: outcome === 'COMMITTED' && committed.result === 'SUCCESS' ? committed.data : undefined
+          };
+        }
+      }
+      const service = new CorrelatedLookupProbe();
+      const user = userEvent.setup();
+      renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+      await fillCareUpdateForm(user);
+      await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+      await user.click(await screen.findByRole('button', { name: '查詢發布狀態' }));
+      expect(await screen.findByRole('heading', {
+        name: outcome === 'COMMITTED' ? '已儲存' : '這次發布無法安全完成'
+      })).toBeInTheDocument();
+      expect(service.timelineCalls).toBe(outcome === 'COMMITTED' ? 1 : 0);
+      expect(service.operationKey).toBeDefined();
+    }
+  );
+
+  it('revalidates and retries a definitely-not-committed attempt with its original key', async () => {
+    class RetryProbe extends DemoVerticalSliceService {
+      createKeys: OperationKey[] = [];
+      caseReads = 0;
+      override getCaseHome(caseId: string) { this.caseReads++; return super.getCaseHome(caseId); }
+      override createCareUpdate(input: CreateCareUpdateInput, key: OperationKey) {
+        this.createKeys.push(key);
+        return this.createKeys.length === 1
+          ? Promise.resolve({ result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false })
+          : super.createCareUpdate(input, key);
+      }
+      override async lookupOperationStatus(key: OperationKey): Promise<OperationStatusView> {
+        return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' };
+      }
+    }
+    const service = new RetryProbe();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await screen.findByRole('heading', { name: '新增照顧變化' });
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    expect(await screen.findByRole('heading', { name: '未儲存' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '確認狀態並重試同一次發布' }));
+    expect(await screen.findByRole('heading', { name: '已儲存' })).toBeInTheDocument();
+    expect(service.createKeys).toHaveLength(2);
+    expect(new Set(service.createKeys).size).toBe(1);
+    expect(service.caseReads).toBeGreaterThanOrEqual(2);
+  });
+
+  it('owns the full definitely-not-committed revalidation and retry sequence', async () => {
+    let settleRevalidation!: (value: ProjectionResult<CaseHomeView>) => void;
+    const pendingRevalidation = new Promise<ProjectionResult<CaseHomeView>>((resolve) => { settleRevalidation = resolve; });
+    class PendingRetryProbe extends DemoVerticalSliceService {
+      createKeys: OperationKey[] = [];
+      lookupCalls = 0;
+      caseReads = 0;
+      override getCaseHome(caseId: string) {
+        this.caseReads++;
+        return this.caseReads === 1 ? super.getCaseHome(caseId) : pendingRevalidation;
+      }
+      override createCareUpdate(input: CreateCareUpdateInput, key: OperationKey) {
+        this.createKeys.push(key);
+        return this.createKeys.length === 1
+          ? Promise.resolve({ result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false })
+          : super.createCareUpdate(input, key);
+      }
+      override async lookupOperationStatus(key: OperationKey): Promise<OperationStatusView> {
+        this.lookupCalls++;
+        return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' };
+      }
+    }
+    const service = new PendingRetryProbe();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    await user.click(await screen.findByRole('button', { name: '確認狀態並重試同一次發布' }));
+    const busy = screen.getByRole('button', { name: '正在確認並重試…' });
+    expect(busy).toBeDisabled();
+    busy.click();
+    expect(service.lookupCalls).toBe(1);
+    expect(service.createKeys).toHaveLength(1);
+    const revalidated = await new DemoVerticalSliceService().getCaseHome('demo-case-1');
+    settleRevalidation(revalidated);
+    expect(await screen.findByRole('heading', { name: '已儲存' })).toBeInTheDocument();
+    expect(service.lookupCalls).toBe(1);
+    expect(service.createKeys).toHaveLength(2);
+    expect(new Set(service.createKeys).size).toBe(1);
+  });
+
+  it('shows idempotency conflict distinctly and does not create a replacement attempt', async () => {
+    class ConflictProbe extends DemoVerticalSliceService {
+      calls = 0;
+      override async createCareUpdate(_input: CreateCareUpdateInput, _key: OperationKey) {
+        this.calls++;
+        return { result: 'IDEMPOTENCY_CONFLICT' as const };
+      }
+    }
+    const service = new ConflictProbe();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await screen.findByRole('heading', { name: '新增照顧變化' });
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    expect(await screen.findByRole('heading', { name: '這次發布無法安全完成' })).toBeInTheDocument();
+    expect(service.calls).toBe(1);
+  });
+
+  it('clears protected draft and invalidates on current access loss', async () => {
+    class LostAccessProbe extends DemoVerticalSliceService {
+      override async createCareUpdate(_input: CreateCareUpdateInput, _key: OperationKey) {
+        return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const };
+      }
+    }
+    const user = userEvent.setup();
+    renderWinWin(new LostAccessProbe(), '/winwin/cases/demo-case-1/updates/new');
+    await screen.findByRole('heading', { name: '新增照顧變化' });
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(screen.queryByDisplayValue('今天開始需要兩人協助移位')).not.toBeInTheDocument();
+  });
+
+  it('makes a mutation completion after unmount inert', async () => {
+    let settle!: (value: CommandResult<CareUpdateDetailView>) => void;
+    const pending = new Promise<CommandResult<CareUpdateDetailView>>((resolve) => { settle = resolve; });
+    class PendingCreate extends DemoVerticalSliceService {
+      override createCareUpdate() { return pending; }
+    }
+    const service = new PendingCreate();
+    const user = userEvent.setup();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const view = renderWinWin(service, '/winwin/cases/demo-case-1/updates/new');
+    await screen.findByRole('heading', { name: '新增照顧變化' });
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    view.unmount();
+    const projection = await new DemoVerticalSliceService().createCareUpdate({
+      caseId: 'demo-case-1', category: 'OBSERVATION', content: 'fixture', source: 'fixture',
+      occurredDate: '2026-09-05', timePrecision: 'UNKNOWN', visibility: 'AUTHOR_ONLY'
+    }, 'fixture-key');
+    if (projection.result !== 'SUCCESS') throw new Error('Expected fixture result');
+    settle(projection);
+    await Promise.resolve();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it.each([
+    ['success', 'SUCCESS'],
+    ['failure', 'TEMPORARY_FAILURE'],
+    ['no access', 'NOT_FOUND_OR_NOT_VISIBLE']
+  ] as const)('makes stale mutation %s after a Case change inert', async (_label, outcome) => {
+    let settle!: (value: CommandResult<CareUpdateDetailView>) => void;
+    const pending = new Promise<CommandResult<CareUpdateDetailView>>((resolve) => { settle = resolve; });
+    const fixture = await new DemoVerticalSliceService().createCareUpdate({
+      caseId: 'demo-case-1', category: 'OBSERVATION', content: 'old secret', source: 'fixture',
+      occurredDate: '2026-09-05', timePrecision: 'UNKNOWN', visibility: 'AUTHOR_ONLY'
+    }, 'fixture-stale-key');
+    if (fixture.result !== 'SUCCESS') throw new Error('Expected fixture result');
+    class CaseChangeMutationService extends DemoVerticalSliceService {
+      override getCaseHome(caseId: string) {
+        return super.getCaseHome('demo-case-1').then((result) => result.result === 'SUCCESS'
+          ? { ...result, data: { ...result.data, caseId } }
+          : result);
+      }
+      override createCareUpdate() { return pending; }
+    }
+    function CaseChangeHarness({ service }: Readonly<{ service: CaseChangeMutationService }>) {
+      const navigate = useNavigate();
+      return <><button type="button" onClick={() => navigate('/winwin/cases/case-b/updates/new')}>前往 Case B 表單</button><WinWinRoutes service={service} /></>;
+    }
+    const service = new CaseChangeMutationService();
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={['/winwin/cases/demo-case-1/updates/new']}><CaseChangeHarness service={service} /></MemoryRouter>);
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    await user.click(screen.getByRole('button', { name: '前往 Case B 表單' }));
+    expect(await screen.findByLabelText('發生了什麼變化？ *')).toHaveValue('');
+    settle(outcome === 'SUCCESS' ? fixture : outcome === 'TEMPORARY_FAILURE'
+      ? { result: 'TEMPORARY_FAILURE', outcomeUncertain: false }
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' });
+    await waitFor(() => expect(screen.getByLabelText('發生了什麼變化？ *')).toHaveValue(''));
+    expect(screen.queryByText('old secret')).not.toBeInTheDocument();
+    expect(screen.queryByText('目前無法使用此內容')).not.toBeInTheDocument();
+  });
+
+  it('makes a stale status lookup after a Case change inert', async () => {
+    let settleLookup!: (value: OperationStatusView) => void;
+    const pendingLookup = new Promise<OperationStatusView>((resolve) => { settleLookup = resolve; });
+    class StaleLookupService extends DemoVerticalSliceService {
+      override getCaseHome(caseId: string) {
+        return super.getCaseHome('demo-case-1').then((result) => result.result === 'SUCCESS'
+          ? { ...result, data: { ...result.data, caseId } }
+          : result);
+      }
+      override async createCareUpdate() { return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+      override lookupOperationStatus() { return pendingLookup; }
+    }
+    function LookupHarness({ service }: Readonly<{ service: StaleLookupService }>) {
+      const navigate = useNavigate();
+      return <><button type="button" onClick={() => navigate('/winwin/cases/case-b/updates/new')}>切換查詢個案</button><WinWinRoutes service={service} /></>;
+    }
+    const service = new StaleLookupService();
+    const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={['/winwin/cases/demo-case-1/updates/new']}><LookupHarness service={service} /></MemoryRouter>);
+    await fillCareUpdateForm(user);
+    await user.click(screen.getByRole('button', { name: '發布照顧變化' }));
+    await user.click(await screen.findByRole('button', { name: '查詢發布狀態' }));
+    await user.click(screen.getByRole('button', { name: '切換查詢個案' }));
+    expect(await screen.findByLabelText('發生了什麼變化？ *')).toHaveValue('');
+    settleLookup({ operationKey: 'old-key', outcome: 'IDEMPOTENCY_CONFLICT' });
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '這次發布無法安全完成' })).not.toBeInTheDocument());
   });
 });
 

@@ -94,6 +94,14 @@ describe('pure mutation safety machine', () => {
     expect(reduceMutation(started, { type: 'SUBMISSION_RECOVERABLE_FAILURE' }).status)
       .toBe('recoverableFailure');
   });
+
+  it('stops a direct idempotency conflict without replaying', () => {
+    const started = reduceMutation<string>({ status: 'idle' }, { type: 'BEGIN', intent: intent() });
+    expect(reduceMutation(started, { type: 'SUBMISSION_CONFLICT' })).toEqual({
+      status: 'conflict',
+      intent: intent()
+    });
+  });
 });
 
 const response = (

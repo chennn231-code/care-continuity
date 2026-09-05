@@ -100,7 +100,10 @@ export function CaseHomePage({ caseId }: Readonly<{ caseId: string }>) {
         {view.inProgressSummary && <p>{view.inProgressSummary}</p>}
         {!view.assignedSummary && !view.inProgressSummary && <p>目前沒有可顯示的責任摘要。</p>}
       </section>
-      <Link className="winwin-primary-action" to={`/winwin/cases/${view.caseId}/timeline`}>查看所有活動</Link>
+      <div className="winwin-page-actions">
+        <Link className="winwin-primary-action" to={`/winwin/cases/${view.caseId}/timeline`}>查看所有活動</Link>
+        {view.allowedOperations.CREATE_CARE_UPDATE && <Link to={`/winwin/cases/${view.caseId}/updates/new`}>新增照顧變化</Link>}
+      </div>
     </div>
   );
 }

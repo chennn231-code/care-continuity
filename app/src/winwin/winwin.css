@@ -78,7 +78,10 @@
 .winwin-inline-notice button { border: 0; color: #405f6d; background: transparent; font: inherit; font-weight: 750; text-decoration: underline; cursor: pointer; }
 
 .winwin-app a:focus-visible,
-.winwin-app button:focus-visible {
+.winwin-app button:focus-visible,
+.winwin-app input:focus-visible,
+.winwin-app select:focus-visible,
+.winwin-app textarea:focus-visible {
   outline: 3px solid #9d5c2f;
   outline-offset: 4px;
 }
@@ -110,3 +113,22 @@
 .winwin-care-update dd { margin: 0; }
 .winwin-cursor-notice { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.9rem; border-radius: 0.8rem; color: #7b4a32; background: #fff0e8; }
 .winwin-cursor-notice button { border: 0; color: #405f6d; background: transparent; font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.winwin-page-actions, .winwin-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.winwin-page-actions a:not(.winwin-primary-action), .winwin-form-actions a { color: #405f6d; font-weight: 750; }
+.winwin-care-update-form { display: grid; gap: 1.35rem; max-width: 44rem; }
+.winwin-form-field { display: grid; gap: 0.45rem; margin: 0; padding: 0; border: 0; }
+.winwin-form-field > label, .winwin-form-field legend { color: #233840; font-weight: 800; }
+.winwin-form-field input:not([type="radio"]), .winwin-form-field select, .winwin-form-field textarea { box-sizing: border-box; width: 100%; padding: 0.75rem; border: 1px solid #87969b; border-radius: 0.65rem; color: #233840; background: #fff; font: inherit; }
+.winwin-form-field textarea { min-height: 7rem; resize: vertical; }
+.winwin-field-help, .winwin-field-error, .winwin-radio small { margin: 0; line-height: 1.45; }
+.winwin-field-help, .winwin-radio small { color: #65757b; }
+.winwin-field-error { color: #8b351f; font-weight: 750; }
+.winwin-radio { display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.35rem 0; font-weight: 500 !important; }
+.winwin-radio input { margin-top: 0.25rem; }
+.winwin-radio span { display: grid; gap: 0.15rem; }
+.winwin-radio small { display: block; font-weight: 400; }
+.winwin-publication-note { padding: 0.9rem; border-left: 0.3rem solid #587686; background: #e7eff1; }
+.winwin-mutation-notice { max-width: 44rem; margin-bottom: 1.25rem; padding: 1rem; border: 1px solid #bf7650; border-radius: 0.8rem; background: #fff0e8; }
+.winwin-mutation-notice h2 { margin-top: 0; }
+.winwin-mutation-notice button { border: 0; color: #405f6d; background: transparent; font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.winwin-primary-action:disabled, .winwin-care-update-form :disabled { cursor: not-allowed; opacity: 0.65; }

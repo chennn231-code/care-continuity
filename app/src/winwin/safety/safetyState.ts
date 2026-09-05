@@ -36,6 +36,7 @@ export type MutationEvent<T> =
   | Readonly<{ type: 'SUBMISSION_COMMITTED'; data: T }>
   | Readonly<{ type: 'SUBMISSION_DEFINITELY_NOT_COMMITTED' }>
   | Readonly<{ type: 'SUBMISSION_UNCERTAIN' }>
+  | Readonly<{ type: 'SUBMISSION_CONFLICT' }>
   | Readonly<{ type: 'SUBMISSION_RECOVERABLE_FAILURE' }>
   | Readonly<{ type: 'LOOKUP_RESOLVED'; outcome: OperationOutcome; data?: T }>
   | Readonly<{ type: 'RETRY_SAME_INTENT'; intent: MutationIntent; revalidated: true }>
@@ -81,6 +82,9 @@ export function reduceMutation<T>(
     }
     if (event.type === 'SUBMISSION_UNCERTAIN') {
       return { status: 'uncertain', intent: state.intent };
+    }
+    if (event.type === 'SUBMISSION_CONFLICT') {
+      return { status: 'conflict', intent: state.intent };
     }
     if (event.type === 'SUBMISSION_RECOVERABLE_FAILURE') {
       return { status: 'recoverableFailure', intent: state.intent };
