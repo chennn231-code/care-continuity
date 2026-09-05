@@ -128,18 +128,24 @@ const timeline: TimelineView = {
 
 export type DemoAdapterOptions = Readonly<{
   operationOutcomes?: Readonly<Record<string, OperationStatusView>>;
+  sessionResult?: ProjectionResult<SessionView>;
+  authorizedCasesResult?: ProjectionResult<readonly AuthorizedCaseSummary[]>;
 }>;
 
 export class DemoVerticalSliceService implements VerticalSliceService {
   readonly authorityMarker = DEMO_AUTHORITY_MARKER;
   private readonly operationOutcomes: Readonly<Record<string, OperationStatusView>>;
+  private readonly sessionResult?: ProjectionResult<SessionView>;
+  private readonly authorizedCasesResult?: ProjectionResult<readonly AuthorizedCaseSummary[]>;
 
   constructor(options: DemoAdapterOptions = {}) {
     this.operationOutcomes = options.operationOutcomes ?? {};
+    this.sessionResult = options.sessionResult;
+    this.authorizedCasesResult = options.authorizedCasesResult;
   }
 
   async resolveSession(): Promise<ProjectionResult<SessionView>> {
-    return {
+    return this.sessionResult ?? {
       result: 'SUCCESS',
       data: {
         disposition: 'SIGNED_IN',
@@ -151,7 +157,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   }
 
   async getAuthorizedCases(): Promise<ProjectionResult<readonly AuthorizedCaseSummary[]>> {
-    return { result: 'SUCCESS', data: [caseSummary] };
+    return this.authorizedCasesResult ?? { result: 'SUCCESS', data: [caseSummary] };
   }
 
   async getCaseHome(caseId: string): Promise<ProjectionResult<CaseHomeView>> {

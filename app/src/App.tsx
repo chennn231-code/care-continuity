@@ -28,6 +28,7 @@ import { PrototypeProfessionalRecordsPage } from './v2/pages/PrototypeProfession
 import { PrototypeProfessionalRecordNewPage } from './v2/pages/PrototypeProfessionalRecordNewPage';
 import { PrototypeProfessionalRecordDetailPage } from './v2/pages/PrototypeProfessionalRecordDetailPage';
 import { PrototypeProfessionalRecordCorrectionPage } from './v2/pages/PrototypeProfessionalRecordCorrectionPage';
+import { WinWinRoutes } from './winwin/routes/WinWinRoutes';
 
 // Only matched Legacy routes import this module. Its AuthProvider and pages
 // share the existing Supabase singleton; WinWin never loads that import chain.
@@ -67,6 +68,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<RootEntryRoute />} />
+      <Route path="/winwin/*" element={<WinWinRoutes />} />
       <Route path="/v2/prototype" element={<PrototypeProvider><PrototypeShell /></PrototypeProvider>}>
         <Route index element={<PrototypeLandingPage />} />
         <Route path="register" element={<PrototypeRegisterIntroPage />} />

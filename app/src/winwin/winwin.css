@@ -1,0 +1,95 @@
+.winwin-app {
+  min-height: 100vh;
+  color: #233840;
+  background: linear-gradient(145deg, #fffdf8, #f4efe6);
+}
+
+.winwin-skip-link {
+  position: fixed;
+  z-index: 10;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: #fff;
+  background: #233840;
+  border-radius: 0.6rem;
+  transform: translateY(-180%);
+}
+
+.winwin-skip-link:focus { transform: translateY(0); }
+
+.winwin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 5vw, 4rem);
+  border-bottom: 1px solid #d9e2e0;
+  background: rgba(255, 253, 248, 0.94);
+}
+
+.winwin-brand {
+  color: #405f6d;
+  font-family: var(--font-heading);
+  font-size: 1.65rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.winwin-session-summary { text-align: right; }
+.winwin-session-context { display: flex; justify-content: flex-end; gap: 0.6rem; margin: 0; color: #65757b; }
+.winwin-session-context span + span::before { content: "・"; }
+.winwin-demo-notice { margin: 0.2rem 0 0; color: #7b5a40; font-size: 0.76rem; font-weight: 700; }
+.winwin-main { width: min(70rem, calc(100% - 2rem)); margin: 0 auto; padding: clamp(2rem, 6vw, 4rem) 0; }
+.winwin-main:focus { outline: none; }
+
+.winwin-page-heading { max-width: 42rem; margin-bottom: 2.5rem; }
+.winwin-page-heading h1, .winwin-state-card h1 { margin: 0; font-size: clamp(2.2rem, 6vw, 3.7rem); }
+.winwin-page-heading > p:last-child, .winwin-state-card p { color: #65757b; line-height: 1.7; }
+.winwin-eyebrow { margin: 0 0 0.5rem; color: #587686; font-weight: 800; letter-spacing: 0.1em; }
+
+.winwin-state-card {
+  max-width: 38rem;
+  margin: clamp(2rem, 10vh, 7rem) auto;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid #d9e2e0;
+  border-radius: 1.5rem;
+  background: #fffdf8;
+  box-shadow: 0 18px 50px rgba(53, 76, 84, 0.12);
+}
+
+.winwin-cases-page section + section { margin-top: 2.5rem; }
+.winwin-cases-page h2 { font-size: 1.4rem; }
+.winwin-case-list, .winwin-assigned-list { display: grid; gap: 1rem; margin: 0; padding: 0; list-style: none; }
+.winwin-case-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+.winwin-case-card, .winwin-assigned-list li {
+  padding: 1.35rem;
+  border: 1px solid #d9e2e0;
+  border-radius: 1.15rem;
+  background: #fffdf8;
+}
+.winwin-case-card h3 { margin: 0; font-size: 1.25rem; }
+.winwin-case-card p, .winwin-assigned-list span { display: block; color: #65757b; line-height: 1.55; }
+.winwin-badge { width: fit-content; padding: 0.25rem 0.6rem; border-radius: 999px; color: #405f6d !important; background: #e7eff1; font-weight: 750; }
+.winwin-primary-action { display: inline-flex; margin-top: 0.5rem; padding: 0.75rem 1rem; border: 0; border-radius: 0.75rem; color: #fff; background: #405f6d; font: inherit; font-weight: 750; text-decoration: none; cursor: pointer; }
+.winwin-assigned-list a { display: inline-block; margin-top: 0.5rem; color: #405f6d; font-weight: 750; }
+.winwin-empty-copy, .winwin-inline-notice { padding: 1rem; border-radius: 0.8rem; color: #587686; background: #e7eff1; }
+.winwin-inline-notice { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.winwin-inline-notice button { border: 0; color: #405f6d; background: transparent; font: inherit; font-weight: 750; text-decoration: underline; cursor: pointer; }
+
+.winwin-app a:focus-visible,
+.winwin-app button:focus-visible {
+  outline: 3px solid #9d5c2f;
+  outline-offset: 4px;
+}
+
+@media (max-width: 38rem) {
+  .winwin-header { align-items: flex-start; }
+  .winwin-session-context { flex-direction: column; gap: 0.1rem; text-align: right; }
+  .winwin-session-context span + span::before { content: ""; }
+  .winwin-inline-notice { align-items: flex-start; flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .winwin-skip-link { transition: none; }
+}
