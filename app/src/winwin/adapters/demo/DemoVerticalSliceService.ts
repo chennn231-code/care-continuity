@@ -1,0 +1,321 @@
+import {
+  DEMO_AUTHORITY_MARKER,
+  NO_ALLOWED_OPERATIONS,
+  type ActionDetailView,
+  type ActionMutationInput,
+  type AllowedOperationSet,
+  type AuthorizedCaseSummary,
+  type CareUpdateDetailView,
+  type CaseHomeView,
+  type CommandResult,
+  type CompleteActionInput,
+  type CreateActionInput,
+  type CreateCareUpdateInput,
+  type EligibleAssigneeView,
+  type OperationKey,
+  type OperationStatusView,
+  type ProjectionResult,
+  type ReadCursorAdvanceView,
+  type ReadCursorBoundary,
+  type ResponsibilityHistoryEntryView,
+  type SessionView,
+  type TimelineView
+} from '../../contracts/frontendContract';
+import type { VerticalSliceService } from '../../contracts/verticalSliceService';
+
+export { DEMO_AUTHORITY_MARKER };
+
+const CASE_ID = 'demo-case-1';
+const CARE_UPDATE_ID = 'demo-care-update-1';
+const CARE_UPDATE_VERSION_ID = 'demo-care-update-version-1';
+const ACTION_ID = 'demo-action-1';
+const CANDIDATE_REF = 'demo-candidate-b';
+const SERVER_TIME = '2026-09-05T02:00:00.000Z';
+const TIMELINE_BOUNDARY = 'demo-boundary-2';
+
+const operations = (enabled: readonly (keyof AllowedOperationSet)[]): AllowedOperationSet => ({
+  ...NO_ALLOWED_OPERATIONS,
+  ...Object.fromEntries(enabled.map((operation) => [operation, true]))
+});
+
+const careUpdate: CareUpdateDetailView = {
+  careUpdateId: CARE_UPDATE_ID,
+  versionId: CARE_UPDATE_VERSION_ID,
+  categoryDisplay: '生活照顧變化',
+  content: '早上的照顧安排需要確認。',
+  sourceDisplay: '家屬觀察',
+  occurredDate: '2026-09-05',
+  timePrecision: 'APPROXIMATE',
+  authorDisplay: '林小姐',
+  serverPublishedAt: SERVER_TIME,
+  visibilityDisplay: '這筆內容指定的協作者',
+  linkedAction: { actionId: ACTION_ID, stateLabel: '尚待接手' },
+  allowedOperations: operations(['CREATE_ACTION'])
+};
+
+const assignedHistory: ResponsibilityHistoryEntryView = {
+  historyId: 'demo-history-assigned',
+  milestoneDisplay: '已指派',
+  personDisplay: '王先生',
+  serverRecordedAt: SERVER_TIME,
+  relevance: 'CURRENT'
+};
+
+const assignedAction: ActionDetailView = {
+  actionId: ACTION_ID,
+  caseId: CASE_ID,
+  expectedVersion: '1',
+  title: '確認明早照顧安排',
+  lifecycleState: 'ASSIGNED',
+  stateDisplay: '尚待接手',
+  sourceCareUpdate: {
+    careUpdateId: CARE_UPDATE_ID,
+    versionId: CARE_UPDATE_VERSION_ID,
+    summary: careUpdate.content
+  },
+  reason: '確認誰能處理明早的照顧需要。',
+  currentHolderDisplay: '王先生',
+  assignedByDisplay: '林小姐',
+  serverAssignedAt: SERVER_TIME,
+  responsibilityHistory: [assignedHistory],
+  allowedOperations: operations(['ACCEPT_ACTION', 'DECLINE_ACTION'])
+};
+
+const eligibleAssignees: readonly EligibleAssigneeView[] = [{
+  candidateRef: CANDIDATE_REF,
+  displayName: '王先生',
+  relationshipDisplay: '照顧協作者',
+  serviceValidityDisplay: '目前可指派'
+}];
+
+const caseSummary: AuthorizedCaseSummary = {
+  caseId: CASE_ID,
+  caseDisplay: '陳女士的照顧個案',
+  relationshipDisplay: '家屬照顧者',
+  newChangeCount: 1,
+  responsibilitySummary: '1 項尚待接手',
+  latestVisibleActivity: '發布了一筆照顧變化',
+  assignedActions: []
+};
+
+const caseHome: CaseHomeView = {
+  caseId: CASE_ID,
+  caseDisplay: caseSummary.caseDisplay,
+  relationshipDisplay: caseSummary.relationshipDisplay,
+  sinceLastViewSummary: '上次查看後有 1 筆新變化',
+  latestVisibleActivity: caseSummary.latestVisibleActivity,
+  assignedSummary: caseSummary.responsibilitySummary,
+  continuityGaps: [],
+  allowedOperations: operations(['CREATE_CARE_UPDATE'])
+};
+
+const timeline: TimelineView = {
+  caseId: CASE_ID,
+  entries: [{
+    activityId: 'demo-activity-1',
+    eventDisplay: '發布了一筆照顧變化',
+    actorDisplay: '林小姐',
+    relationshipDisplay: '家屬照顧者',
+    serverRecordedAt: SERVER_TIME,
+    target: { kind: 'CARE_UPDATE', id: CARE_UPDATE_ID },
+    sourceDisplay: careUpdate.sourceDisplay
+  }],
+  storedBoundary: 'demo-boundary-1',
+  returnedBoundary: TIMELINE_BOUNDARY,
+  newChangeCount: 1,
+  mergedCareUpdates: [careUpdate]
+};
+
+export type DemoAdapterOptions = Readonly<{
+  operationOutcomes?: Readonly<Record<string, OperationStatusView>>;
+}>;
+
+export class DemoVerticalSliceService implements VerticalSliceService {
+  readonly authorityMarker = DEMO_AUTHORITY_MARKER;
+  private readonly operationOutcomes: Readonly<Record<string, OperationStatusView>>;
+
+  constructor(options: DemoAdapterOptions = {}) {
+    this.operationOutcomes = options.operationOutcomes ?? {};
+  }
+
+  async resolveSession(): Promise<ProjectionResult<SessionView>> {
+    return {
+      result: 'SUCCESS',
+      data: {
+        disposition: 'SIGNED_IN',
+        actorDisplay: '林小姐',
+        relationshipDisplay: '家屬照顧者',
+        demoMarker: DEMO_AUTHORITY_MARKER
+      }
+    };
+  }
+
+  async getAuthorizedCases(): Promise<ProjectionResult<readonly AuthorizedCaseSummary[]>> {
+    return { result: 'SUCCESS', data: [caseSummary] };
+  }
+
+  async getCaseHome(caseId: string): Promise<ProjectionResult<CaseHomeView>> {
+    return caseId === CASE_ID
+      ? { result: 'SUCCESS', data: caseHome }
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+  }
+
+  async getTimeline(caseId: string): Promise<ProjectionResult<TimelineView>> {
+    return caseId === CASE_ID
+      ? { result: 'SUCCESS', data: timeline }
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+  }
+
+  async createCareUpdate(
+    input: CreateCareUpdateInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<CareUpdateDetailView>> {
+    const result: CareUpdateDetailView = {
+      ...careUpdate,
+      careUpdateId: `${CARE_UPDATE_ID}-created`,
+      versionId: `${CARE_UPDATE_VERSION_ID}-created`,
+      categoryDisplay: input.category,
+      content: input.content,
+      sourceDisplay: input.source,
+      occurredDate: input.occurredDate,
+      occurredTime: input.occurredTime,
+      timePrecision: input.timePrecision,
+      visibilityDisplay: input.visibility,
+      linkedAction: undefined
+    };
+    return this.commandOutcome(operationKey, result);
+  }
+
+  async getEligibleActionAssignees(
+    caseId: string,
+    sourceVersionId: string
+  ): Promise<ProjectionResult<readonly EligibleAssigneeView[]>> {
+    return caseId === CASE_ID && sourceVersionId === CARE_UPDATE_VERSION_ID
+      ? { result: 'SUCCESS', data: eligibleAssignees }
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+  }
+
+  async createAction(
+    input: CreateActionInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>> {
+    if (input.assigneeCandidateRef !== CANDIDATE_REF) return { result: 'TARGET_INELIGIBLE' };
+    return this.commandOutcome(operationKey, {
+      ...assignedAction,
+      title: input.title,
+      reason: input.reason,
+      dueDisplay: input.dueAt
+    });
+  }
+
+  async getActionDetail(caseId: string, actionId: string): Promise<ProjectionResult<ActionDetailView>> {
+    return caseId === CASE_ID && actionId === ACTION_ID
+      ? { result: 'SUCCESS', data: assignedAction }
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+  }
+
+  async acceptAction(
+    _input: ActionMutationInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>> {
+    return this.commandOutcome(operationKey, this.actionAt('ACCEPTED', '已接受', ['START_ACTION']));
+  }
+
+  async declineAction(
+    _input: ActionMutationInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>> {
+    const endedHistory: ResponsibilityHistoryEntryView = {
+      ...assignedHistory,
+      relevance: 'HISTORICAL'
+    };
+    return this.commandOutcome(operationKey, {
+      ...assignedAction,
+      expectedVersion: '2',
+      stateDisplay: '需要重新安排',
+      currentHolderDisplay: undefined,
+      continuityGap: {
+        actionId: ACTION_ID,
+        careNeedDisplay: assignedAction.title,
+        currentHolderDisplay: '目前沒有人確定接手',
+        followUpDisplay: '需要重新安排',
+        priorCycleSummary: '王先生目前無法接手'
+      },
+      responsibilityHistory: [
+        endedHistory,
+        {
+          historyId: 'demo-history-declined',
+          milestoneDisplay: '目前無法接手',
+          personDisplay: '王先生',
+          serverRecordedAt: SERVER_TIME,
+          relevance: 'HISTORICAL'
+        }
+      ],
+      allowedOperations: NO_ALLOWED_OPERATIONS
+    });
+  }
+
+  async startAction(
+    _input: ActionMutationInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>> {
+    return this.commandOutcome(operationKey, this.actionAt('IN_PROGRESS', '處理中', ['COMPLETE_ACTION']));
+  }
+
+  async completeAction(
+    input: CompleteActionInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>> {
+    return this.commandOutcome(operationKey, {
+      ...this.actionAt('COMPLETED', '已完成', []),
+      serverCompletedAt: SERVER_TIME,
+      completionResult: input.result
+    });
+  }
+
+  async lookupOperationStatus(operationKey: OperationKey): Promise<OperationStatusView> {
+    return this.operationOutcomes[operationKey] ?? {
+      operationKey,
+      outcome: 'UNKNOWN'
+    };
+  }
+
+  async advanceReadCursor(
+    caseId: string,
+    boundary: ReadCursorBoundary
+  ): Promise<CommandResult<ReadCursorAdvanceView>> {
+    return caseId === CASE_ID
+      ? { result: 'SUCCESS', data: { currentBoundary: boundary } }
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+  }
+
+  private actionAt(
+    lifecycleState: ActionDetailView['lifecycleState'],
+    stateDisplay: string,
+    enabled: readonly (keyof AllowedOperationSet)[]
+  ): ActionDetailView {
+    return {
+      ...assignedAction,
+      expectedVersion: lifecycleState === 'ACCEPTED' ? '2' : lifecycleState === 'IN_PROGRESS' ? '3' : '4',
+      lifecycleState,
+      stateDisplay,
+      responsibilityHistory: assignedAction.responsibilityHistory.map((entry) => ({
+        ...entry,
+        relevance: lifecycleState === 'COMPLETED' ? 'HISTORICAL' : entry.relevance
+      })),
+      allowedOperations: operations(enabled)
+    };
+  }
+
+  private commandOutcome<T>(operationKey: OperationKey, committedData: T): CommandResult<T> {
+    const configured = this.operationOutcomes[operationKey];
+    if (!configured || configured.outcome === 'COMMITTED') {
+      return { result: 'SUCCESS', data: committedData };
+    }
+    if (configured.outcome === 'IDEMPOTENCY_CONFLICT') return { result: 'IDEMPOTENCY_CONFLICT' };
+    return {
+      result: 'TEMPORARY_FAILURE',
+      outcomeUncertain: configured.outcome === 'UNKNOWN'
+    };
+  }
+}
