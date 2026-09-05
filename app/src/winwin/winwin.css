@@ -132,6 +132,13 @@
 .winwin-mutation-notice h2 { margin-top: 0; }
 .winwin-mutation-notice button { border: 0; color: #405f6d; background: transparent; font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
 .winwin-primary-action:disabled, .winwin-care-update-form :disabled { cursor: not-allowed; opacity: 0.65; }
+.winwin-secondary-action { display: inline-flex; margin-top: 0.5rem; padding: 0.7rem 1rem; border: 1px solid #9d5c2f; border-radius: 0.75rem; color: #7b4a32; background: #fffdf8; font: inherit; font-weight: 750; cursor: pointer; }
+.winwin-secondary-action:disabled, .winwin-action-detail button:disabled { cursor: not-allowed; opacity: 0.65; }
+.winwin-action-detail { max-width: 52rem; }
+.winwin-confirmation { margin: 1rem 0; padding: 1.25rem; border: 2px solid #9d5c2f; border-radius: 1rem; background: #fff8f1; }
+.winwin-confirmation h2 { margin-top: 0; }
+.winwin-responsibility-history { display: grid; gap: 1rem; padding-left: 1.4rem; }
+.winwin-responsibility-history time, .winwin-visually-readable { color: #65757b; font-size: 0.9rem; }
 .winwin-create-action, .winwin-action-result { margin-top: 1rem; padding: 1rem; border: 1px solid #b9cccf; border-radius: 0.8rem; background: #f5faf9; }
 .winwin-create-action form { display: grid; gap: 1rem; margin-top: 1rem; }
 .winwin-fixed-source { padding: 0.9rem; border-left: 0.3rem solid #587686; background: #e7eff1; }

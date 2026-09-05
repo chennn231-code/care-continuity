@@ -8,6 +8,7 @@ import { App, DEFAULT_PRODUCT_PATH } from '../src/App';
 import { DemoVerticalSliceService } from '../src/winwin/adapters/demo/DemoVerticalSliceService';
 import type {
   ActionDetailView,
+  ActionMutationInput,
   AuthorizedCaseSummary,
   CaseHomeView,
   CareUpdateDetailView,
@@ -68,6 +69,380 @@ async function openAndFillCreateAction(user: ReturnType<typeof userEvent.setup>)
   await user.type(screen.getByLabelText('需要處理的原因 *'), '確認明早有足夠人力協助移位');
   await user.selectOptions(screen.getByLabelText('指派給 *'), 'demo-candidate-b');
 }
+
+describe('CP-F5 Accept or currently unable to take responsibility', () => {
+  const actionPath = '/winwin/cases/demo-case-1/actions/demo-action-1';
+
+  it('renders the adopted Action Detail hierarchy and only projected decision controls', async () => {
+    renderWinWin(new DemoVerticalSliceService(), actionPath);
+    expect(await screen.findByRole('heading', { level: 1, name: '確認明早照顧安排' })).toBeInTheDocument();
+    expect(screen.getByText('尚待接手')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '接受處理' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '目前無法接手' })).toBeEnabled();
+    expect(screen.getByRole('heading', { name: '負責與處理紀錄' })).toBeInTheDocument();
+    expect(screen.queryByText(/Grant|ACTION_DECLINE|NEEDS_REASSIGNMENT/)).not.toBeInTheDocument();
+  });
+
+  it('does not infer either decision from visible assignee data', async () => {
+    class ViewerOnly extends DemoVerticalSliceService {
+      override async getActionDetail(caseId: string, actionId: string) {
+        const result = await super.getActionDetail(caseId, actionId);
+        return result.result === 'SUCCESS'
+          ? { result: 'SUCCESS' as const, data: { ...result.data, allowedOperations: { ...result.data.allowedOperations, ACCEPT_ACTION: false, DECLINE_ACTION: false } } }
+          : result;
+      }
+    }
+    renderWinWin(new ViewerOnly(), actionPath);
+    expect(await screen.findByText('王先生')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '接受處理' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '目前無法接手' })).not.toBeInTheDocument();
+  });
+
+  it('gives Accept synchronous ownership, one key, and cross-decision exclusion', async () => {
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class PendingAccept extends DemoVerticalSliceService {
+      accepts: OperationKey[] = []; declines = 0;
+      override acceptAction(_input: ActionMutationInput, key: OperationKey) { this.accepts.push(key); return pending; }
+      override async declineAction() { this.declines++; return { result: 'STALE_VERSION' as const }; }
+    }
+    const service = new PendingAccept(); renderWinWin(service, actionPath);
+    const accept = await screen.findByRole('button', { name: '接受處理' });
+    const decline = screen.getByRole('button', { name: '目前無法接手' });
+    accept.click(); accept.click(); decline.click();
+    expect(service.accepts).toHaveLength(1); expect(service.declines).toBe(0);
+    expect(await screen.findByRole('button', { name: '正在接受…' })).toBeDisabled();
+    settle({ result: 'TEMPORARY_FAILURE', outcomeUncertain: true });
+    expect(await screen.findByText(/目前無法確認是否已成功更新接手狀態/)).toBeInTheDocument();
+  });
+
+  it('accepts explicitly, then uses getActionDetail for authoritative ACCEPTED without starting work', async () => {
+    class AcceptProbe extends DemoVerticalSliceService {
+      accepts = 0; detailReads = 0;
+      override acceptAction(input: ActionMutationInput, key: OperationKey) { this.accepts++; return super.acceptAction(input, key); }
+      override getActionDetail(caseId: string, actionId: string) { this.detailReads++; return super.getActionDetail(caseId, actionId); }
+    }
+    const service = new AcceptProbe(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    expect((await screen.findAllByText('已確認接手')).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('處理中')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '接受處理' })).not.toBeInTheDocument();
+    expect(service.accepts).toBe(1); expect(service.detailReads).toBeGreaterThanOrEqual(2);
+  });
+
+  it('requires explicit decline confirmation, synchronously deduplicates it, and preserves truthful gap history', async () => {
+    class DeclineProbe extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override declineAction(input: ActionMutationInput, key: OperationKey) { this.keys.push(key); return super.declineAction(input, key); }
+    }
+    const service = new DeclineProbe(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    expect(screen.getByRole('dialog', { name: '目前無法接手這項處理事項？' })).toHaveTextContent('系統不會自動指定其他人');
+    const confirm = screen.getByRole('button', { name: '確認目前無法接手' });
+    confirm.click(); confirm.click();
+    expect(service.keys).toHaveLength(1);
+    expect(await screen.findAllByText('目前沒有人確定接手')).not.toHaveLength(0);
+    expect(screen.getAllByText(/需要重新安排/).length).toBeGreaterThan(0);
+    expect(screen.getByText('目前無法接手', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.queryByText('已重新指派')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新指派|選擇其他人/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps UNKNOWN separate, deduplicates lookup, correlates the key, and never replays', async () => {
+    let settle!: (value: OperationStatusView) => void;
+    const pending = new Promise<OperationStatusView>((resolve) => { settle = resolve; });
+    class UnknownAccept extends DemoVerticalSliceService {
+      accepts: OperationKey[] = []; lookups: OperationKey[] = [];
+      override async acceptAction(_input: ActionMutationInput, key: OperationKey) { this.accepts.push(key); return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+      override lookupOperationStatus(key: OperationKey) { this.lookups.push(key); return pending; }
+    }
+    const service = new UnknownAccept(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    const lookup = await screen.findByRole('button', { name: '查詢更新狀態' });
+    lookup.click(); lookup.click();
+    expect(service.lookups).toEqual(service.accepts);
+    settle({ operationKey: service.accepts[0], outcome: 'UNKNOWN' });
+    await waitFor(() => expect(screen.getByRole('button', { name: '查詢更新狀態' })).toBeEnabled());
+    expect(service.accepts).toHaveLength(1);
+  });
+
+  it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
+    'makes mismatched %s lookup inert', async (outcome) => {
+      class Mismatch extends DemoVerticalSliceService {
+        reads = 0; accepts = 0;
+        override async acceptAction() { this.accepts++; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+        override async lookupOperationStatus() { return { operationKey: 'mismatch', outcome }; }
+        override getActionDetail(caseId: string, actionId: string) { this.reads++; return super.getActionDetail(caseId, actionId); }
+      }
+      const service = new Mismatch(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+      await user.click(await screen.findByRole('button', { name: '接受處理' }));
+      await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '查詢更新狀態' })).toBeEnabled());
+      expect(service.accepts).toBe(1); expect(service.reads).toBe(1);
+    }
+  );
+
+  it('blocks same-key retry when the responsibility version changed', async () => {
+    class StaleResponsibility extends DemoVerticalSliceService {
+      accepts = 0; reads = 0; key?: OperationKey;
+      override async acceptAction(_input: ActionMutationInput, key: OperationKey) { this.accepts++; this.key = key; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false }; }
+      override async lookupOperationStatus(key: OperationKey) { return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const }; }
+      override async getActionDetail(caseId: string, actionId: string) {
+        const result = await super.getActionDetail(caseId, actionId); this.reads++;
+        return this.reads > 1 && result.result === 'SUCCESS'
+          ? { result: 'SUCCESS' as const, data: { ...result.data, expectedVersion: 'responsibility-superseded' } }
+          : result;
+      }
+    }
+    const service = new StaleResponsibility(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    await user.click(await screen.findByRole('button', { name: '確認目前狀態並重試' }));
+    await waitFor(() => expect(service.reads).toBe(2));
+    expect(service.accepts).toBe(1);
+    await waitFor(() => expect(screen.getByRole('button', { name: '接受處理' })).toBeEnabled());
+  });
+
+  it('uses a stable Decline key through UNKNOWN lookup without replay', async () => {
+    class UnknownDecline extends DemoVerticalSliceService {
+      declines: OperationKey[] = []; lookups: OperationKey[] = [];
+      override async declineAction(_input: ActionMutationInput, key: OperationKey) { this.declines.push(key); return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+      override async lookupOperationStatus(key: OperationKey) { this.lookups.push(key); return { operationKey: key, outcome: 'UNKNOWN' as const }; }
+    }
+    const service = new UnknownDecline(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+    await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+    expect(service.lookups).toEqual(service.declines);
+    expect(service.declines).toHaveLength(1);
+  });
+
+  it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
+    'makes mismatched Decline %s lookup inert', async (outcome) => {
+      class MismatchDecline extends DemoVerticalSliceService {
+        declines = 0; reads = 0;
+        override async declineAction() { this.declines++; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+        override async lookupOperationStatus() { return { operationKey: 'wrong-decline-key', outcome }; }
+        override getActionDetail(caseId: string, actionId: string) { this.reads++; return super.getActionDetail(caseId, actionId); }
+      }
+      const service = new MismatchDecline(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+      await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+      await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+      await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '查詢更新狀態' })).toBeEnabled());
+      expect(service.declines).toBe(1); expect(service.reads).toBe(1);
+    }
+  );
+
+  it('keeps conflict distinct and does not generate a replacement key', async () => {
+    class ConflictAccept extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override async acceptAction(_input: ActionMutationInput, key: OperationKey) { this.keys.push(key); return { result: 'IDEMPOTENCY_CONFLICT' as const }; }
+    }
+    const service = new ConflictAccept(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    expect(await screen.findByText(/更新發生衝突/)).toBeInTheDocument();
+    expect(service.keys).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '接受處理' })).toBeDisabled();
+  });
+
+  it('invalidates current mutation no-access but ignores obsolete no-access after navigation', async () => {
+    class CurrentDenied extends DemoVerticalSliceService { override async acceptAction() { return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const }; } }
+    const user = userEvent.setup(); renderWinWin(new CurrentDenied(), actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+
+    cleanup();
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class StaleDenied extends DemoVerticalSliceService { override acceptAction() { return pending; } }
+    function Harness({ service }: Readonly<{ service: StaleDenied }>) {
+      const navigate = useNavigate();
+      return <><button type="button" onClick={() => navigate('/winwin/cases')}>離開處理事項</button><WinWinRoutes service={service} /></>;
+    }
+    render(<MemoryRouter initialEntries={[actionPath]}><Harness service={new StaleDenied()} /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    await user.click(screen.getByRole('button', { name: '離開處理事項' }));
+    expect(await screen.findByRole('heading', { name: '我的個案' })).toBeInTheDocument();
+    settle({ result: 'NOT_FOUND_OR_NOT_VISIBLE' });
+    await waitFor(() => expect(screen.getByRole('heading', { name: '我的個案' })).toBeInTheDocument());
+  });
+
+  it('makes a decision completion after unmount inert', async () => {
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class Pending extends DemoVerticalSliceService { override acceptAction() { return pending; } }
+    const user = userEvent.setup(); const view = renderWinWin(new Pending(), actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    view.unmount(); settle({ result: 'NOT_FOUND_OR_NOT_VISIBLE' }); await Promise.resolve();
+  });
+
+  it('gives Decline first ownership and excludes an immediate Accept', async () => {
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class DeclineFirst extends DemoVerticalSliceService {
+      declineKeys: OperationKey[] = []; acceptKeys: OperationKey[] = [];
+      override declineAction(_input: ActionMutationInput, key: OperationKey) { this.declineKeys.push(key); return pending; }
+      override acceptAction(_input: ActionMutationInput, key: OperationKey) { this.acceptKeys.push(key); return pending; }
+    }
+    const service = new DeclineFirst(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    const accept = screen.getByRole('button', { name: '接受處理' });
+    screen.getByRole('button', { name: '確認目前無法接手' }).click(); accept.click();
+    expect(service.declineKeys).toHaveLength(1); expect(service.acceptKeys).toHaveLength(0);
+    settle({ result: 'TEMPORARY_FAILURE', outcomeUncertain: true });
+    expect(await screen.findByText(/目前無法確認是否已成功更新接手狀態/)).toBeInTheDocument();
+  });
+
+  it('retries a definitely-not-committed Accept once with the same key after successful revalidation', async () => {
+    class RetryAccept extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override acceptAction(input: ActionMutationInput, key: OperationKey) {
+        this.keys.push(key);
+        return this.keys.length === 1
+          ? Promise.resolve({ result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false })
+          : super.acceptAction(input, key);
+      }
+      override async lookupOperationStatus(key: OperationKey) { return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const }; }
+    }
+    const service = new RetryAccept(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    await user.click(await screen.findByRole('button', { name: '確認目前狀態並重試' }));
+    expect((await screen.findAllByText('已確認接手')).length).toBeGreaterThan(0);
+    expect(service.keys).toHaveLength(2); expect(new Set(service.keys).size).toBe(1);
+  });
+
+  it('keeps Decline conflict distinct without replay, family switch, or fabricated gap', async () => {
+    class ConflictDecline extends DemoVerticalSliceService {
+      declineKeys: OperationKey[] = []; accepts = 0;
+      override async declineAction(_input: ActionMutationInput, key: OperationKey) { this.declineKeys.push(key); return { result: 'IDEMPOTENCY_CONFLICT' as const }; }
+      override async acceptAction() { this.accepts++; return { result: 'STALE_VERSION' as const }; }
+    }
+    const service = new ConflictDecline(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+    expect(await screen.findByText(/更新發生衝突/)).toBeInTheDocument();
+    expect(service.declineKeys).toHaveLength(1); expect(service.accepts).toBe(0);
+    expect(screen.getByText('王先生')).toBeInTheDocument();
+    expect(screen.queryByText('目前沒有人確定接手')).not.toBeInTheDocument();
+  });
+
+  it('keeps known-COMMITTED lookup non-actionable until explicit authoritative-read retry succeeds', async () => {
+    const fixtureService = new DemoVerticalSliceService();
+    const committed = await fixtureService.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accepted-fixture');
+    if (committed.result !== 'SUCCESS') throw new Error('Expected accepted fixture');
+    class LookupCommitted extends DemoVerticalSliceService {
+      mutations = 0; reads = 0; keys: OperationKey[] = [];
+      override async acceptAction(_input: ActionMutationInput, key: OperationKey) { this.mutations++; this.keys.push(key); return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+      override async lookupOperationStatus(key: OperationKey) { return { operationKey: key, outcome: 'COMMITTED' as const }; }
+      override async getActionDetail(caseId: string, actionId: string) {
+        this.reads++;
+        if (this.reads === 2) return { result: 'TEMPORARY_FAILURE' as const, error: { code: 'TEMPORARY' as const, message: 'offline' } };
+        if (this.reads >= 3) return { result: 'SUCCESS' as const, data: committed.data };
+        return super.getActionDetail(caseId, actionId);
+      }
+    }
+    const service = new LookupCommitted(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+    expect(await screen.findByText(/變更已送出，但最新狀態尚未重新載入完成/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '接受處理' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '目前無法接手' })).toBeDisabled();
+    expect(service.mutations).toBe(1); expect(service.keys).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: '重新載入最新狀態' }));
+    expect((await screen.findAllByText('已確認接手')).length).toBeGreaterThan(0);
+    expect(service.mutations).toBe(1); expect(service.keys).toHaveLength(1);
+  });
+
+  it('uses the same committed-pending-refresh safety for direct mutation success', async () => {
+    class DirectCommitted extends DemoVerticalSliceService {
+      mutations = 0; reads = 0;
+      override acceptAction(input: ActionMutationInput, key: OperationKey) { this.mutations++; return super.acceptAction(input, key); }
+      override async getActionDetail(caseId: string, actionId: string) {
+        this.reads++;
+        if (this.reads === 2) return { result: 'TEMPORARY_FAILURE' as const, error: { code: 'TEMPORARY' as const, message: 'offline' } };
+        return super.getActionDetail(caseId, actionId);
+      }
+    }
+    const service = new DirectCommitted(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    expect(await screen.findByText(/變更已送出，但最新狀態尚未重新載入完成/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '接受處理' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '重新載入最新狀態' }));
+    expect((await screen.findAllByText('已確認接手')).length).toBeGreaterThan(0);
+    expect(service.mutations).toBe(1);
+  });
+
+  it('invalidates protected context for current no-access during committed refresh', async () => {
+    class CommittedThenDenied extends DemoVerticalSliceService {
+      reads = 0;
+      override async getActionDetail(caseId: string, actionId: string) {
+        this.reads++;
+        if (this.reads === 2) return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const };
+        return super.getActionDetail(caseId, actionId);
+      }
+    }
+    const user = userEvent.setup(); renderWinWin(new CommittedThenDenied(), actionPath);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(screen.queryByText('王先生')).not.toBeInTheDocument();
+  });
+
+  it('makes stale no-access from a pending committed refresh inert in a newer Action', async () => {
+    const initial = await new DemoVerticalSliceService().getActionDetail('demo-case-1', 'demo-action-1');
+    if (initial.result !== 'SUCCESS') throw new Error('Expected Action fixture');
+    let settleRead!: (value: ProjectionResult<ActionDetailView>) => void;
+    const pendingRead = new Promise<ProjectionResult<ActionDetailView>>((resolve) => { settleRead = resolve; });
+    class RefreshRace extends DemoVerticalSliceService {
+      readsA = 0;
+      override getActionDetail(caseId: string, actionId: string) {
+        if (actionId === 'action-b') return Promise.resolve({ result: 'SUCCESS' as const, data: { ...initial.data, actionId, title: 'Action B 保持有效', expectedVersion: 'b1' } });
+        this.readsA++;
+        return this.readsA === 2 ? pendingRead : super.getActionDetail(caseId, actionId);
+      }
+    }
+    function Harness({ service }: Readonly<{ service: RefreshRace }>) {
+      const navigate = useNavigate();
+      return <><button type="button" onClick={() => navigate('/winwin/cases/demo-case-1/actions/action-b')}>切換至 Action B</button><WinWinRoutes service={service} /></>;
+    }
+    const service = new RefreshRace(); const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={[actionPath]}><Harness service={service} /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    await user.click(screen.getByRole('button', { name: '切換至 Action B' }));
+    expect(await screen.findByRole('heading', { name: 'Action B 保持有效' })).toBeInTheDocument();
+    settleRead({ result: 'NOT_FOUND_OR_NOT_VISIBLE' });
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Action B 保持有效' })).toBeInTheDocument());
+    expect(screen.queryByText('目前無法使用此內容')).not.toBeInTheDocument();
+  });
+
+  it('makes an Action A decision completion inert after navigating to Action B in the same Case', async () => {
+    const initial = await new DemoVerticalSliceService().getActionDetail('demo-case-1', 'demo-action-1');
+    if (initial.result !== 'SUCCESS') throw new Error('Expected Action fixture');
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class ActionRace extends DemoVerticalSliceService {
+      staleRefreshes = 0;
+      override acceptAction() { return pending; }
+      override async getActionDetail(caseId: string, actionId: string) {
+        if (actionId === 'action-b') return { result: 'SUCCESS' as const, data: { ...initial.data, actionId, title: 'Action B 安全內容', expectedVersion: 'b1' } };
+        const result = await super.getActionDetail(caseId, actionId);
+        if (actionId === 'demo-action-1' && result.result === 'SUCCESS' && result.data.lifecycleState !== 'ASSIGNED') this.staleRefreshes++;
+        return result;
+      }
+    }
+    function Harness({ service }: Readonly<{ service: ActionRace }>) {
+      const navigate = useNavigate();
+      return <><button type="button" onClick={() => navigate('/winwin/cases/demo-case-1/actions/action-b')}>前往 Action B</button><WinWinRoutes service={service} /></>;
+    }
+    const service = new ActionRace(); const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={[actionPath]}><Harness service={service} /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    await user.click(screen.getByRole('button', { name: '前往 Action B' }));
+    expect(await screen.findByRole('heading', { name: 'Action B 安全內容' })).toBeInTheDocument();
+    settle({ result: 'SUCCESS', data: initial.data });
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Action B 安全內容' })).toBeInTheDocument());
+    expect(service.staleRefreshes).toBe(0);
+  });
+});
 
 describe('CP-F4 Create Action and exact-person assignment', () => {
   it('synchronously owns one initial submit before React can disable the form', async () => {

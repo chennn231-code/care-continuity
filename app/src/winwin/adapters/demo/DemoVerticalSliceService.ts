@@ -161,6 +161,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private readonly committedCareUpdates = new Map<OperationKey, CareUpdateDetailView>();
   private readonly careUpdateFingerprints = new Map<OperationKey, string>();
   private createdAction?: ActionDetailView;
+  private actionState: ActionDetailView = assignedAction;
   private readonly committedActions = new Map<OperationKey, ActionDetailView>();
   private readonly actionFingerprints = new Map<OperationKey, string>();
 
@@ -297,26 +298,36 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       return { result: 'SUCCESS', data: this.createdAction };
     }
     return caseId === CASE_ID && actionId === ACTION_ID
-      ? { result: 'SUCCESS', data: assignedAction }
+      ? { result: 'SUCCESS', data: this.actionState }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
 
   async acceptAction(
-    _input: ActionMutationInput,
+    input: ActionMutationInput,
     operationKey: OperationKey
   ): Promise<CommandResult<ActionDetailView>> {
-    return this.commandOutcome(operationKey, this.actionAt('ACCEPTED', '已接受', ['START_ACTION']));
+    const accepted = this.actionAt('ACCEPTED', '已確認接手', ['START_ACTION']);
+    return this.decideAction('ACCEPT_ACTION', input, operationKey, {
+      ...accepted,
+      responsibilityHistory: [...accepted.responsibilityHistory, {
+        historyId: 'demo-history-accepted',
+        milestoneDisplay: '已確認接手',
+        personDisplay: '王先生',
+        serverRecordedAt: SERVER_TIME,
+        relevance: 'CURRENT'
+      }]
+    });
   }
 
   async declineAction(
-    _input: ActionMutationInput,
+    input: ActionMutationInput,
     operationKey: OperationKey
   ): Promise<CommandResult<ActionDetailView>> {
     const endedHistory: ResponsibilityHistoryEntryView = {
       ...assignedHistory,
       relevance: 'HISTORICAL'
     };
-    return this.commandOutcome(operationKey, {
+    return this.decideAction('DECLINE_ACTION', input, operationKey, {
       ...assignedAction,
       expectedVersion: '2',
       stateDisplay: '需要重新安排',
@@ -402,6 +413,30 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       })),
       allowedOperations: operations(enabled)
     };
+  }
+
+  private decideAction(
+    family: 'ACCEPT_ACTION' | 'DECLINE_ACTION',
+    input: ActionMutationInput,
+    operationKey: OperationKey,
+    committedData: ActionDetailView
+  ): CommandResult<ActionDetailView> {
+    const fingerprint = `${family}:${JSON.stringify(input)}`;
+    const prior = this.committedActions.get(operationKey);
+    if (prior) return this.actionFingerprints.get(operationKey) === fingerprint
+      ? { result: 'SUCCESS', data: prior }
+      : { result: 'IDEMPOTENCY_CONFLICT' };
+    if (input.actionId !== ACTION_ID
+      || input.expectedVersion !== this.actionState.expectedVersion
+      || this.actionState.lifecycleState !== 'ASSIGNED'
+      || !this.actionState.allowedOperations[family]) return { result: 'STALE_VERSION' };
+    const outcome = this.commandOutcome(operationKey, committedData);
+    if (outcome.result === 'SUCCESS') {
+      this.actionState = committedData;
+      this.committedActions.set(operationKey, committedData);
+      this.actionFingerprints.set(operationKey, fingerprint);
+    }
+    return outcome;
   }
 
   private commandOutcome<T>(operationKey: OperationKey, committedData: T): CommandResult<T> {

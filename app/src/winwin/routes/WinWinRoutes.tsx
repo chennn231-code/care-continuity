@@ -8,6 +8,7 @@ import { MyCasesPage } from '../pages/MyCasesPage';
 import { CaseHomePage } from '../pages/CaseHomePage';
 import { TimelinePage } from '../pages/TimelinePage';
 import { CreateCareUpdatePage } from '../pages/CreateCareUpdatePage';
+import { ActionDetailPage } from '../pages/ActionDetailPage';
 import '../winwin.css';
 
 const demoService = new DemoVerticalSliceService();
@@ -32,6 +33,9 @@ function WinWinRouteContent() {
     content = <CreateCareUpdatePage caseId={matchPath('/winwin/cases/:caseId/updates/new', pathname)!.params.caseId!} />;
   } else if (matchPath('/winwin/cases/:caseId/timeline', pathname)) {
     content = <TimelinePage caseId={matchPath('/winwin/cases/:caseId/timeline', pathname)!.params.caseId!} />;
+  } else if (matchPath('/winwin/cases/:caseId/actions/:actionId', pathname)) {
+    const match = matchPath('/winwin/cases/:caseId/actions/:actionId', pathname)!;
+    content = <ActionDetailPage caseId={match.params.caseId!} actionId={match.params.actionId!} />;
   } else if (matchPath('/winwin/cases/:caseId', pathname)) {
     content = <CaseHomePage caseId={matchPath('/winwin/cases/:caseId', pathname)!.params.caseId!} />;
   } else {
