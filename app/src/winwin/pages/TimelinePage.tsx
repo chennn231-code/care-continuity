@@ -12,6 +12,7 @@ import {
   type CursorSafetyState
 } from '../safety/safetyState';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
+import { CreateActionStep } from '../components/CreateActionStep';
 import { useWinWinApp } from '../state/WinWinAppProvider';
 
 type TimelineState = ScreenState<TimelineView>;
@@ -185,6 +186,11 @@ export function TimelinePage({ caseId }: Readonly<{ caseId: string }>) {
           <h2 id={`update-${update.careUpdateId}-title`}>照顧變化內容</h2>
           <p>{update.content}</p><dl><dt>來源</dt><dd>{update.sourceDisplay}</dd><dt>發生時間</dt><dd>{update.occurredDate}{update.occurredTime ? ` ${update.occurredTime}` : ''}（{{ EXACT: '精確時間', APPROXIMATE: '約略時間', UNKNOWN: '時間未確認' }[update.timePrecision]}）</dd><dt>記錄者</dt><dd>{update.authorDisplay}</dd><dt>發布時間</dt><dd><time dateTime={update.serverPublishedAt}>{update.serverPublishedAt}</time></dd><dt>可見範圍</dt><dd>{update.visibilityDisplay}</dd></dl>
           <p>目前版本・唯讀</p><p>{update.linkedAction ? `處理事項：${update.linkedAction.stateLabel}` : '目前未建立處理事項'}</p>
+          {!update.linkedAction && update.allowedOperations.CREATE_ACTION && <CreateActionStep caseId={caseId} source={{
+            careUpdateId: update.careUpdateId,
+            versionId: update.versionId,
+            summary: update.content
+          }} />}
         </section>
       ))}
       {cursorStatus === 'failed' && <div className="winwin-cursor-notice" role="status"><span>上次查看位置尚未儲存。</span><button type="button" onClick={retryCursor}>重試儲存</button></div>}

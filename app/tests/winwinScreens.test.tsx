@@ -1,17 +1,20 @@
 import '@testing-library/jest-dom/vitest';
 import { useState } from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App, DEFAULT_PRODUCT_PATH } from '../src/App';
 import { DemoVerticalSliceService } from '../src/winwin/adapters/demo/DemoVerticalSliceService';
 import type {
+  ActionDetailView,
   AuthorizedCaseSummary,
   CaseHomeView,
   CareUpdateDetailView,
   CommandResult,
   CreateCareUpdateInput,
+  CreateActionInput,
+  EligibleAssigneeView,
   OperationKey,
   OperationStatusView,
   ProjectionResult,
@@ -55,6 +58,275 @@ describe('CP-F0 DOM interaction foundation', () => {
     await user.click(button);
     expect(button).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('已確認');
+  });
+});
+
+async function openAndFillCreateAction(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: '建立處理事項' }));
+  await screen.findByLabelText('要處理的事項 *');
+  await user.type(screen.getByLabelText('要處理的事項 *'), '確認明天早上移位協助人力');
+  await user.type(screen.getByLabelText('需要處理的原因 *'), '確認明早有足夠人力協助移位');
+  await user.selectOptions(screen.getByLabelText('指派給 *'), 'demo-candidate-b');
+}
+
+describe('CP-F4 Create Action and exact-person assignment', () => {
+  it('synchronously owns one initial submit before React can disable the form', async () => {
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class PendingAction extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override createAction(_input: CreateActionInput, key: OperationKey) { this.keys.push(key); return pending; }
+    }
+    const service = new PendingAction(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    const button = screen.getByRole('button', { name: '建立並指派' });
+    const form = button.closest('form');
+    if (!form) throw new Error('Expected Create Action form');
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    button.click();
+    expect(service.keys).toHaveLength(1);
+    expect(new Set(service.keys)).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '建立並指派中…' })).toBeDisabled();
+    settle({ result: 'TEMPORARY_FAILURE', outcomeUncertain: true });
+    expect(await screen.findByText(/尚未確認是否已建立並指派/)).toBeInTheDocument();
+  });
+
+  it('opens only from projected source capability and requires an explicit exact person', async () => {
+    const user = userEvent.setup();
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/timeline');
+    await user.click(await screen.findByRole('button', { name: '建立處理事項' }));
+    const assignee = await screen.findByLabelText('指派給 *');
+    expect(assignee).toHaveValue('');
+    expect(screen.getByRole('option', { name: /王先生・照顧協作者・目前可指派/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /family|professional|角色/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText('早上的照顧安排需要確認。')).toHaveLength(2);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    expect((await screen.findAllByRole('alert')).some((alert) => alert.textContent === '請明確選擇一位協作者')).toBe(true);
+  });
+
+  it('fails closed when eligible source/candidate access is unavailable', async () => {
+    class DeniedCandidates extends DemoVerticalSliceService {
+      override async getEligibleActionAssignees() { return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const }; }
+    }
+    const user = userEvent.setup();
+    renderWinWin(new DeniedCandidates(), '/winwin/cases/demo-case-1/timeline');
+    await user.click(await screen.findByRole('button', { name: '建立處理事項' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(screen.queryByRole('button', { name: '建立並指派' })).not.toBeInTheDocument();
+  });
+
+  it('creates and assigns atomically with one key, then reads authoritative ASSIGNED detail', async () => {
+    class CommitProbe extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      detailReads = 0;
+      override createAction(input: CreateActionInput, key: OperationKey) { this.keys.push(key); return super.createAction(input, key); }
+      override getActionDetail(caseId: string, actionId: string) { this.detailReads++; return super.getActionDetail(caseId, actionId); }
+    }
+    const service = new CommitProbe(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    expect(await screen.findByRole('heading', { name: '確認明天早上移位協助人力' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/尚待接手・已指派給 王先生，等待接手確認/);
+    expect(screen.queryByText('已接受')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /接受|無法接手|開始|完成/ })).not.toBeInTheDocument();
+    expect(service.keys).toHaveLength(1);
+    expect(service.detailReads).toBe(1);
+  });
+
+  it('keeps UNKNOWN distinct, uses the same lookup key, and never replays', async () => {
+    let settle!: (value: OperationStatusView) => void;
+    const pending = new Promise<OperationStatusView>((resolve) => { settle = resolve; });
+    class UnknownAction extends DemoVerticalSliceService {
+      createKeys: OperationKey[] = []; lookupKeys: OperationKey[] = [];
+      override async createAction(_input: CreateActionInput, key: OperationKey) { this.createKeys.push(key); return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+      override lookupOperationStatus(key: OperationKey) { this.lookupKeys.push(key); return pending; }
+    }
+    const service = new UnknownAction(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    expect(await screen.findByText(/尚未確認是否已建立並指派/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查詢建立狀態' }));
+    expect(screen.getByRole('button', { name: '正在查詢…' })).toBeDisabled();
+    screen.getByRole('button', { name: '正在查詢…' }).click();
+    expect(service.lookupKeys).toEqual(service.createKeys);
+    expect(service.createKeys).toHaveLength(1);
+    settle({ operationKey: service.createKeys[0], outcome: 'UNKNOWN' });
+    expect(await screen.findByRole('button', { name: '查詢建立狀態' })).toBeEnabled();
+  });
+
+  it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
+    'keeps mismatched-key %s inert without refresh, retry, or draft loss', async (outcome) => {
+      class MismatchAction extends DemoVerticalSliceService {
+        creates = 0; detailReads = 0;
+        override async createAction() { this.creates++; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+        override async lookupOperationStatus(): Promise<OperationStatusView> { return { operationKey: 'wrong-key', outcome }; }
+        override getActionDetail(caseId: string, actionId: string) { this.detailReads++; return super.getActionDetail(caseId, actionId); }
+      }
+      const service = new MismatchAction(); const user = userEvent.setup();
+      renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+      await openAndFillCreateAction(user);
+      await user.click(screen.getByRole('button', { name: '建立並指派' }));
+      await user.click(screen.getByRole('button', { name: '查詢建立狀態' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '查詢建立狀態' })).toBeEnabled());
+      expect(screen.getByDisplayValue('確認明天早上移位協助人力')).toBeInTheDocument();
+      expect(screen.getByText(/尚未確認是否已建立並指派/)).toBeInTheDocument();
+      expect(service.creates).toBe(1); expect(service.detailReads).toBe(0);
+    });
+
+  it('does not retain a disappeared assignee during explicit same-key retry', async () => {
+    class StaleCandidate extends DemoVerticalSliceService {
+      creates = 0; candidateReads = 0; key?: OperationKey;
+      override getEligibleActionAssignees(caseId: string, versionId: string) {
+        this.candidateReads++;
+        return this.candidateReads === 1 ? super.getEligibleActionAssignees(caseId, versionId) : Promise.resolve({ result: 'EMPTY' as const });
+      }
+      override async createAction(_input: CreateActionInput, key: OperationKey) { this.creates++; this.key = key; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false }; }
+      override async lookupOperationStatus(key: OperationKey) { return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const }; }
+    }
+    const service = new StaleCandidate(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    await user.click(await screen.findByRole('button', { name: '確認狀態並重試' }));
+    expect(await screen.findByText('目前沒有可指派的協作者')).toBeInTheDocument();
+    expect(service.creates).toBe(1);
+  });
+
+  it.each(['SUCCESS', 'TEMPORARY_FAILURE', 'IDEMPOTENCY_CONFLICT', 'NOT_FOUND_OR_NOT_VISIBLE'] as const)(
+    'makes stale initial %s completion inert after a Case change', async (outcome) => {
+      let settle!: (value: CommandResult<ActionDetailView>) => void;
+      const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+      const fixture = await new DemoVerticalSliceService().createAction({
+        caseId: 'demo-case-1', sourceVersionId: 'demo-care-update-version-1', title: '舊處理事項',
+        reason: '舊原因', assigneeCandidateRef: 'demo-candidate-b'
+      }, 'fixture-action-key');
+      if (fixture.result !== 'SUCCESS') throw new Error('Expected Action fixture');
+      class StaleAction extends DemoVerticalSliceService {
+        detailReads = 0;
+        override createAction() { return pending; }
+        override getActionDetail(caseId: string, actionId: string) { this.detailReads++; return super.getActionDetail(caseId, actionId); }
+      }
+      function Harness({ service }: Readonly<{ service: StaleAction }>) {
+        const navigate = useNavigate();
+        return <><button type="button" onClick={() => navigate('/winwin/cases/case-b/timeline')}>切換處理事項個案</button><WinWinRoutes service={service} /></>;
+      }
+      const service = new StaleAction(); const user = userEvent.setup();
+      render(<MemoryRouter initialEntries={['/winwin/cases/demo-case-1/timeline']}><Harness service={service} /></MemoryRouter>);
+      await openAndFillCreateAction(user);
+      await user.click(screen.getByRole('button', { name: '建立並指派' }));
+      await user.click(screen.getByRole('button', { name: '切換處理事項個案' }));
+      await screen.findByRole('alert');
+      settle(outcome === 'SUCCESS' ? fixture : outcome === 'TEMPORARY_FAILURE'
+        ? { result: outcome, outcomeUncertain: true }
+        : { result: outcome });
+      await Promise.resolve();
+      expect(service.detailReads).toBe(0);
+      expect(screen.queryByText('舊處理事項')).not.toBeInTheDocument();
+    }
+  );
+
+  it('keeps a completion after unmount inert', async () => {
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class PendingAction extends DemoVerticalSliceService { override createAction() { return pending; } }
+    const service = new PendingAction(); const user = userEvent.setup();
+    const view = renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    view.unmount();
+    settle({ result: 'NOT_FOUND_OR_NOT_VISIBLE' });
+    await Promise.resolve();
+  });
+
+  it('does not apply an old assignee attempt to a newer exact-person intent', async () => {
+    let settleOld!: (value: CommandResult<ActionDetailView>) => void;
+    const oldPending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settleOld = resolve; });
+    const projectedCandidates: readonly EligibleAssigneeView[] = [
+      { candidateRef: 'candidate-a', displayName: '陳先生' },
+      { candidateRef: 'demo-candidate-b', displayName: '王先生' }
+    ];
+    class AssigneeIntentProbe extends DemoVerticalSliceService {
+      calls: CreateActionInput[] = []; detailReads = 0;
+      override async getEligibleActionAssignees() { return { result: 'SUCCESS' as const, data: projectedCandidates }; }
+      override createAction(input: CreateActionInput, key: OperationKey) {
+        this.calls.push(input);
+        return input.assigneeCandidateRef === 'candidate-a' ? oldPending : super.createAction(input, key);
+      }
+      override getActionDetail(caseId: string, actionId: string) { this.detailReads++; return super.getActionDetail(caseId, actionId); }
+    }
+    function Harness({ service }: Readonly<{ service: AssigneeIntentProbe }>) {
+      const navigate = useNavigate();
+      return <><button type="button" onClick={() => navigate('/winwin/cases')}>離開舊指派</button><button type="button" onClick={() => navigate('/winwin/cases/demo-case-1/timeline')}>開始新指派</button><WinWinRoutes service={service} /></>;
+    }
+    const service = new AssigneeIntentProbe(); const user = userEvent.setup();
+    render(<MemoryRouter initialEntries={['/winwin/cases/demo-case-1/timeline']}><Harness service={service} /></MemoryRouter>);
+    await openAndFillCreateAction(user);
+    await user.selectOptions(screen.getByLabelText('指派給 *'), 'candidate-a');
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    await user.click(screen.getByRole('button', { name: '離開舊指派' }));
+    await user.click(screen.getByRole('button', { name: '開始新指派' }));
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    expect(await screen.findByRole('heading', { name: '確認明天早上移位協助人力' })).toBeInTheDocument();
+    const oldFixture = await new DemoVerticalSliceService().createAction({
+      caseId: 'demo-case-1', sourceVersionId: 'demo-care-update-version-1', title: '舊指派結果',
+      reason: '舊原因', assigneeCandidateRef: 'demo-candidate-b'
+    }, 'old-assignee-fixture');
+    settleOld(oldFixture);
+    await Promise.resolve();
+    expect(screen.queryByText('舊指派結果')).not.toBeInTheDocument();
+    expect(service.calls.map((input) => input.assigneeCandidateRef)).toEqual(['candidate-a', 'demo-candidate-b']);
+    expect(service.detailReads).toBe(1);
+  });
+
+  it('invalidates protected context for current createAction access loss', async () => {
+    class LostActionAccess extends DemoVerticalSliceService {
+      override async createAction() { return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const }; }
+    }
+    const user = userEvent.setup();
+    renderWinWin(new LostActionAccess(), '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(screen.queryByDisplayValue('確認明天早上移位協助人力')).not.toBeInTheDocument();
+  });
+
+  it('deduplicates the full same-key lookup, revalidation, and retry sequence', async () => {
+    let settleTimeline!: (value: ProjectionResult<TimelineView>) => void;
+    const pendingTimeline = new Promise<ProjectionResult<TimelineView>>((resolve) => { settleTimeline = resolve; });
+    class RetryProbe extends DemoVerticalSliceService {
+      creates: OperationKey[] = []; lookups = 0; timelines = 0; candidates = 0;
+      override async createAction(_input: CreateActionInput, key: OperationKey) {
+        this.creates.push(key);
+        return this.creates.length === 1
+          ? { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false }
+          : super.createAction(_input, key);
+      }
+      override async lookupOperationStatus(key: OperationKey) { this.lookups++; return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const }; }
+      override getTimeline(caseId: string) {
+        this.timelines++;
+        return this.timelines === 1 ? super.getTimeline(caseId) : pendingTimeline;
+      }
+      override getEligibleActionAssignees(caseId: string, versionId: string) { this.candidates++; return super.getEligibleActionAssignees(caseId, versionId); }
+    }
+    const service = new RetryProbe(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    const retry = await screen.findByRole('button', { name: '確認狀態並重試' });
+    retry.click(); retry.click();
+    await waitFor(() => expect(service.timelines).toBe(2));
+    expect(service.lookups).toBe(1);
+    const timeline = await new DemoVerticalSliceService().getTimeline('demo-case-1');
+    settleTimeline(timeline);
+    expect(await screen.findByRole('heading', { name: '確認明天早上移位協助人力' })).toBeInTheDocument();
+    expect(service.candidates).toBe(2);
+    expect(service.creates).toHaveLength(2);
+    expect(new Set(service.creates).size).toBe(1);
   });
 });
 
@@ -722,7 +994,8 @@ describe('CP-F2 Timeline, Care Update detail, and Read Cursor', () => {
     expect(screen.getByRole('heading', { name: '照顧變化內容' })).toBeInTheDocument();
     expect(screen.getByText('目前版本・唯讀')).toBeInTheDocument();
     expect(screen.getByText(/約略時間/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /建立|編輯|刪除|修正/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '建立處理事項' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /編輯|刪除|修正/ })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/Grant|Membership|audit payload/);
   });
 

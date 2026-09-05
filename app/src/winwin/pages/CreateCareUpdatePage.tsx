@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { FormField } from '../components/FormField';
+import { CreateActionStep } from '../components/CreateActionStep';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
 import type {
   CareUpdateDetailView,
@@ -239,6 +240,11 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
       <h1 id="care-update-success">已儲存</h1>
       <p>{mutation.data.authorDisplay} 已於 <time dateTime={mutation.data.serverPublishedAt}>{mutation.data.serverPublishedAt}</time> 發布這筆照顧變化。</p>
       <p>目前未建立處理事項。</p>
+      {mutation.data.allowedOperations.CREATE_ACTION && <CreateActionStep caseId={caseId} source={{
+        careUpdateId: mutation.data.careUpdateId,
+        versionId: mutation.data.versionId,
+        summary: mutation.data.content
+      }} />}
       {refreshWarning && <p>照顧活動暫時無法完整重新載入，稍後查看時會以最新授權資料為準。</p>}
       <Link className="winwin-primary-action" to={`/winwin/cases/${caseId}/timeline`}>查看照顧活動</Link>
     </section>;

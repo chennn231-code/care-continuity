@@ -49,7 +49,7 @@ const careUpdate: CareUpdateDetailView = {
   authorDisplay: '林小姐',
   serverPublishedAt: SERVER_TIME,
   visibilityDisplay: '這筆內容指定的協作者',
-  linkedAction: { actionId: ACTION_ID, stateLabel: '尚待接手' },
+  linkedAction: undefined,
   allowedOperations: operations(['CREATE_ACTION'])
 };
 
@@ -160,6 +160,9 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private createdCareUpdate?: CareUpdateDetailView;
   private readonly committedCareUpdates = new Map<OperationKey, CareUpdateDetailView>();
   private readonly careUpdateFingerprints = new Map<OperationKey, string>();
+  private createdAction?: ActionDetailView;
+  private readonly committedActions = new Map<OperationKey, ActionDetailView>();
+  private readonly actionFingerprints = new Map<OperationKey, string>();
 
   constructor(options: DemoAdapterOptions = {}) {
     this.operationOutcomes = options.operationOutcomes ?? {};
@@ -247,7 +250,8 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     caseId: string,
     sourceVersionId: string
   ): Promise<ProjectionResult<readonly EligibleAssigneeView[]>> {
-    return caseId === CASE_ID && sourceVersionId === CARE_UPDATE_VERSION_ID
+    return caseId === CASE_ID
+      && (sourceVersionId === CARE_UPDATE_VERSION_ID || sourceVersionId === this.createdCareUpdate?.versionId)
       ? { result: 'SUCCESS', data: eligibleAssignees }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
@@ -257,15 +261,41 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     operationKey: OperationKey
   ): Promise<CommandResult<ActionDetailView>> {
     if (input.assigneeCandidateRef !== CANDIDATE_REF) return { result: 'TARGET_INELIGIBLE' };
-    return this.commandOutcome(operationKey, {
+    const source = input.sourceVersionId === this.createdCareUpdate?.versionId ? this.createdCareUpdate : careUpdate;
+    if (input.caseId !== CASE_ID || input.sourceVersionId !== source.versionId
+      || !source.allowedOperations.CREATE_ACTION) return { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+    const created: ActionDetailView = {
       ...assignedAction,
+      actionId: 'demo-action-created',
       title: input.title,
       reason: input.reason,
-      dueDisplay: input.dueAt
-    });
+      dueDisplay: input.dueAt,
+      sourceCareUpdate: {
+        careUpdateId: source.careUpdateId,
+        versionId: source.versionId,
+        summary: source.content
+      },
+      currentHolderDisplay: eligibleAssignees[0].displayName,
+      allowedOperations: NO_ALLOWED_OPERATIONS
+    };
+    const requestFingerprint = JSON.stringify(input);
+    const prior = this.committedActions.get(operationKey);
+    if (prior) return this.actionFingerprints.get(operationKey) === requestFingerprint
+      ? { result: 'SUCCESS', data: prior }
+      : { result: 'IDEMPOTENCY_CONFLICT' };
+    const outcome = this.commandOutcome(operationKey, created);
+    if (outcome.result === 'SUCCESS') {
+      this.createdAction = created;
+      this.committedActions.set(operationKey, created);
+      this.actionFingerprints.set(operationKey, requestFingerprint);
+    }
+    return outcome;
   }
 
   async getActionDetail(caseId: string, actionId: string): Promise<ProjectionResult<ActionDetailView>> {
+    if (caseId === CASE_ID && actionId === this.createdAction?.actionId) {
+      return { result: 'SUCCESS', data: this.createdAction };
+    }
     return caseId === CASE_ID && actionId === ACTION_ID
       ? { result: 'SUCCESS', data: assignedAction }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
@@ -331,8 +361,13 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   }
 
   async lookupOperationStatus(operationKey: OperationKey): Promise<OperationStatusView> {
+    const committedAction = this.committedActions.get(operationKey);
     const committed = this.committedCareUpdates.get(operationKey);
-    return this.operationOutcomes[operationKey] ?? (committed ? {
+    return this.operationOutcomes[operationKey] ?? (committedAction ? {
+      operationKey,
+      outcome: 'COMMITTED',
+      authoritativeResult: committedAction
+    } : committed ? {
       operationKey,
       outcome: 'COMMITTED',
       authoritativeResult: committed
