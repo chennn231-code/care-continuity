@@ -141,6 +141,7 @@ export type TimelineView = Readonly<{
   storedBoundary?: ReadCursorBoundary;
   returnedBoundary?: ReadCursorBoundary;
   newChangeCount?: number;
+  newChangeStartIndex?: number;
   mergedCareUpdates: readonly CareUpdateDetailView[];
 }>;
 

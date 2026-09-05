@@ -123,6 +123,7 @@ const timeline: TimelineView = {
   storedBoundary: 'demo-boundary-1',
   returnedBoundary: TIMELINE_BOUNDARY,
   newChangeCount: 1,
+  newChangeStartIndex: 0,
   mergedCareUpdates: [careUpdate]
 };
 
@@ -130,6 +131,9 @@ export type DemoAdapterOptions = Readonly<{
   operationOutcomes?: Readonly<Record<string, OperationStatusView>>;
   sessionResult?: ProjectionResult<SessionView>;
   authorizedCasesResult?: ProjectionResult<readonly AuthorizedCaseSummary[]>;
+  caseHomeResult?: ProjectionResult<CaseHomeView>;
+  timelineResult?: ProjectionResult<TimelineView>;
+  cursorResult?: CommandResult<ReadCursorAdvanceView>;
 }>;
 
 export class DemoVerticalSliceService implements VerticalSliceService {
@@ -137,11 +141,17 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private readonly operationOutcomes: Readonly<Record<string, OperationStatusView>>;
   private readonly sessionResult?: ProjectionResult<SessionView>;
   private readonly authorizedCasesResult?: ProjectionResult<readonly AuthorizedCaseSummary[]>;
+  private readonly caseHomeResult?: ProjectionResult<CaseHomeView>;
+  private readonly timelineResult?: ProjectionResult<TimelineView>;
+  private readonly cursorResult?: CommandResult<ReadCursorAdvanceView>;
 
   constructor(options: DemoAdapterOptions = {}) {
     this.operationOutcomes = options.operationOutcomes ?? {};
     this.sessionResult = options.sessionResult;
     this.authorizedCasesResult = options.authorizedCasesResult;
+    this.caseHomeResult = options.caseHomeResult;
+    this.timelineResult = options.timelineResult;
+    this.cursorResult = options.cursorResult;
   }
 
   async resolveSession(): Promise<ProjectionResult<SessionView>> {
@@ -161,12 +171,14 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   }
 
   async getCaseHome(caseId: string): Promise<ProjectionResult<CaseHomeView>> {
+    if (this.caseHomeResult) return this.caseHomeResult;
     return caseId === CASE_ID
       ? { result: 'SUCCESS', data: caseHome }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
 
   async getTimeline(caseId: string): Promise<ProjectionResult<TimelineView>> {
+    if (this.timelineResult) return this.timelineResult;
     return caseId === CASE_ID
       ? { result: 'SUCCESS', data: timeline }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
@@ -290,9 +302,9 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     caseId: string,
     boundary: ReadCursorBoundary
   ): Promise<CommandResult<ReadCursorAdvanceView>> {
-    return caseId === CASE_ID
+    return this.cursorResult ?? (caseId === CASE_ID
       ? { result: 'SUCCESS', data: { currentBoundary: boundary } }
-      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+      : { result: 'NOT_FOUND_OR_NOT_VISIBLE' });
   }
 
   private actionAt(

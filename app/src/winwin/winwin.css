@@ -93,3 +93,20 @@
 @media (prefers-reduced-motion: reduce) {
   .winwin-skip-link { transition: none; }
 }
+
+.winwin-breadcrumbs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; color: #65757b; }
+.winwin-breadcrumbs a { color: #405f6d; }
+.winwin-summary-card, .winwin-gap-banner, .winwin-care-update { margin: 1rem 0; padding: 1.25rem; border: 1px solid #d9e2e0; border-radius: 1rem; background: #fffdf8; }
+.winwin-gap-banner { border-left: 0.4rem solid #9d5c2f; }
+.winwin-gap-banner h2, .winwin-summary-card h2, .winwin-care-update h2 { margin-top: 0; }
+.winwin-gap-banner a { color: #405f6d; font-weight: 750; }
+.winwin-timeline { display: grid; gap: 1rem; padding-left: 1.5rem; }
+.winwin-timeline article { padding: 1.1rem; border: 1px solid #d9e2e0; border-radius: 1rem; background: #fffdf8; }
+.winwin-timeline h2 { margin: 0; font-size: 1.15rem; }
+.winwin-timeline p, .winwin-timeline time { color: #65757b; line-height: 1.55; }
+.winwin-timeline-divider { width: fit-content; padding: 0.25rem 0.65rem; border-radius: 999px; color: #405f6d !important; background: #e7eff1; font-weight: 800; }
+.winwin-care-update dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.45rem 1rem; }
+.winwin-care-update dt { color: #65757b; font-weight: 750; }
+.winwin-care-update dd { margin: 0; }
+.winwin-cursor-notice { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.9rem; border-radius: 0.8rem; color: #7b4a32; background: #fff0e8; }
+.winwin-cursor-notice button { border: 0; color: #405f6d; background: transparent; font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }

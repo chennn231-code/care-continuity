@@ -5,6 +5,8 @@ import { WinWinAppProvider } from '../state/WinWinAppProvider';
 import { WinWinAppShell } from '../components/WinWinAppShell';
 import { SessionEntryPage } from '../pages/SessionEntryPage';
 import { MyCasesPage } from '../pages/MyCasesPage';
+import { CaseHomePage } from '../pages/CaseHomePage';
+import { TimelinePage } from '../pages/TimelinePage';
 import '../winwin.css';
 
 const demoService = new DemoVerticalSliceService();
@@ -25,8 +27,10 @@ function WinWinRouteContent() {
     content = <SessionEntryPage />;
   } else if (pathname === '/winwin/cases') {
     content = <MyCasesPage />;
+  } else if (matchPath('/winwin/cases/:caseId/timeline', pathname)) {
+    content = <TimelinePage caseId={matchPath('/winwin/cases/:caseId/timeline', pathname)!.params.caseId!} />;
   } else if (matchPath('/winwin/cases/:caseId', pathname)) {
-    content = <Navigate to="/winwin/cases" replace />;
+    content = <CaseHomePage caseId={matchPath('/winwin/cases/:caseId', pathname)!.params.caseId!} />;
   } else {
     content = <Navigate to="/winwin" replace />;
   }
