@@ -66,7 +66,7 @@ export function TimelinePage({ caseId }: Readonly<{ caseId: string }>) {
     }
     cursorSafety.current = settleCursorAdvance(cursorSafety.current, cursorAttempt, { status: 'failed' });
     setCursorStatus('failed');
-  }, [service, caseId, invalidateProtectedContext]);
+  }, [service, caseId, contextGeneration, invalidateProtectedContext]);
 
   useEffect(() => {
     if (sessionState.status !== 'signedIn') return;
@@ -166,6 +166,11 @@ export function TimelinePage({ caseId }: Readonly<{ caseId: string }>) {
       </nav>
       <header className="winwin-page-heading"><p className="winwin-eyebrow">時間順序</p><h1>照顧活動</h1></header>
       {partial && <p className="winwin-inline-notice" role="status">部分資訊暫時無法載入；上次查看位置不會更新。</p>}
+      {(cursorStatus === 'saving' || cursorStatus === 'saved') && (
+        <p className="winwin-visually-hidden" aria-live="polite">
+          {cursorStatus === 'saving' ? '正在儲存上次查看位置' : '已儲存上次查看位置'}
+        </p>
+      )}
       {!timeline || timeline.entries.length === 0 ? (
         <p className="winwin-empty-copy">目前沒有可見的個案活動</p>
       ) : (

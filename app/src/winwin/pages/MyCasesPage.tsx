@@ -44,6 +44,9 @@ export function MyCasesPage() {
       }
       setState({ status: 'unavailable' });
       invalidateProtectedContext();
+    }).catch(() => {
+      if (request !== requestGeneration.current) return;
+      setState({ status: 'recoverableError', error: { code: 'OFFLINE', message: 'Case list request rejected' } });
     });
 
     return () => { requestGeneration.current++; };

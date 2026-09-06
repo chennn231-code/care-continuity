@@ -1,9 +1,20 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useWinWinApp } from '../state/WinWinAppProvider';
 
 export function WinWinAppShell({ children }: Readonly<{ children: ReactNode }>) {
   const { sessionState } = useWinWinApp();
+  const { pathname } = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  const previousPathname = useRef(pathname);
   const session = sessionState.status === 'signedIn' ? sessionState.session : undefined;
+
+  useEffect(() => {
+    if (previousPathname.current !== pathname && document.activeElement !== document.body) {
+      mainRef.current?.focus();
+    }
+    previousPathname.current = pathname;
+  }, [pathname]);
 
   return (
     <div className="winwin-app">
@@ -22,7 +33,7 @@ export function WinWinAppShell({ children }: Readonly<{ children: ReactNode }>) 
           </div>
         )}
       </header>
-      <main id="winwin-main" className="winwin-main" tabIndex={-1}>
+      <main ref={mainRef} id="winwin-main" className="winwin-main" tabIndex={-1}>
         {children}
       </main>
     </div>

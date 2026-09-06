@@ -75,7 +75,8 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
   const { service, sessionState, contextGeneration, invalidateProtectedContext } = useWinWinApp();
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [errors, setErrors] = useState<Errors>({});
-  const [screenState, setScreenState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [screenState, setScreenState] = useState<'loading' | 'ready' | 'recoverable' | 'unavailable'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [visibilityOptions, setVisibilityOptions] = useState<readonly Readonly<{ value: CareUpdateVisibility; label: string; description: string }>[]>([]);
   const [refreshWarning, setRefreshWarning] = useState(false);
   const [lookupBusy, setLookupBusy] = useState(false);
@@ -88,6 +89,7 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
   const lookupInFlight = useRef(false);
   const intentRef = useRef<MutationIntent | undefined>(undefined);
   const inputRef = useRef<CreateCareUpdateInput | undefined>(undefined);
+  const successHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     const token = ++lifecycle.current;
@@ -117,16 +119,28 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
       }
       setVisibilityOptions(result.data.careUpdateCreateOptions);
       setScreenState('ready');
+    }).catch(() => {
+      if (token !== lifecycle.current) return;
+      setScreenState('recoverable');
     });
     return () => { lifecycle.current++; };
-  }, [service, sessionState.status, contextGeneration, caseId, invalidateProtectedContext]);
+  }, [service, sessionState.status, contextGeneration, caseId, loadAttempt, invalidateProtectedContext]);
+
+  useEffect(() => {
+    if (mutation.status === 'committed') successHeadingRef.current?.focus();
+  }, [mutation.status]);
 
   const isCurrent = (token: number, intent: MutationIntent) => token === lifecycle.current
     && intentRef.current?.operationKey === intent.operationKey
     && intentRef.current.requestFingerprint === intent.requestFingerprint;
 
   const refreshAuthoritative = async (token: number, intent: MutationIntent) => {
-    const result = await service.getTimeline(caseId);
+    let result;
+    try { result = await service.getTimeline(caseId); }
+    catch {
+      if (isCurrent(token, intent)) setRefreshWarning(true);
+      return isCurrent(token, intent);
+    }
     if (!isCurrent(token, intent)) return false;
     if (result.result === 'NOT_FOUND_OR_NOT_VISIBLE') {
       setDraft(EMPTY_DRAFT);
@@ -162,7 +176,9 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
       setScreenState('unavailable');
       invalidateProtectedContext();
     } else if (result.result === 'FORBIDDEN') {
+      setDraft(EMPTY_DRAFT);
       setScreenState('unavailable');
+      invalidateProtectedContext();
     } else {
       dispatch({ type: 'SUBMISSION_RECOVERABLE_FAILURE' });
     }
@@ -172,7 +188,12 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
     event.preventDefault();
     const nextErrors = validate(draft);
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) {
+      const first = (['category', 'content', 'source', 'occurredDate', 'timePrecision', 'occurredTime', 'visibility', 'additionalContext'] as const)
+        .find((name) => nextErrors[name]);
+      if (first) document.getElementById(first)?.focus();
+      return;
+    }
     const input = inputFrom(caseId, draft);
     const intent: MutationIntent = {
       family: 'CREATE_CARE_UPDATE',
@@ -234,10 +255,11 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
   if (sessionState.status === 'signedOut' || sessionState.status === 'recoverableError') return <Navigate to="/winwin/login" replace />;
   if (sessionState.status === 'unavailable' || screenState === 'unavailable') return <UnavailableState />;
   if (screenState === 'loading') return <LoadingState label="新增照顧變化" />;
+  if (screenState === 'recoverable') return <section className="winwin-state-card" role="alert"><h1>新增照顧變化</h1><p>目前無法載入發布所需資訊，請稍後再試。</p><button className="winwin-primary-action" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>重新載入</button></section>;
 
   if (mutation.status === 'committed') {
     return <section className="winwin-state-card" role="status" aria-labelledby="care-update-success">
-      <h1 id="care-update-success">已儲存</h1>
+      <h1 ref={successHeadingRef} id="care-update-success" tabIndex={-1}>已儲存</h1>
       <p>{mutation.data.authorDisplay} 已於 <time dateTime={mutation.data.serverPublishedAt}>{mutation.data.serverPublishedAt}</time> 發布這筆照顧變化。</p>
       <p>目前未建立處理事項。</p>
       {mutation.data.allowedOperations.CREATE_ACTION && <CreateActionStep caseId={caseId} source={{
@@ -266,9 +288,9 @@ export function CreateCareUpdatePage({ caseId }: Readonly<{ caseId: string }>) {
       <FormField id="content" label="發生了什麼變化？" required help="請用簡短事實描述，不要將內容寫成診斷。最多 1000 字。" error={errors.content}><textarea id="content" required maxLength={1000} disabled={locked} value={draft.content} aria-invalid={Boolean(errors.content)} aria-describedby={describedBy('content', true)} onChange={(e) => update('content', e.target.value)} /></FormField>
       <FormField id="source" label="資訊來源" required help="例如：本人直接觀察或本次服務中觀察。" error={errors.source}><input id="source" required disabled={locked} value={draft.source} aria-invalid={Boolean(errors.source)} aria-describedby={describedBy('source', true)} onChange={(e) => update('source', e.target.value)} /></FormField>
       <FormField id="occurredDate" label="發生日期" required error={errors.occurredDate}><input id="occurredDate" type="date" required disabled={locked} value={draft.occurredDate} aria-invalid={Boolean(errors.occurredDate)} aria-describedby={describedBy('occurredDate')} onChange={(e) => update('occurredDate', e.target.value)} /></FormField>
-      <fieldset className="winwin-form-field" disabled={locked} aria-describedby={errors.timePrecision ? 'timePrecision-error' : undefined}><legend>時間精確度 <span aria-hidden="true">*</span></legend>{([['EXACT', '精確時間'], ['APPROXIMATE', '約略時間'], ['UNKNOWN', '時間不確定']] as const).map(([value, label]) => <label className="winwin-radio" key={value}><input type="radio" name="timePrecision" required value={value} checked={draft.timePrecision === value} onChange={() => update('timePrecision', value)} />{label}</label>)}{errors.timePrecision && <p id="timePrecision-error" className="winwin-field-error" role="alert">{errors.timePrecision}</p>}</fieldset>
+      <fieldset id="timePrecision" className="winwin-form-field" disabled={locked} aria-describedby={errors.timePrecision ? 'timePrecision-error' : undefined}><legend>時間精確度 <span aria-hidden="true">*</span></legend>{([['EXACT', '精確時間'], ['APPROXIMATE', '約略時間'], ['UNKNOWN', '時間不確定']] as const).map(([value, label]) => <label className="winwin-radio" key={value}><input type="radio" name="timePrecision" required value={value} checked={draft.timePrecision === value} onChange={() => update('timePrecision', value)} />{label}</label>)}{errors.timePrecision && <p id="timePrecision-error" className="winwin-field-error" role="alert">{errors.timePrecision}</p>}</fieldset>
       {draft.timePrecision === 'EXACT' && <FormField id="occurredTime" label="發生時間" required error={errors.occurredTime}><input id="occurredTime" type="time" required disabled={locked} value={draft.occurredTime} aria-invalid={Boolean(errors.occurredTime)} aria-describedby={describedBy('occurredTime')} onChange={(e) => update('occurredTime', e.target.value)} /></FormField>}
-      <fieldset className="winwin-form-field" disabled={locked} aria-describedby={errors.visibility ? 'visibility-error' : undefined}><legend>可見範圍 <span aria-hidden="true">*</span></legend>{visibilityOptions.map((option) => <label className="winwin-radio" key={option.value}><input type="radio" name="visibility" required value={option.value} checked={draft.visibility === option.value} onChange={() => update('visibility', option.value)} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}{errors.visibility && <p id="visibility-error" className="winwin-field-error" role="alert">{errors.visibility}</p>}</fieldset>
+      <fieldset id="visibility" className="winwin-form-field" disabled={locked} aria-describedby={errors.visibility ? 'visibility-error' : undefined}><legend>可見範圍 <span aria-hidden="true">*</span></legend>{visibilityOptions.map((option) => <label className="winwin-radio" key={option.value}><input type="radio" name="visibility" required value={option.value} checked={draft.visibility === option.value} onChange={() => update('visibility', option.value)} /><span><strong>{option.label}</strong><small>{option.description}</small></span></label>)}{errors.visibility && <p id="visibility-error" className="winwin-field-error" role="alert">{errors.visibility}</p>}</fieldset>
       <FormField id="additionalContext" label="補充內容（選填）" help="只填寫協作所需內容，最多 500 字。" error={errors.additionalContext}><textarea id="additionalContext" maxLength={500} disabled={locked} value={draft.additionalContext} aria-invalid={Boolean(errors.additionalContext)} aria-describedby={describedBy('additionalContext', true)} onChange={(e) => update('additionalContext', e.target.value)} /></FormField>
       <p className="winwin-publication-note">發布後不會直接覆寫；若需更正，會保留原內容並建立新版本。</p>
       <div className="winwin-form-actions"><button className="winwin-primary-action" type="submit" disabled={locked}>{mutation.status === 'submitting' ? '發布中…' : '發布照顧變化'}</button><Link to={`/winwin/cases/${caseId}`}>取消</Link></div>

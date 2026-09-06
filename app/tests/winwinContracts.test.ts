@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+// @ts-expect-error The app intentionally omits Node typings; Vitest runs this contract in Node.
+import { readFileSync } from 'node:fs';
 import {
   DEMO_AUTHORITY_MARKER,
   NO_ALLOWED_OPERATIONS,
@@ -8,6 +10,8 @@ import {
 } from '../src/winwin/contracts/frontendContract';
 import type { VerticalSliceService } from '../src/winwin/contracts/verticalSliceService';
 import { DemoVerticalSliceService } from '../src/winwin/adapters/demo/DemoVerticalSliceService';
+
+const winwinStyles = readFileSync(new URL('../src/winwin/winwin.css', import.meta.url), 'utf8');
 
 describe('WinWin frontend-safe contract', () => {
   it('constructs representative minimized projections without authority records', () => {
@@ -157,5 +161,25 @@ describe('new-tree import boundary', () => {
       expect(source, `${path} contains a prohibited dependency`).not.toMatch(prohibitedImport);
       expect(source, `${path} imports an authority-bearing symbol`).not.toMatch(prohibitedAuthoritySymbols);
     }
+  });
+});
+
+describe('CP-F9 scoped WinWin stylesheet', () => {
+  it('keeps responsive and reduced-motion rules inside the WinWin stylesheet', () => {
+    expect(winwinStyles).toContain('@media (max-width: 38rem)');
+    expect(winwinStyles).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(winwinStyles).toContain('.winwin-care-update dl');
+    expect(winwinStyles).toContain('.winwin-confirmation');
+  });
+
+  it('does not introduce obvious global element or root selectors', () => {
+    expect(winwinStyles).not.toMatch(/(?:^|\n)\s*(?:html|body|:root|button|input|a)\s*\{/);
+  });
+
+  it('retains the bounded darker WinWin support-text colors selected for rendered verification', () => {
+    expect(winwinStyles).toContain('color: #547180');
+    expect(winwinStyles).toContain('color: #606f75');
+    expect(winwinStyles).not.toContain('color: #587686');
+    expect(winwinStyles).not.toContain('color: #65757b');
   });
 });

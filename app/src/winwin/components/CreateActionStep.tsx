@@ -34,6 +34,7 @@ export function CreateActionStep({ caseId, source }: Readonly<{ caseId: string; 
   const submissionOwner = useRef<MutationIntent | undefined>(undefined);
   const intentRef = useRef<MutationIntent | undefined>(undefined);
   const inputRef = useRef<CreateActionInput | undefined>(undefined);
+  const successHeadingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     lifecycle.current++;
@@ -64,7 +65,13 @@ export function CreateActionStep({ caseId, source }: Readonly<{ caseId: string; 
     const lifecycleToken = lifecycle.current;
     const request = ++loadGeneration.current;
     setCandidateState('loading');
-    const result = await service.getEligibleActionAssignees(caseId, source.versionId);
+    let result;
+    try {
+      result = await service.getEligibleActionAssignees(caseId, source.versionId);
+    } catch {
+      if (lifecycleToken === lifecycle.current && request === loadGeneration.current) setCandidateState('error');
+      return undefined;
+    }
     if (lifecycleToken !== lifecycle.current || request !== loadGeneration.current) return undefined;
     if (result.result === 'NOT_FOUND_OR_NOT_VISIBLE') {
       setCandidateState('unavailable'); invalidateProtectedContext(); return undefined;
@@ -84,7 +91,9 @@ export function CreateActionStep({ caseId, source }: Readonly<{ caseId: string; 
     && intentRef.current.requestFingerprint === intent.requestFingerprint;
 
   const refreshAction = async (token: number, intent: MutationIntent, action: ActionDetailView) => {
-    const result = await service.getActionDetail(caseId, action.actionId);
+    let result;
+    try { result = await service.getActionDetail(caseId, action.actionId); }
+    catch { return undefined; }
     if (!isCurrent(token, intent)) return undefined;
     if (result.result === 'NOT_FOUND_OR_NOT_VISIBLE') {
       setCandidateState('unavailable'); invalidateProtectedContext(); return undefined;
@@ -131,7 +140,11 @@ export function CreateActionStep({ caseId, source }: Readonly<{ caseId: string; 
       assignee: assignee ? undefined : '請明確選擇一位協作者'
     };
     setErrors(next);
-    if (Object.values(next).some(Boolean)) return;
+    if (Object.values(next).some(Boolean)) {
+      const first = (['title', 'reason', 'assignee'] as const).find((name) => next[name]);
+      if (first) document.getElementById(`action-${first}-${source.versionId}`)?.focus();
+      return;
+    }
     if (submissionOwner.current) return;
     const input: CreateActionInput = {
       caseId, sourceVersionId: source.versionId, title: title.trim(), reason: reason.trim(),
@@ -146,6 +159,10 @@ export function CreateActionStep({ caseId, source }: Readonly<{ caseId: string; 
     dispatch({ type: 'BEGIN', intent });
     void submitIntent(intent, input);
   };
+
+  useEffect(() => {
+    if (mutation.status === 'committed') successHeadingRef.current?.focus();
+  }, [mutation.status]);
 
   const lookup = async (retry = false) => {
     if (lookupInFlight.current) return;
@@ -192,7 +209,7 @@ export function CreateActionStep({ caseId, source }: Readonly<{ caseId: string; 
   if (mutation.status === 'committed') {
     const action = mutation.data;
     return <section className="winwin-action-result" role="status" aria-labelledby={`action-${action.actionId}`}>
-      <p className="winwin-eyebrow">處理事項</p><h3 id={`action-${action.actionId}`}>{action.title}</h3>
+      <p className="winwin-eyebrow">處理事項</p><h3 ref={successHeadingRef} id={`action-${action.actionId}`} tabIndex={-1}>{action.title}</h3>
       <p><strong>{action.stateDisplay}</strong>・已指派給 {action.currentHolderDisplay}，等待接手確認</p>
       <p>來源：{action.sourceCareUpdate.summary}</p><p>{action.reason}</p>
       {action.dueDisplay && <p>預計時間：{action.dueDisplay}</p>}

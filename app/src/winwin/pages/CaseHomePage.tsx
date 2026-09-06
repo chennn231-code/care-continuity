@@ -31,6 +31,9 @@ export function CaseHomePage({ caseId }: Readonly<{ caseId: string }>) {
         setState({ status: 'unavailable' });
         invalidateProtectedContext();
       }
+    }).catch(() => {
+      if (request !== requestGeneration.current) return;
+      setState({ status: 'recoverableError', error: { code: 'OFFLINE', message: 'Case Home request rejected' } });
     });
     return () => { requestGeneration.current++; };
   }, [service, sessionState.status, contextGeneration, caseId, attempt, invalidateProtectedContext]);

@@ -17,7 +17,7 @@ export function SessionEntryPage() {
 
   const recoverable = sessionState.status === 'recoverableError';
   return (
-    <section className="winwin-state-card" aria-labelledby="winwin-session-title">
+    <section className="winwin-state-card" role={recoverable ? 'alert' : undefined} aria-labelledby="winwin-session-title">
       <p className="winwin-eyebrow">安全照顧協作</p>
       <h1 id="winwin-session-title">進入 WinWin</h1>
       <p>{recoverable

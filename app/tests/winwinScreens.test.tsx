@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
@@ -2489,5 +2489,146 @@ describe('CP-F2 stale cursor completion correction', () => {
     expect(staleRetry).not.toBeInTheDocument();
     staleRetry.click();
     expect(first.calls).toBe(1);
+  });
+});
+
+describe('CP-F9 live access loss and automated accessibility hardening', () => {
+  it('keeps a rejected session recoverable and hides transport details', async () => {
+    class RejectedSession extends DemoVerticalSliceService {
+      override resolveSession(): Promise<never> { return Promise.reject(new Error('private session detail')); }
+    }
+    renderWinWin(new RejectedSession());
+    expect(await screen.findByRole('alert')).toHaveTextContent('連線暫時不穩定');
+    expect(screen.getByRole('button', { name: '重新嘗試' })).toBeInTheDocument();
+    expect(screen.queryByText('private session detail')).not.toBeInTheDocument();
+    expect(screen.queryByText('目前無法使用此內容')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['My Cases', '/winwin/cases', 'getAuthorizedCases', '我的個案'],
+    ['Case Home', '/winwin/cases/demo-case-1', 'getCaseHome', '個案資訊暫時無法載入'],
+    ['Action Detail', '/winwin/cases/demo-case-1/actions/demo-action-1', 'getActionDetail', '目前無法載入最新處理事項']
+  ] as const)('keeps rejected %s reads recoverable', async (_label, path, method, copy) => {
+    class RejectedRead extends DemoVerticalSliceService {
+      override getAuthorizedCases(): Promise<never> { return method === 'getAuthorizedCases' ? Promise.reject(new Error('secret')) : super.getAuthorizedCases() as Promise<never>; }
+      override getCaseHome(caseId: string): Promise<never> { return method === 'getCaseHome' ? Promise.reject(new Error('secret')) : super.getCaseHome(caseId) as Promise<never>; }
+      override getActionDetail(caseId: string, actionId: string): Promise<never> { return method === 'getActionDetail' ? Promise.reject(new Error('secret')) : super.getActionDetail(caseId, actionId) as Promise<never>; }
+    }
+    renderWinWin(new RejectedRead(), path);
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy);
+    expect(screen.getByRole('button', { name: '重新載入' })).toBeInTheDocument();
+    expect(screen.queryByText('secret')).not.toBeInTheDocument();
+    expect(screen.queryByText('目前無法使用此內容')).not.toBeInTheDocument();
+  });
+
+  it('focuses the non-enumerating unavailable replacement and offers safe navigation', async () => {
+    renderWinWin(new DemoVerticalSliceService({ caseHomeResult: { result: 'NOT_FOUND_OR_NOT_VISIBLE' } }), '/winwin/cases/demo-case-1');
+    const heading = await screen.findByRole('heading', { name: '目前無法使用此內容' });
+    expect(heading).toHaveFocus();
+    expect(screen.getByRole('link', { name: '返回我的個案' })).toHaveAttribute('href', '/winwin/cases');
+    expect(screen.queryByText('陳女士的照顧個案')).not.toBeInTheDocument();
+  });
+
+  it('moves invalid Care Update submission focus to the first invalid control', async () => {
+    const user = userEvent.setup();
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/updates/new');
+    const publish = await screen.findByRole('button', { name: '發布照顧變化' });
+    await user.click(publish);
+    expect(screen.getByLabelText('類別 *')).toHaveFocus();
+  });
+
+  it('moves invalid Create Action submission focus to the first invalid control', async () => {
+    const user = userEvent.setup();
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/timeline');
+    await user.click(await screen.findByRole('button', { name: '建立處理事項' }));
+    await user.click(await screen.findByRole('button', { name: '建立並指派' }));
+    expect(screen.getByLabelText('要處理的事項 *')).toHaveFocus();
+  });
+
+  it('moves focus into Decline confirmation, contains Tab, closes on Escape, and restores focus', async () => {
+    const user = userEvent.setup();
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/actions/demo-action-1');
+    const invoker = await screen.findByRole('button', { name: '目前無法接手' });
+    await user.click(invoker);
+    const dialog = screen.getByRole('dialog', { name: '目前無法接手這項處理事項？' });
+    const cancel = screen.getByRole('button', { name: '返回' });
+    const confirm = screen.getByRole('button', { name: '確認目前無法接手' });
+    expect(dialog).toHaveAccessibleDescription();
+    expect(cancel).toHaveFocus();
+    confirm.focus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(invoker).toHaveFocus();
+  });
+
+  it('focuses authoritative status after an in-place Action transition', async () => {
+    const user = userEvent.setup();
+    renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/actions/demo-action-1');
+    await user.click(await screen.findByRole('button', { name: '接受處理' }));
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('已確認接手');
+    expect(status).toHaveFocus();
+  });
+
+  it('arms Accept focus before a separately settled authoritative refresh renders', async () => {
+    const initialResult = await new DemoVerticalSliceService().getActionDetail('demo-case-1', 'demo-action-1');
+    if (initialResult.result !== 'SUCCESS') throw new Error('Expected assigned Action detail');
+    const accepted: ActionDetailView = {
+      ...initialResult.data,
+      expectedVersion: 'accepted-focus-version',
+      lifecycleState: 'ACCEPTED',
+      stateDisplay: '已確認接手',
+      allowedOperations: {
+        ...initialResult.data.allowedOperations,
+        ACCEPT_ACTION: false,
+        DECLINE_ACTION: false,
+        START_ACTION: true
+      }
+    };
+    let settleMutation!: (value: CommandResult<ActionDetailView>) => void;
+    let settleRefresh!: (value: ProjectionResult<ActionDetailView>) => void;
+    const mutation = new Promise<CommandResult<ActionDetailView>>((resolve) => { settleMutation = resolve; });
+    const refresh = new Promise<ProjectionResult<ActionDetailView>>((resolve) => { settleRefresh = resolve; });
+    class OrderedAccept extends DemoVerticalSliceService {
+      detailCalls = 0;
+      acceptKeys: OperationKey[] = [];
+      override getActionDetail() {
+        this.detailCalls++;
+        return this.acceptKeys.length === 0 ? Promise.resolve(initialResult) : refresh;
+      }
+      override acceptAction(_input: ActionMutationInput, key: OperationKey) {
+        this.acceptKeys.push(key);
+        return mutation;
+      }
+    }
+    const service = new OrderedAccept();
+    const user = userEvent.setup();
+    render(<StrictMode><MemoryRouter initialEntries={['/winwin/cases/demo-case-1/actions/demo-action-1']}><WinWinRoutes service={service} /></MemoryRouter></StrictMode>);
+    const accept = await screen.findByRole('button', { name: '接受處理' });
+    await user.click(accept);
+    expect(service.acceptKeys).toHaveLength(1);
+
+    settleMutation({ result: 'SUCCESS', data: accepted });
+    await waitFor(() => expect(service.detailCalls).toBeGreaterThanOrEqual(2));
+    expect(screen.getAllByRole('status')[0]).toHaveTextContent('尚待接手');
+
+    settleRefresh({ result: 'SUCCESS', data: accepted });
+    await waitFor(() => expect(screen.getAllByRole('status')[0]).toHaveTextContent('已確認接手'));
+    const updatedStatus = screen.getAllByRole('status')[0];
+    expect(updatedStatus).toHaveFocus();
+    expect(service.acceptKeys).toHaveLength(1);
+  });
+
+  it('clears an open Create Action draft when protected context is replaced', async () => {
+    const user = userEvent.setup();
+    const view = renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    expect(screen.getByDisplayValue('確認明天早上移位協助人力')).toBeInTheDocument();
+    view.rerender(<MemoryRouter initialEntries={['/winwin/cases/demo-case-1/timeline']}><WinWinRoutes service={new DemoVerticalSliceService({ timelineResult: { result: 'NOT_FOUND_OR_NOT_VISIBLE' } })} /></MemoryRouter>);
+    expect(await screen.findByRole('heading', { name: '目前無法使用此內容' })).toHaveFocus();
+    expect(screen.queryByDisplayValue('確認明天早上移位協助人力')).not.toBeInTheDocument();
+    expect(screen.queryByText('王先生・照顧協作者・目前可指派')).not.toBeInTheDocument();
   });
 });

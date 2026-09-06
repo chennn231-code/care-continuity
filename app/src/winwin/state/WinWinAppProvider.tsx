@@ -36,8 +36,13 @@ export function WinWinAppProvider({
   const [contextGeneration, setContextGeneration] = useState(0);
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const requestGeneration = useRef(0);
+  const activeService = useRef(service);
+  const serviceChanged = activeService.current !== service;
 
   useEffect(() => {
+    const replacedService = activeService.current !== service;
+    activeService.current = service;
+    if (replacedService) setContextGeneration((generation) => generation + 1);
     const request = ++requestGeneration.current;
     setSessionState({ status: 'checking' });
 
@@ -54,6 +59,12 @@ export function WinWinAppProvider({
         return;
       }
       setSessionState({ status: 'unavailable' });
+    }).catch(() => {
+      if (request !== requestGeneration.current) return;
+      setSessionState({
+        status: 'recoverableError',
+        error: { code: 'OFFLINE', message: 'Session request rejected' }
+      });
     });
 
     return () => { requestGeneration.current++; };
@@ -68,11 +79,11 @@ export function WinWinAppProvider({
 
   const value = useMemo<WinWinAppContextValue>(() => ({
     service,
-    sessionState,
+    sessionState: serviceChanged ? { status: 'checking' } : sessionState,
     contextGeneration,
     retrySession,
     invalidateProtectedContext
-  }), [service, sessionState, contextGeneration, retrySession, invalidateProtectedContext]);
+  }), [service, serviceChanged, sessionState, contextGeneration, retrySession, invalidateProtectedContext]);
 
   return <WinWinAppContext.Provider value={value}>{children}</WinWinAppContext.Provider>;
 }
