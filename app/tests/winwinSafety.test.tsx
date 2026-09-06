@@ -86,6 +86,28 @@ describe('pure mutation safety machine', () => {
     expect(resolved.status).not.toBe('submitting');
   });
 
+  it.each(mutationFamilies)('preserves the immutable %s intent across every lookup outcome', (family) => {
+    const originalIntent = intent(family);
+    const started = reduceMutation<string>({ status: 'idle' }, { type: 'BEGIN', intent: originalIntent });
+    const uncertain = reduceMutation(started, { type: 'SUBMISSION_UNCERTAIN' });
+
+    for (const outcome of [
+      'COMMITTED',
+      'DEFINITELY_NOT_COMMITTED',
+      'UNKNOWN',
+      'IDEMPOTENCY_CONFLICT'
+    ] as const) {
+      const resolved = reduceMutation(uncertain, {
+        type: 'LOOKUP_RESOLVED',
+        outcome,
+        data: outcome === 'COMMITTED' ? 'server-result' : undefined
+      });
+      if (resolved.status === 'idle') throw new Error('Lookup settlement must preserve its intent');
+      expect(resolved.intent).toBe(originalIntent);
+      expect(resolved.status).not.toBe('submitting');
+    }
+  });
+
   it('keeps recoverable failure distinct from uncertain status lookup', () => {
     const started: MutationState<string> = {
       status: 'submitting',

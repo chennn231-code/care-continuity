@@ -217,6 +217,82 @@ describe('CP-F5 Accept or currently unable to take responsibility', () => {
     expect(service.declines).toHaveLength(1);
   });
 
+  it('revalidates matching-key Decline DNC and explicitly retries once with the same intent', async () => {
+    class RetryDecline extends DemoVerticalSliceService {
+      calls: Array<{ input: ActionMutationInput; key: OperationKey }> = [];
+      lookupKeys: OperationKey[] = [];
+      detailReads = 0;
+      override declineAction(input: ActionMutationInput, key: OperationKey) {
+        this.calls.push({ input, key });
+        return this.calls.length === 1
+          ? Promise.resolve({ result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true })
+          : super.declineAction(input, key);
+      }
+      override async lookupOperationStatus(key: OperationKey) {
+        this.lookupKeys.push(key);
+        return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const };
+      }
+      override getActionDetail(caseId: string, actionId: string) {
+        this.detailReads++;
+        return super.getActionDetail(caseId, actionId);
+      }
+    }
+    const service = new RetryDecline(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+    expect(await screen.findByRole('button', { name: '查詢更新狀態' })).toBeInTheDocument();
+    expect(service.calls).toHaveLength(1);
+    const original = service.calls[0];
+
+    await user.click(screen.getByRole('button', { name: '查詢更新狀態' }));
+    expect(await screen.findByRole('button', { name: '確認目前狀態並重試' })).toBeInTheDocument();
+    expect(service.calls).toHaveLength(1);
+    expect(service.lookupKeys).toEqual([original.key]);
+    expect(service.detailReads).toBe(1);
+
+    await user.click(screen.getByRole('button', { name: '確認目前狀態並重試' }));
+    expect((await screen.findAllByText('目前沒有人確定接手')).length).toBeGreaterThan(0);
+    expect(service.calls).toHaveLength(2);
+    expect(service.lookupKeys).toEqual([original.key, original.key]);
+    expect(service.calls[1].key).toBe(original.key);
+    expect(service.calls[1].input).toBe(original.input);
+    expect(service.detailReads).toBe(3);
+  });
+
+  it('synchronizes matching-key Decline COMMITTED without replay or local fabrication', async () => {
+    const fixtureService = new DemoVerticalSliceService();
+    const committed = await fixtureService.declineAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'declined-fixture');
+    if (committed.result !== 'SUCCESS') throw new Error('Expected declined fixture');
+    class CommittedDecline extends DemoVerticalSliceService {
+      mutationKeys: OperationKey[] = [];
+      lookupKeys: OperationKey[] = [];
+      detailReads = 0;
+      override async declineAction(_input: ActionMutationInput, key: OperationKey) {
+        this.mutationKeys.push(key);
+        return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+      }
+      override async lookupOperationStatus(key: OperationKey) {
+        this.lookupKeys.push(key);
+        return { operationKey: key, outcome: 'COMMITTED' as const };
+      }
+      override getActionDetail(caseId: string, actionId: string) {
+        this.detailReads++;
+        return this.detailReads === 1
+          ? super.getActionDetail(caseId, actionId)
+          : Promise.resolve({ result: 'SUCCESS' as const, data: committed.data });
+      }
+    }
+    const service = new CommittedDecline(); const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+    await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+    expect((await screen.findAllByText('目前沒有人確定接手')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/需要重新安排/).length).toBeGreaterThan(0);
+    expect(service.mutationKeys).toHaveLength(1);
+    expect(service.lookupKeys).toEqual(service.mutationKeys);
+    expect(service.detailReads).toBe(2);
+  });
+
   it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
     'makes mismatched Decline %s lookup inert', async (outcome) => {
       class MismatchDecline extends DemoVerticalSliceService {
@@ -1101,6 +1177,78 @@ describe('CP-F4 Create Action and exact-person assignment', () => {
     expect(service.createKeys).toHaveLength(1);
     settle({ operationKey: service.createKeys[0], outcome: 'UNKNOWN' });
     expect(await screen.findByRole('button', { name: '查詢建立狀態' })).toBeEnabled();
+  });
+
+  it('synchronizes matching-key Create Action COMMITTED without replay or duplicate creation', async () => {
+    const fixtureService = new DemoVerticalSliceService();
+    const committed = await fixtureService.createAction({
+      caseId: 'demo-case-1', sourceVersionId: 'demo-care-update-version-1',
+      title: '伺服器確認的處理事項', reason: '伺服器確認的原因',
+      assigneeCandidateRef: 'demo-candidate-b'
+    }, 'committed-action-fixture');
+    if (committed.result !== 'SUCCESS') throw new Error('Expected committed Action fixture');
+    class CommittedAction extends DemoVerticalSliceService {
+      createKeys: OperationKey[] = [];
+      lookupKeys: OperationKey[] = [];
+      detailReads = 0;
+      override async createAction(_input: CreateActionInput, key: OperationKey) {
+        this.createKeys.push(key);
+        return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+      }
+      override async lookupOperationStatus(key: OperationKey) {
+        this.lookupKeys.push(key);
+        return { operationKey: key, outcome: 'COMMITTED' as const, authoritativeResult: committed.data };
+      }
+      override getActionDetail(_caseId: string, actionId: string) {
+        this.detailReads++;
+        return actionId === committed.data.actionId
+          ? Promise.resolve({ result: 'SUCCESS' as const, data: committed.data })
+          : Promise.resolve({ result: 'NOT_FOUND_OR_NOT_VISIBLE' as const });
+      }
+    }
+    const service = new CommittedAction(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    expect(await screen.findByRole('button', { name: '查詢建立狀態' })).toBeInTheDocument();
+    expect(service.createKeys).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: '查詢建立狀態' }));
+    expect(await screen.findByRole('heading', { name: '伺服器確認的處理事項' })).toBeInTheDocument();
+    expect(screen.getByText('伺服器確認的原因')).toBeInTheDocument();
+    expect(service.createKeys).toHaveLength(1);
+    expect(service.lookupKeys).toEqual(service.createKeys);
+    expect(service.detailReads).toBe(1);
+  });
+
+  it('keeps matching-key Create Action conflict distinct without replay or false success', async () => {
+    class ConflictAction extends DemoVerticalSliceService {
+      createKeys: OperationKey[] = [];
+      lookupKeys: OperationKey[] = [];
+      detailReads = 0;
+      override async createAction(_input: CreateActionInput, key: OperationKey) {
+        this.createKeys.push(key);
+        return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true };
+      }
+      override async lookupOperationStatus(key: OperationKey) {
+        this.lookupKeys.push(key);
+        return { operationKey: key, outcome: 'IDEMPOTENCY_CONFLICT' as const };
+      }
+      override getActionDetail(caseId: string, actionId: string) {
+        this.detailReads++;
+        return super.getActionDetail(caseId, actionId);
+      }
+    }
+    const service = new ConflictAction(); const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    await openAndFillCreateAction(user);
+    await user.click(screen.getByRole('button', { name: '建立並指派' }));
+    await user.click(await screen.findByRole('button', { name: '查詢建立狀態' }));
+    expect(await screen.findByText('這次建立無法安全完成，系統沒有再次送出。')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('確認明天早上移位協助人力')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '伺服器確認的處理事項' })).not.toBeInTheDocument();
+    expect(service.createKeys).toHaveLength(1);
+    expect(service.lookupKeys).toEqual(service.createKeys);
+    expect(service.detailReads).toBe(0);
   });
 
   it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
@@ -2154,6 +2302,18 @@ describe('CP-F2 Timeline, Care Update detail, and Read Cursor', () => {
     const service = new PartialCursorProbe({ timelineResult: { result: 'PARTIAL', data: timeline.data } });
     renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
     expect(await screen.findByText(/上次查看位置不會更新/)).toBeInTheDocument();
+    expect(service.advanceReadCursor).not.toHaveBeenCalled();
+  });
+
+  it('turns a rejected Timeline read into bounded offline recovery without advancing the cursor', async () => {
+    class RejectedTimelineService extends DemoVerticalSliceService {
+      advanceReadCursor = vi.fn(super.advanceReadCursor.bind(this));
+      override getTimeline(): Promise<never> { return Promise.reject(new Error('offline')); }
+    }
+    const service = new RejectedTimelineService();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前離線，尚未同步最新活動。');
+    expect(screen.getByRole('button', { name: '重新載入' })).toBeInTheDocument();
     expect(service.advanceReadCursor).not.toHaveBeenCalled();
   });
 

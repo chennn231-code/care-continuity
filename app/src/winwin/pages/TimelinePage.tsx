@@ -100,6 +100,14 @@ export function TimelinePage({ caseId }: Readonly<{ caseId: string }>) {
         setState({ status: 'unavailable' });
         invalidateProtectedContext();
       }
+    }).catch(() => {
+      if (generation !== requestGeneration.current) return;
+      cursorSafety.current = EMPTY_CURSOR_SAFETY_STATE;
+      setCursorStatus('idle');
+      setState({
+        status: 'recoverableError',
+        error: { code: 'OFFLINE', message: 'Timeline request rejected' }
+      });
     });
     return () => {
       requestGeneration.current++;
