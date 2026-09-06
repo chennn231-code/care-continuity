@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import { FormField } from '../components/FormField';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
-import type { ActionDetailView, ActionMutationInput, OperationKey, OperationOutcome } from '../contracts/frontendContract';
+import type { ActionDetailView, ActionMutationInput, CompleteActionInput, OperationKey, OperationOutcome } from '../contracts/frontendContract';
 import { useWinWinApp } from '../state/WinWinAppProvider';
 
-type ActionOperation = 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION';
+type ActionOperation = 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION' | 'COMPLETE_ACTION';
 type DecisionState = 'idle' | 'submitting' | 'uncertain' | 'definitelyNotCommitted' | 'conflict' | 'committedPendingRefresh';
-type Intent = Readonly<{ family: ActionOperation; operationKey: OperationKey; input: ActionMutationInput }>;
+type Intent = Readonly<{ family: ActionOperation; operationKey: OperationKey; input: ActionMutationInput | CompleteActionInput }>;
 type DecisionOwner = Intent | Readonly<{ acquiring: true; family: ActionOperation }>;
 
 function isIntent(owner: DecisionOwner | undefined): owner is Intent {
@@ -19,6 +20,8 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   const [screenState, setScreenState] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [decisionState, setDecisionState] = useState<DecisionState>('idle');
   const [confirmDecline, setConfirmDecline] = useState(false);
+  const [completionResult, setCompletionResult] = useState('');
+  const [completionError, setCompletionError] = useState<string>();
   const [lookupBusy, setLookupBusy] = useState(false);
   const lifecycle = useRef(0);
   const owner = useRef<DecisionOwner | undefined>(undefined);
@@ -31,6 +34,8 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     setLookupBusy(false);
     setDecisionState('idle');
     setConfirmDecline(false);
+    setCompletionResult('');
+    setCompletionError(undefined);
     setDetail(undefined);
     setScreenState('loading');
     if (sessionState.status !== 'signedIn') return () => { lifecycle.current++; };
@@ -70,7 +75,9 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
         ? await service.acceptAction(intent.input, intent.operationKey)
         : intent.family === 'DECLINE_ACTION'
           ? await service.declineAction(intent.input, intent.operationKey)
-          : await service.startAction(intent.input, intent.operationKey);
+          : intent.family === 'START_ACTION'
+            ? await service.startAction(intent.input, intent.operationKey)
+            : await service.completeAction(intent.input as CompleteActionInput, intent.operationKey);
       if (!owns(token, intent)) return;
       if (result.result === 'SUCCESS') {
         await synchronizeCommitted(token, intent);
@@ -93,20 +100,29 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     setDecisionState('committedPendingRefresh');
     const authoritative = await refresh(token, intent);
     if (authoritative && owns(token, intent)) {
-      setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false);
+      setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false); setCompletionResult(''); setCompletionError(undefined);
     }
   };
 
-  const begin = (family: ActionOperation) => {
+  const begin = (family: ActionOperation, submittedResult?: string) => {
     if (!detail || owner.current) return;
-    const requiredState = family === 'START_ACTION' ? 'ACCEPTED' : 'ASSIGNED';
+    const requiredState = family === 'START_ACTION' ? 'ACCEPTED' : family === 'COMPLETE_ACTION' ? 'IN_PROGRESS' : 'ASSIGNED';
     if (detail.lifecycleState !== requiredState || !detail.allowedOperations[family]) return;
+    if (family === 'COMPLETE_ACTION' && (!submittedResult || submittedResult.length > 300)) {
+      setCompletionError(!submittedResult ? '請填寫處理摘要。' : '處理摘要最多 300 個字。');
+      return;
+    }
     owner.current = { acquiring: true, family };
     try {
+      const operationPrefix = family === 'ACCEPT_ACTION' ? 'accept-action'
+        : family === 'DECLINE_ACTION' ? 'decline-action'
+          : family === 'START_ACTION' ? 'start-action' : 'complete-action';
       const intent: Intent = {
         family,
-        operationKey: `${family === 'ACCEPT_ACTION' ? 'accept-action' : family === 'DECLINE_ACTION' ? 'decline-action' : 'start-action'}:${globalThis.crypto.randomUUID()}`,
-        input: { actionId: detail.actionId, expectedVersion: detail.expectedVersion }
+        operationKey: `${operationPrefix}:${globalThis.crypto.randomUUID()}`,
+        input: family === 'COMPLETE_ACTION'
+          ? { actionId: detail.actionId, expectedVersion: detail.expectedVersion, result: submittedResult! }
+          : { actionId: detail.actionId, expectedVersion: detail.expectedVersion }
       };
       owner.current = intent;
       setDecisionState('submitting');
@@ -132,7 +148,7 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
         if (current.result === 'NOT_FOUND_OR_NOT_VISIBLE') { setDetail(undefined); setScreenState('unavailable'); invalidateProtectedContext(); return; }
         if (current.result !== 'SUCCESS'
           || current.data.expectedVersion !== intent.input.expectedVersion
-          || current.data.lifecycleState !== (intent.family === 'START_ACTION' ? 'ACCEPTED' : 'ASSIGNED')
+          || current.data.lifecycleState !== (intent.family === 'START_ACTION' ? 'ACCEPTED' : intent.family === 'COMPLETE_ACTION' ? 'IN_PROGRESS' : 'ASSIGNED')
           || !current.data.allowedOperations[intent.family]) {
           if (current.result === 'SUCCESS') setDetail(current.data);
           setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false); return;
@@ -168,8 +184,9 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   if (!detail) return <LoadingState label="處理事項" />;
   const busy = decisionState === 'submitting' || lookupBusy;
   const isStartIntent = owner.current?.family === 'START_ACTION';
-  const mutationLabel = isStartIntent ? '開始處理狀態' : '接手狀態';
-  const committedLabel = isStartIntent ? '開始處理' : '接手決定';
+  const isCompleteIntent = owner.current?.family === 'COMPLETE_ACTION';
+  const mutationLabel = isCompleteIntent ? '完成處理狀態' : isStartIntent ? '開始處理狀態' : '接手狀態';
+  const committedLabel = isCompleteIntent ? '完成處理' : isStartIntent ? '開始處理' : '接手決定';
 
   return <article className="winwin-action-detail" aria-labelledby="action-detail-heading" aria-busy={busy}>
     <nav className="winwin-breadcrumbs" aria-label="頁面路徑"><Link to={`/winwin/cases/${caseId}`}>個案首頁</Link><span aria-hidden="true">/</span><span>處理事項</span></nav>
@@ -184,6 +201,8 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     {detail.lifecycleState === 'ASSIGNED' && (detail.allowedOperations.ACCEPT_ACTION || detail.allowedOperations.DECLINE_ACTION) && <section aria-labelledby="decision-heading"><h2 id="decision-heading">回應指派</h2><div className="winwin-page-actions">{detail.allowedOperations.ACCEPT_ACTION && <button className="winwin-primary-action" type="button" disabled={busy || decisionState !== 'idle'} onClick={() => begin('ACCEPT_ACTION')}>{decisionState === 'submitting' && owner.current?.family === 'ACCEPT_ACTION' ? '正在接受…' : '接受處理'}</button>}{detail.allowedOperations.DECLINE_ACTION && <button className="winwin-secondary-action" type="button" disabled={busy || decisionState !== 'idle'} onClick={() => setConfirmDecline(true)}>目前無法接手</button>}</div></section>}
     {confirmDecline && decisionState === 'idle' && <section className="winwin-confirmation" role="dialog" aria-modal="true" aria-labelledby="decline-title"><h2 id="decline-title">目前無法接手這項處理事項？</h2><p>送出後，這項處理事項會顯示目前沒有人確定接手，需要由有權限的人另外安排。系統不會自動指定其他人。</p><div className="winwin-page-actions"><button type="button" onClick={() => setConfirmDecline(false)}>返回</button><button className="winwin-secondary-action" type="button" onClick={() => begin('DECLINE_ACTION')}>確認目前無法接手</button></div></section>}
     {detail.lifecycleState === 'ACCEPTED' && detail.allowedOperations.START_ACTION && <section aria-labelledby="start-heading"><h2 id="start-heading">開始處理</h2><p>表示目前負責人已開始處理，不代表已完成或問題已解決。</p><div className="winwin-page-actions"><button className="winwin-primary-action" type="button" disabled={busy || decisionState !== 'idle'} onClick={() => begin('START_ACTION')}>{decisionState === 'submitting' && isStartIntent ? '正在開始…' : '開始處理'}</button></div></section>}
+    {detail.lifecycleState === 'IN_PROGRESS' && detail.allowedOperations.COMPLETE_ACTION && <section aria-labelledby="complete-heading"><h2 id="complete-heading">完成這項處理事項</h2><p>完成處理只表示這項處理事項已標示完成，不代表整體照顧問題已解決。</p><form onSubmit={(event) => { event.preventDefault(); begin('COMPLETE_ACTION', completionResult); }} noValidate><FormField id="completionResult" label="處理摘要" required help="請簡短記錄這次做了什麼，共 1–300 個字；這不是照顧成效或健康結果的判定。" error={completionError}><textarea id="completionResult" required maxLength={300} disabled={busy || decisionState !== 'idle'} value={completionResult} aria-invalid={Boolean(completionError)} aria-describedby={`completionResult-help${completionError ? ' completionResult-error' : ''}`} onChange={(event) => { setCompletionResult(event.target.value); setCompletionError(undefined); }} /></FormField><div className="winwin-form-actions"><button className="winwin-primary-action" type="submit" disabled={busy || decisionState !== 'idle'}>{decisionState === 'submitting' && isCompleteIntent ? '正在完成…' : '標示處理完成'}</button></div></form></section>}
+    {detail.lifecycleState === 'COMPLETED' && detail.completionResult && <section className="winwin-summary-card" aria-labelledby="completion-summary-heading"><h2 id="completion-summary-heading">處理摘要</h2><p>{detail.completionResult}</p>{detail.serverCompletedAt && <p>完成時間：<time dateTime={detail.serverCompletedAt}>{detail.serverCompletedAt}</time></p>}<p>此狀態只表示處理事項工作流程已完成，不代表整體照顧問題已解決。</p></section>}
     <section className="winwin-summary-card" aria-labelledby="history-heading"><h2 id="history-heading">負責與處理紀錄</h2><ol className="winwin-responsibility-history">{detail.responsibilityHistory.map((entry) => <li key={entry.historyId}><strong>{entry.milestoneDisplay}</strong>{entry.personDisplay && <span>・{entry.personDisplay}</span>}<br /><time dateTime={entry.serverRecordedAt}>{entry.serverRecordedAt}</time><span className="winwin-visually-readable">（{entry.relevance === 'CURRENT' ? '目前紀錄' : '歷史紀錄'}）</span></li>)}</ol></section>
   </article>;
 }

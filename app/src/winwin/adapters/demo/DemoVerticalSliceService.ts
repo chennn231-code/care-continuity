@@ -378,11 +378,23 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     input: CompleteActionInput,
     operationKey: OperationKey
   ): Promise<CommandResult<ActionDetailView>> {
-    return this.commandOutcome(operationKey, {
-      ...this.actionAt('COMPLETED', '已完成', []),
+    const completed = {
+      ...this.actionState,
+      expectedVersion: '4',
+      lifecycleState: 'COMPLETED' as const,
+      stateDisplay: '已完成',
       serverCompletedAt: SERVER_TIME,
-      completionResult: input.result
-    });
+      completionResult: input.result,
+      responsibilityHistory: [...this.actionState.responsibilityHistory.map((entry) => ({ ...entry, relevance: 'HISTORICAL' as const })), {
+        historyId: 'demo-history-completed',
+        milestoneDisplay: '已完成',
+        personDisplay: this.actionState.currentHolderDisplay,
+        serverRecordedAt: SERVER_TIME,
+        relevance: 'HISTORICAL' as const
+      }],
+      allowedOperations: NO_ALLOWED_OPERATIONS
+    };
+    return this.mutateAction('COMPLETE_ACTION', 'IN_PROGRESS', input, operationKey, completed);
   }
 
   async lookupOperationStatus(operationKey: OperationKey): Promise<OperationStatusView> {
@@ -439,7 +451,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   }
 
   private mutateAction(
-    family: 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION',
+    family: 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION' | 'COMPLETE_ACTION',
     requiredState: ActionDetailView['lifecycleState'],
     input: ActionMutationInput,
     operationKey: OperationKey,
