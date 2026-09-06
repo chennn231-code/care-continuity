@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 import { StrictMode, useState } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useNavigate } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App, DEFAULT_PRODUCT_PATH } from '../src/App';
 import { DemoVerticalSliceService } from '../src/winwin/adapters/demo/DemoVerticalSliceService';
@@ -21,6 +21,7 @@ import type {
   OperationStatusView,
   ProjectionResult,
   ReadCursorAdvanceView,
+  SessionView,
   TimelineView
 } from '../src/winwin/contracts/frontendContract';
 import { WinWinRoutes } from '../src/winwin/routes/WinWinRoutes';
@@ -1887,6 +1888,46 @@ describe('CP-F1 route, shell, and session boundary', () => {
     expect(screen.getByText('登入狀態已失效，請重新登入。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新登入' })).toBeInTheDocument();
     expect(screen.queryByText('陳女士的照顧個案')).not.toBeInTheDocument();
+  });
+
+  it('fails closed from a protected deep link before redirecting a signed-out session to login', async () => {
+    let settleSession!: (result: ProjectionResult<SessionView>) => void;
+    class PendingSignedOutSessionService extends DemoVerticalSliceService {
+      override resolveSession() {
+        return new Promise<ProjectionResult<SessionView>>((resolve) => { settleSession = resolve; });
+      }
+    }
+    function LocationProbe() {
+      return <output data-testid="location-path">{useLocation().pathname}</output>;
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/winwin/cases/demo-case-1/actions/demo-action-1']}>
+        <WinWinRoutes service={new PendingSignedOutSessionService()} />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: '正在確認登入狀態' })).toBeInTheDocument();
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/winwin/cases/demo-case-1/actions/demo-action-1');
+    expect(screen.queryByText('確認明早照顧安排')).not.toBeInTheDocument();
+    expect(screen.queryByText('早上的照顧安排需要確認。')).not.toBeInTheDocument();
+    expect(screen.queryByText('王先生')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /接受處理|目前無法接手|開始處理|標示處理完成/ })).not.toBeInTheDocument();
+
+    await act(async () => {
+      settleSession({ result: 'SUCCESS', data: { disposition: 'SIGNED_OUT' } });
+    });
+
+    expect(await screen.findByRole('heading', { level: 1, name: '進入 WinWin' })).toBeInTheDocument();
+    expect(screen.getByTestId('location-path')).toHaveTextContent('/winwin/login');
+    expect(screen.getByText('登入狀態已失效，請重新登入。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新登入' })).toBeInTheDocument();
+    expect(screen.queryByText('確認明早照顧安排')).not.toBeInTheDocument();
+    expect(screen.queryByText('早上的照顧安排需要確認。')).not.toBeInTheDocument();
+    expect(screen.queryByText('王先生')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /接受處理|目前無法接手|開始處理|標示處理完成/ })).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/未授權|不存在|權限|拒絕/);
   });
 });
 

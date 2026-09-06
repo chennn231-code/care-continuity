@@ -14,5 +14,5 @@ export function RootEntryRoute() {
 
   // Detect by exact key, but forward the original bytes without normalizing,
   // logging, or dropping callback parameters (including unknown extra keys).
-  return <Navigate to={isCallback ? `/auth/confirm${search}${hash}` : '/v2/prototype'} replace />;
+  return <Navigate to={isCallback ? `/auth/confirm${search}${hash}` : '/winwin'} replace />;
 }

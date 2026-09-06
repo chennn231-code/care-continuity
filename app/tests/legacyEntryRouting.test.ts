@@ -83,13 +83,19 @@ describe('root callback route matching and exact parameter preservation', () => 
     expect(probe.clientInitializations).toBe(1);
   });
 
-  it.each(['/', '/?utm_source=test', '/?discount_code=fixture', '/?next=code%3Dfixture', '/not-a-route', '/not-a-route?code=fixture'])('ordinary entry %s redirects only to WinWin without loading Legacy', async (path) => {
+  it.each(['/', '/?utm_source=test', '/?discount_code=fixture', '/?next=code%3Dfixture'])('ordinary root entry %s redirects only to WinWin without loading Legacy', async (path) => {
     await renderRoute(path);
-    expect(probe.redirects).toEqual([{ to: '/v2/prototype', replace: true }]);
+    expect(probe.redirects).toEqual([{ to: '/winwin', replace: true }]);
     expect(probe.clientInitializations).toBe(0);
     probe.redirects = [];
-    expect(await renderRoute('/v2/prototype')).toContain('選擇你想體驗的流程');
+    expect(await renderRoute('/winwin')).toContain('WinWin');
     expect(probe.redirects).toHaveLength(0);
+    expect(probe.clientInitializations).toBe(0);
+  });
+
+  it.each(['/not-a-route', '/not-a-route?code=fixture'])('keeps unknown global entry %s on the prototype fallback', async (path) => {
+    await renderRoute(path);
+    expect(probe.redirects).toEqual([{ to: '/v2/prototype', replace: true }]);
     expect(probe.clientInitializations).toBe(0);
   });
 
