@@ -444,6 +444,250 @@ describe('CP-F5 Accept or currently unable to take responsibility', () => {
   });
 });
 
+describe('CP-F6 Start accepted responsibility', () => {
+  const actionPath = '/winwin/cases/demo-case-1/actions/demo-action-1';
+
+  async function acceptedService() {
+    const service = new DemoVerticalSliceService();
+    const result = await service.acceptAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'accept-fixture'
+    );
+    if (result.result !== 'SUCCESS') throw new Error('Expected accepted fixture');
+    return service;
+  }
+
+  it('shows projected Start only after ACCEPTED and requires explicit activation', async () => {
+    class Probe extends DemoVerticalSliceService {
+      starts = 0;
+      override startAction(input: ActionMutationInput, key: OperationKey) { this.starts++; return super.startAction(input, key); }
+    }
+    const service = new Probe();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    renderWinWin(service, actionPath);
+    const start = await screen.findByRole('button', { name: '開始處理' });
+    expect(start).toBeEnabled();
+    expect(screen.getByText(/不代表已完成或問題已解決/)).toBeInTheDocument();
+    expect(service.starts).toBe(0);
+  });
+
+  it('does not infer Start from ACCEPTED state or the displayed holder', async () => {
+    const service = await acceptedService();
+    class ViewerOnly extends DemoVerticalSliceService {
+      override async getActionDetail() {
+        const result = await service.getActionDetail('demo-case-1', 'demo-action-1');
+        if (result.result !== 'SUCCESS') return result;
+        return { result: 'SUCCESS' as const, data: {
+          ...result.data,
+          allowedOperations: { ...result.data.allowedOperations, START_ACTION: false }
+        } };
+      }
+    }
+    renderWinWin(new ViewerOnly(), actionPath);
+    expect(await screen.findByText('王先生')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '開始處理' })).not.toBeInTheDocument();
+  });
+
+  it.each(['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'] as const)(
+    'does not expose Start for %s even if a bad projection marks it available', async (lifecycleState) => {
+      class InvalidProjection extends DemoVerticalSliceService {
+        override async getActionDetail(caseId: string, actionId: string) {
+          const result = await super.getActionDetail(caseId, actionId);
+          if (result.result !== 'SUCCESS') return result;
+          return { result: 'SUCCESS' as const, data: {
+            ...result.data,
+            lifecycleState,
+            stateDisplay: lifecycleState,
+            allowedOperations: { ...result.data.allowedOperations, START_ACTION: true }
+          } };
+        }
+      }
+      renderWinWin(new InvalidProjection(), actionPath);
+      await screen.findByRole('heading', { name: '確認明早照顧安排' });
+      expect(screen.queryByRole('button', { name: '開始處理' })).not.toBeInTheDocument();
+    }
+  );
+
+  it('gives Start synchronous ownership before key generation and deduplicates immediate activation', async () => {
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class PendingStart extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override startAction(_input: ActionMutationInput, key: OperationKey) { this.keys.push(key); return pending; }
+    }
+    const service = new PendingStart();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    renderWinWin(service, actionPath);
+    const start = await screen.findByRole('button', { name: '開始處理' });
+    start.click(); start.click();
+    expect(service.keys).toHaveLength(1);
+    expect(service.keys[0]).toMatch(/^start-action:/);
+    expect(await screen.findByRole('button', { name: '正在開始…' })).toBeDisabled();
+    settle({ result: 'TEMPORARY_FAILURE', outcomeUncertain: true });
+    expect(await screen.findByText(/開始處理狀態/)).toBeInTheDocument();
+  });
+
+  it('keeps UNKNOWN lookup same-key, deduplicated, and without mutation replay', async () => {
+    let settle!: (value: OperationStatusView) => void;
+    const pending = new Promise<OperationStatusView>((resolve) => { settle = resolve; });
+    class UnknownStart extends DemoVerticalSliceService {
+      starts: OperationKey[] = []; lookups: OperationKey[] = [];
+      override async startAction(_input: ActionMutationInput, key: OperationKey) { this.starts.push(key); return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+      override lookupOperationStatus(key: OperationKey) { this.lookups.push(key); return pending; }
+    }
+    const service = new UnknownStart();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    const lookup = await screen.findByRole('button', { name: '查詢更新狀態' });
+    lookup.click(); lookup.click();
+    expect(service.lookups).toEqual(service.starts);
+    settle({ operationKey: service.starts[0], outcome: 'UNKNOWN' });
+    await waitFor(() => expect(screen.getByRole('button', { name: '查詢更新狀態' })).toBeEnabled());
+    expect(service.starts).toHaveLength(1);
+  });
+
+  it.each(['COMMITTED', 'DEFINITELY_NOT_COMMITTED', 'UNKNOWN', 'IDEMPOTENCY_CONFLICT'] as const)(
+    'makes mismatched Start %s lookup inert', async (outcome) => {
+      class Mismatch extends DemoVerticalSliceService {
+        starts = 0; reads = 0;
+        override async startAction() { this.starts++; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: true }; }
+        override async lookupOperationStatus() { return { operationKey: 'wrong-start-key', outcome }; }
+        override getActionDetail(caseId: string, actionId: string) { this.reads++; return super.getActionDetail(caseId, actionId); }
+      }
+      const service = new Mismatch();
+      await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+      const user = userEvent.setup(); renderWinWin(service, actionPath);
+      await user.click(await screen.findByRole('button', { name: '開始處理' }));
+      await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '查詢更新狀態' })).toBeEnabled());
+      expect(service.starts).toBe(1); expect(service.reads).toBe(1);
+    }
+  );
+
+  it('revalidates DNC and retries Start explicitly with the same key', async () => {
+    class RetryStart extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override startAction(input: ActionMutationInput, key: OperationKey) {
+        this.keys.push(key);
+        return this.keys.length === 1
+          ? Promise.resolve({ result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false })
+          : super.startAction(input, key);
+      }
+      override async lookupOperationStatus(key: OperationKey) { return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const }; }
+    }
+    const service = new RetryStart();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    await user.click(await screen.findByRole('button', { name: '確認目前狀態並重試' }));
+    expect(await screen.findByText('處理中')).toBeInTheDocument();
+    expect(service.keys).toHaveLength(2); expect(new Set(service.keys).size).toBe(1);
+  });
+
+  it.each([
+    ['lifecycle', { lifecycleState: 'IN_PROGRESS' as const }],
+    ['responsibility version', { expectedVersion: 'superseded' }],
+    ['operation availability', { allowedOperations: { START_ACTION: false } }]
+  ])('blocks DNC retry when current %s changed', async (_label, change) => {
+    class StaleStart extends DemoVerticalSliceService {
+      starts = 0; reads = 0;
+      override async startAction() { this.starts++; return { result: 'TEMPORARY_FAILURE' as const, outcomeUncertain: false }; }
+      override async lookupOperationStatus(key: OperationKey) { return { operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' as const }; }
+      override async getActionDetail(caseId: string, actionId: string) {
+        const result = await super.getActionDetail(caseId, actionId); this.reads++;
+        if (this.reads < 2 || result.result !== 'SUCCESS') return result;
+        return { result: 'SUCCESS' as const, data: {
+          ...result.data,
+          ...change,
+          allowedOperations: change.allowedOperations
+            ? { ...result.data.allowedOperations, ...change.allowedOperations }
+            : result.data.allowedOperations
+        } };
+      }
+    }
+    const service = new StaleStart();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    await user.click(await screen.findByRole('button', { name: '確認目前狀態並重試' }));
+    await waitFor(() => expect(service.reads).toBe(2));
+    expect(service.starts).toBe(1);
+  });
+
+  it('keeps Start conflict distinct with no replacement key or fabricated progress', async () => {
+    class ConflictStart extends DemoVerticalSliceService {
+      keys: OperationKey[] = [];
+      override async startAction(_input: ActionMutationInput, key: OperationKey) { this.keys.push(key); return { result: 'IDEMPOTENCY_CONFLICT' as const }; }
+    }
+    const service = new ConflictStart();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    expect(await screen.findByText(/更新發生衝突/)).toBeInTheDocument();
+    expect(service.keys).toHaveLength(1);
+    expect(screen.queryByText('處理中')).not.toBeInTheDocument();
+  });
+
+  it('uses an authoritative read after COMMITTED and preserves holder and history', async () => {
+    class ReadProbe extends DemoVerticalSliceService {
+      starts = 0; reads = 0;
+      override startAction(input: ActionMutationInput, key: OperationKey) { this.starts++; return super.startAction(input, key); }
+      override getActionDetail(caseId: string, actionId: string) { this.reads++; return super.getActionDetail(caseId, actionId); }
+    }
+    const service = new ReadProbe();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    expect(await screen.findByText('處理中')).toBeInTheDocument();
+    expect(screen.getByText('王先生')).toBeInTheDocument();
+    expect(screen.getByText('已確認接手', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('開始處理', { selector: 'strong' })).toBeInTheDocument();
+    expect(service.starts).toBe(1); expect(service.reads).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByRole('button', { name: /完成/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps known-COMMITTED Start owned through failed refresh and retries only the read', async () => {
+    class RefreshRecovery extends DemoVerticalSliceService {
+      starts = 0; reads = 0;
+      override startAction(input: ActionMutationInput, key: OperationKey) { this.starts++; return super.startAction(input, key); }
+      override async getActionDetail(caseId: string, actionId: string) {
+        this.reads++;
+        if (this.reads === 2) return { result: 'TEMPORARY_FAILURE' as const, error: { code: 'OFFLINE' as const, message: 'hidden' } };
+        return super.getActionDetail(caseId, actionId);
+      }
+    }
+    const service = new RefreshRecovery();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    expect(await screen.findByText(/系統不會再次送出開始處理/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '開始處理' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '重新載入最新狀態' }));
+    expect(await screen.findByText('處理中')).toBeInTheDocument();
+    expect(service.starts).toBe(1); expect(service.reads).toBe(3);
+  });
+
+  it('invalidates current Start no-access and makes a completion after unmount inert', async () => {
+    class Denied extends DemoVerticalSliceService { override async startAction() { return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const }; } }
+    const denied = new Denied();
+    await denied.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const user = userEvent.setup(); renderWinWin(denied, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+
+    cleanup();
+    let settle!: (value: CommandResult<ActionDetailView>) => void;
+    const pending = new Promise<CommandResult<ActionDetailView>>((resolve) => { settle = resolve; });
+    class Pending extends DemoVerticalSliceService { override startAction() { return pending; } }
+    const service = new Pending();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-fixture');
+    const view = renderWinWin(service, actionPath);
+    await user.click(await screen.findByRole('button', { name: '開始處理' }));
+    view.unmount(); settle({ result: 'NOT_FOUND_OR_NOT_VISIBLE' }); await Promise.resolve();
+  });
+});
+
 describe('CP-F4 Create Action and exact-person assignment', () => {
   it('synchronously owns one initial submit before React can disable the form', async () => {
     let settle!: (value: CommandResult<ActionDetailView>) => void;

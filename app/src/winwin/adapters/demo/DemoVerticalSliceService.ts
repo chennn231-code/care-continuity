@@ -354,10 +354,24 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   }
 
   async startAction(
-    _input: ActionMutationInput,
+    input: ActionMutationInput,
     operationKey: OperationKey
   ): Promise<CommandResult<ActionDetailView>> {
-    return this.commandOutcome(operationKey, this.actionAt('IN_PROGRESS', '處理中', ['COMPLETE_ACTION']));
+    const started = {
+      ...this.actionState,
+      expectedVersion: '3',
+      lifecycleState: 'IN_PROGRESS' as const,
+      stateDisplay: '處理中',
+      responsibilityHistory: [...this.actionState.responsibilityHistory, {
+        historyId: 'demo-history-started',
+        milestoneDisplay: '開始處理',
+        personDisplay: this.actionState.currentHolderDisplay,
+        serverRecordedAt: SERVER_TIME,
+        relevance: 'CURRENT' as const
+      }],
+      allowedOperations: operations(['COMPLETE_ACTION'])
+    };
+    return this.mutateAction('START_ACTION', 'ACCEPTED', input, operationKey, started);
   }
 
   async completeAction(
@@ -421,6 +435,16 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     operationKey: OperationKey,
     committedData: ActionDetailView
   ): CommandResult<ActionDetailView> {
+    return this.mutateAction(family, 'ASSIGNED', input, operationKey, committedData);
+  }
+
+  private mutateAction(
+    family: 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION',
+    requiredState: ActionDetailView['lifecycleState'],
+    input: ActionMutationInput,
+    operationKey: OperationKey,
+    committedData: ActionDetailView
+  ): CommandResult<ActionDetailView> {
     const fingerprint = `${family}:${JSON.stringify(input)}`;
     const prior = this.committedActions.get(operationKey);
     if (prior) return this.actionFingerprints.get(operationKey) === fingerprint
@@ -428,7 +452,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       : { result: 'IDEMPOTENCY_CONFLICT' };
     if (input.actionId !== ACTION_ID
       || input.expectedVersion !== this.actionState.expectedVersion
-      || this.actionState.lifecycleState !== 'ASSIGNED'
+      || this.actionState.lifecycleState !== requiredState
       || !this.actionState.allowedOperations[family]) return { result: 'STALE_VERSION' };
     const outcome = this.commandOutcome(operationKey, committedData);
     if (outcome.result === 'SUCCESS') {
