@@ -33,6 +33,33 @@ const CANDIDATE_REF = 'demo-candidate-b';
 const SERVER_TIME = '2026-09-05T02:00:00.000Z';
 const TIMELINE_BOUNDARY = 'demo-boundary-2';
 
+const lifecycleActivityFixtures = {
+  ACCEPT_ACTION: {
+    eventDisplay: '已接受處理事項',
+    actorDisplay: '王先生',
+    relationshipDisplay: '照顧協作者',
+    happenedAt: SERVER_TIME
+  },
+  DECLINE_ACTION: {
+    eventDisplay: '目前無法接手處理事項',
+    actorDisplay: '王先生',
+    relationshipDisplay: '照顧協作者',
+    happenedAt: SERVER_TIME
+  },
+  START_ACTION: {
+    eventDisplay: '已開始處理事項',
+    actorDisplay: '王先生',
+    relationshipDisplay: '照顧協作者',
+    happenedAt: SERVER_TIME
+  },
+  COMPLETE_ACTION: {
+    eventDisplay: '已完成處理事項工作流程',
+    actorDisplay: '王先生',
+    relationshipDisplay: '照顧協作者',
+    happenedAt: SERVER_TIME
+  }
+} as const;
+
 const operations = (enabled: readonly (keyof AllowedOperationSet)[]): AllowedOperationSet => ({
   ...NO_ALLOWED_OPERATIONS,
   ...Object.fromEntries(enabled.map((operation) => [operation, true]))
@@ -162,6 +189,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private readonly careUpdateFingerprints = new Map<OperationKey, string>();
   private createdAction?: ActionDetailView;
   private actionState: ActionDetailView = assignedAction;
+  private readonly actionActivity: TimelineView['entries'][number][] = [];
   private readonly committedActions = new Map<OperationKey, ActionDetailView>();
   private readonly actionFingerprints = new Map<OperationKey, string>();
 
@@ -192,27 +220,45 @@ export class DemoVerticalSliceService implements VerticalSliceService {
 
   async getCaseHome(caseId: string): Promise<ProjectionResult<CaseHomeView>> {
     if (this.caseHomeResult) return this.caseHomeResult;
+    const latestActionActivity = this.actionActivity.at(-1);
+    const continuityGaps = this.actionState.continuityGap ? [this.actionState.continuityGap] : [];
+    const activityCount = timeline.entries.length + (this.createdCareUpdate ? 1 : 0) + this.actionActivity.length;
     return caseId === CASE_ID
-      ? { result: 'SUCCESS', data: caseHome }
+      ? { result: 'SUCCESS', data: {
+          ...caseHome,
+          sinceLastViewSummary: `上次查看後有 ${activityCount} 筆新變化`,
+          latestVisibleActivity: latestActionActivity?.eventDisplay
+            ?? (this.createdCareUpdate ? '發布了一筆照顧變化' : caseHome.latestVisibleActivity),
+          assignedSummary: continuityGaps.length > 0 ? undefined : caseHome.assignedSummary,
+          inProgressSummary: continuityGaps.length > 0 ? undefined : caseHome.inProgressSummary,
+          continuityGaps
+        } }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
 
   async getTimeline(caseId: string): Promise<ProjectionResult<TimelineView>> {
     if (this.timelineResult) return this.timelineResult;
     const created = this.createdCareUpdate;
+    const entries: TimelineView['entries'] = created
+      ? [...timeline.entries, {
+          activityId: `activity-${created.careUpdateId}`,
+          eventDisplay: '發布了一筆照顧變化',
+          actorDisplay: created.authorDisplay,
+          serverRecordedAt: created.serverPublishedAt,
+          target: { kind: 'CARE_UPDATE', id: created.careUpdateId },
+          sourceDisplay: created.sourceDisplay
+        }, ...this.actionActivity]
+      : [...timeline.entries, ...this.actionActivity];
     return caseId === CASE_ID
-      ? { result: 'SUCCESS', data: created ? {
+      ? { result: 'SUCCESS', data: {
           ...timeline,
-          entries: [...timeline.entries, {
-            activityId: `activity-${created.careUpdateId}`,
-            eventDisplay: '發布了一筆照顧變化',
-            actorDisplay: created.authorDisplay,
-            serverRecordedAt: created.serverPublishedAt,
-            target: { kind: 'CARE_UPDATE', id: created.careUpdateId },
-            sourceDisplay: created.sourceDisplay
-          }],
-          mergedCareUpdates: [...timeline.mergedCareUpdates, created]
-        } : timeline }
+          entries,
+          returnedBoundary: entries.length === timeline.entries.length
+            ? TIMELINE_BOUNDARY
+            : `${TIMELINE_BOUNDARY}-${entries.length}`,
+          newChangeCount: entries.length,
+          mergedCareUpdates: created ? [...timeline.mergedCareUpdates, created] : timeline.mergedCareUpdates
+        } }
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
 
@@ -289,6 +335,15 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       this.createdAction = created;
       this.committedActions.set(operationKey, created);
       this.actionFingerprints.set(operationKey, requestFingerprint);
+      this.actionActivity.push({
+        activityId: `activity-action-created-${created.actionId}`,
+        eventDisplay: '建立並指派了處理事項',
+        actorDisplay: created.assignedByDisplay,
+        relationshipDisplay: '家屬照顧者',
+        serverRecordedAt: created.serverAssignedAt,
+        target: { kind: 'ACTION', id: created.actionId },
+        sourceDisplay: created.sourceCareUpdate.summary
+      });
     }
     return outcome;
   }
@@ -471,8 +526,41 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       this.actionState = committedData;
       this.committedActions.set(operationKey, committedData);
       this.actionFingerprints.set(operationKey, fingerprint);
+      this.recordActionActivity(family, committedData);
     }
     return outcome;
+  }
+
+  private recordActionActivity(
+    family: 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION' | 'COMPLETE_ACTION',
+    action: ActionDetailView
+  ) {
+    const fixture = lifecycleActivityFixtures[family];
+    const shared = {
+      serverRecordedAt: fixture.happenedAt,
+      target: { kind: 'ACTION' as const, id: action.actionId }
+    };
+    if (family === 'DECLINE_ACTION') {
+      this.actionActivity.push({
+        ...shared,
+        activityId: `activity-${family.toLowerCase()}`,
+        eventDisplay: fixture.eventDisplay,
+        actorDisplay: fixture.actorDisplay,
+        relationshipDisplay: fixture.relationshipDisplay
+      }, {
+        ...shared,
+        activityId: 'activity-continuity-gap',
+        eventDisplay: '處理事項目前沒有人確定接手'
+      });
+      return;
+    }
+    this.actionActivity.push({
+      ...shared,
+      activityId: `activity-${family.toLowerCase()}`,
+      eventDisplay: fixture.eventDisplay,
+      actorDisplay: fixture.actorDisplay,
+      relationshipDisplay: fixture.relationshipDisplay
+    });
   }
 
   private commandOutcome<T>(operationKey: OperationKey, committedData: T): CommandResult<T> {

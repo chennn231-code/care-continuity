@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import type { CaseHomeView, ScreenState } from '../contracts/frontendContract';
+import { ContinuityGapBanner } from '../components/ContinuityGapBanner';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
 import { useWinWinApp } from '../state/WinWinAppProvider';
 
@@ -80,12 +81,13 @@ export function CaseHomePage({ caseId }: Readonly<{ caseId: string }>) {
       </header>
       {partial && <p className="winwin-inline-notice" role="status">部分資訊暫時無法載入</p>}
       {view.continuityGaps.map((gap) => (
-        <section className="winwin-gap-banner" role="status" aria-labelledby={`gap-${gap.actionId}`} key={gap.actionId}>
-          <h2 id={`gap-${gap.actionId}`}>{gap.currentHolderDisplay}</h2>
-          <p>這項處理事項需要重新安排。系統不會自動指定其他人。</p>
-          <p><strong>{gap.careNeedDisplay}</strong>・{gap.followUpDisplay}</p>
-          <Link to={`/winwin/cases/${view.caseId}/actions/${gap.actionId}`}>查看處理事項</Link>
-        </section>
+        <ContinuityGapBanner
+          key={gap.actionId}
+          gap={gap}
+          caseId={view.caseId}
+          headingId={`gap-${gap.actionId}`}
+          showActionLink
+        />
       ))}
       <section aria-labelledby="since-last-view-heading" className="winwin-summary-card">
         <h2 id="since-last-view-heading">上次查看後</h2>

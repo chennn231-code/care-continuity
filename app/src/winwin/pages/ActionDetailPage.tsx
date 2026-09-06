@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { FormField } from '../components/FormField';
+import { ContinuityGapBanner } from '../components/ContinuityGapBanner';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
 import type { ActionDetailView, ActionMutationInput, CompleteActionInput, OperationKey, OperationOutcome } from '../contracts/frontendContract';
 import { useWinWinApp } from '../state/WinWinAppProvider';
@@ -191,7 +192,7 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   return <article className="winwin-action-detail" aria-labelledby="action-detail-heading" aria-busy={busy}>
     <nav className="winwin-breadcrumbs" aria-label="頁面路徑"><Link to={`/winwin/cases/${caseId}`}>個案首頁</Link><span aria-hidden="true">/</span><span>處理事項</span></nav>
     <header className="winwin-page-heading"><p className="winwin-eyebrow">處理事項</p><h1 id="action-detail-heading">{detail.title}</h1><p><strong>{detail.stateDisplay}</strong></p></header>
-    {detail.continuityGap && <section className="winwin-gap-banner" role="status" aria-labelledby="action-gap-heading"><h2 id="action-gap-heading">{detail.continuityGap.currentHolderDisplay}</h2><p>{detail.continuityGap.followUpDisplay}。系統不會自動指定其他人。</p></section>}
+    {detail.continuityGap && <ContinuityGapBanner gap={detail.continuityGap} caseId={caseId} headingId="action-gap-heading" />}
     <section className="winwin-summary-card" aria-labelledby="holder-heading"><h2 id="holder-heading">目前負責人</h2><p>{detail.currentHolderDisplay ?? '目前沒有人確定接手'}</p></section>
     <section className="winwin-summary-card" aria-labelledby="context-heading"><h2 id="context-heading">事項內容</h2><p>{detail.reason}</p>{detail.dueDisplay && <p>預計時間：{detail.dueDisplay}</p>}<p>來源：{detail.sourceCareUpdate.summary}</p><p>指派者：{detail.assignedByDisplay}・<time dateTime={detail.serverAssignedAt}>{detail.serverAssignedAt}</time></p></section>
     {decisionState === 'uncertain' && <div className="winwin-mutation-notice" role="alert"><p>目前無法確認是否已成功更新{mutationLabel}。系統不會自動再次送出。</p><button type="button" disabled={lookupBusy} onClick={() => void lookup(false)}>{lookupBusy ? '正在查詢…' : '查詢更新狀態'}</button></div>}

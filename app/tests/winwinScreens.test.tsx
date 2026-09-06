@@ -1930,6 +1930,180 @@ describe('CP-F2 Case Home read experience', () => {
   });
 });
 
+describe('CP-F7 continuity-gap navigation and Product Activity integration', () => {
+  it('keeps multiple authoritative gaps individually correlated to exact Action Detail targets', async () => {
+    const multipleGaps: CaseHomeView = {
+      ...caseHomeProjection,
+      continuityGaps: [{
+        actionId: 'action-a',
+        careNeedDisplay: '確認 Action A 的早晨安排',
+        currentHolderDisplay: '目前沒有人確定接手',
+        followUpDisplay: '需要重新安排'
+      }, {
+        actionId: 'action-b',
+        careNeedDisplay: '確認 Action B 的交接',
+        currentHolderDisplay: '目前沒有人確定接手',
+        followUpDisplay: '需要重新安排'
+      }]
+    };
+    renderWinWin(new DemoVerticalSliceService({
+      caseHomeResult: { result: 'SUCCESS', data: multipleGaps }
+    }), '/winwin/cases/demo-case-1');
+
+    expect(await screen.findByRole('link', { name: '查看處理事項：確認 Action A 的早晨安排' })).toHaveAttribute(
+      'href', '/winwin/cases/demo-case-1/actions/action-a'
+    );
+    expect(screen.getByRole('link', { name: '查看處理事項：確認 Action B 的交接' })).toHaveAttribute(
+      'href', '/winwin/cases/demo-case-1/actions/action-b'
+    );
+    expect(document.body).not.toHaveTextContent(/重新指派|已重新安排|高風險|危險/);
+  });
+
+  it('uses a fresh authoritative Action Detail read after stale gap navigation and fails safely', async () => {
+    class StaleGap extends DemoVerticalSliceService {
+      reads: string[] = [];
+      override async getCaseHome() { return { result: 'SUCCESS' as const, data: caseHomeProjection }; }
+      override async getActionDetail(caseId: string, actionId: string) {
+        this.reads.push(`${caseId}:${actionId}`);
+        return { result: 'NOT_FOUND_OR_NOT_VISIBLE' as const };
+      }
+    }
+    const service = new StaleGap();
+    const user = userEvent.setup();
+    renderWinWin(service, '/winwin/cases/demo-case-1');
+    await user.click(await screen.findByRole('link', { name: '查看處理事項：確認明早照顧安排' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(service.reads).toEqual(['demo-case-1:gap-action']);
+    expect(screen.queryByText('確認明早照顧安排')).not.toBeInTheDocument();
+  });
+
+  it('projects a declined responsibility into Case Home and Timeline without implying reassignment', async () => {
+    const service = new DemoVerticalSliceService();
+    await service.declineAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'decline-cp-f7');
+    const currentAction = await service.getActionDetail('demo-case-1', 'demo-action-1');
+    expect(currentAction.result).toBe('SUCCESS');
+    if (currentAction.result !== 'SUCCESS') throw new Error('Expected declined Action projection');
+    expect(currentAction.data.currentHolderDisplay).toBeUndefined();
+    renderWinWin(service, '/winwin/cases/demo-case-1');
+    const link = await screen.findByRole('link', { name: '查看處理事項：確認明早照顧安排' });
+    expect(link).toHaveAttribute('href', '/winwin/cases/demo-case-1/actions/demo-action-1');
+    expect(screen.getByText('處理事項目前沒有人確定接手')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/已重新指派|重新指派/);
+
+    const user = userEvent.setup();
+    await user.click(link);
+    expect(await screen.findByRole('heading', { name: '負責與處理紀錄' })).toBeInTheDocument();
+    expect(screen.getByText('目前無法接手', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getAllByText('需要重新安排', { exact: false }).length).toBeGreaterThan(0);
+
+    cleanup();
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    const events = await screen.findAllByRole('heading', { level: 2 });
+    expect(events.map((event) => event.textContent)).toEqual(expect.arrayContaining([
+      '目前無法接手處理事項',
+      '處理事項目前沒有人確定接手'
+    ]));
+    expect(screen.getByText('王先生・照顧協作者')).toBeInTheDocument();
+    expect(screen.queryByText('目前負責人：王先生')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: '查看處理事項' })).toHaveLength(2);
+    expect(document.body).not.toHaveTextContent(/Grant|capability|scope|audit payload|已重新安排/);
+  });
+
+  it('preserves authoritative activity order, attribution, time, and typed targets', async () => {
+    const projected: TimelineView = {
+      caseId: 'demo-case-1',
+      entries: [{
+        activityId: 'activity-first',
+        eventDisplay: '第一個權威活動',
+        actorDisplay: '權威投影人員',
+        relationshipDisplay: '照顧協作者',
+        serverRecordedAt: '2026-09-05T01:00:00.000Z',
+        target: { kind: 'ACTION', id: 'action-first' }
+      }, {
+        activityId: 'activity-second',
+        eventDisplay: '第二個權威活動',
+        serverRecordedAt: '2026-09-05T00:00:00.000Z',
+        target: { kind: 'CARE_UPDATE', id: 'update-second' }
+      }],
+      mergedCareUpdates: []
+    };
+    renderWinWin(new DemoVerticalSliceService({
+      timelineResult: { result: 'SUCCESS', data: projected }
+    }), '/winwin/cases/demo-case-1/timeline');
+    const items = await screen.findAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('第一個權威活動');
+    expect(items[1]).toHaveTextContent('第二個權威活動');
+    expect(screen.getByText('權威投影人員・照顧協作者')).toBeInTheDocument();
+    expect(screen.getByText('2026-09-05T01:00:00.000Z')).toHaveAttribute('datetime', '2026-09-05T01:00:00.000Z');
+    expect(screen.getByRole('link', { name: '查看處理事項' })).toHaveAttribute(
+      'href', '/winwin/cases/demo-case-1/actions/action-first'
+    );
+    expect(screen.getByRole('link', { name: '查看照顧變化' })).toHaveAttribute('href', '#update-update-second');
+  });
+
+  it('projects lifecycle activity without turning completion into a care-outcome claim', async () => {
+    const service = new DemoVerticalSliceService();
+    await service.acceptAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'accept-cp-f7');
+    await service.startAction({ actionId: 'demo-action-1', expectedVersion: '2' }, 'start-cp-f7');
+    await service.completeAction({ actionId: 'demo-action-1', expectedVersion: '3', result: '已完成交接' }, 'complete-cp-f7');
+    renderWinWin(service, '/winwin/cases/demo-case-1/timeline');
+    const list = await screen.findByRole('list', { name: '個案活動時間軸' });
+    expect(list).toHaveTextContent('已接受處理事項');
+    expect(list).toHaveTextContent('已開始處理事項');
+    expect(list).toHaveTextContent('已完成處理事項工作流程');
+    expect(list).not.toHaveTextContent(/照顧問題已解決|長輩已安全|風險已解除|已確保不中斷/);
+  });
+
+  it('renders bounded empty projections without manufacturing gap, risk, or safety claims', async () => {
+    renderWinWin(new DemoVerticalSliceService({
+      caseHomeResult: { result: 'SUCCESS', data: { ...caseHomeProjection, continuityGaps: [] } }
+    }), '/winwin/cases/demo-case-1');
+    await screen.findByRole('heading', { level: 1, name: '陳女士的照顧個案' });
+    expect(screen.queryByRole('heading', { name: '目前沒有人確定接手' })).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/完全安全|沒有中斷風險/);
+
+    cleanup();
+    renderWinWin(new DemoVerticalSliceService({ timelineResult: { result: 'EMPTY' } }), '/winwin/cases/demo-case-1/timeline');
+    expect(await screen.findByText('目前沒有可見的個案活動')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/沒有照顧發生|沒有風險/);
+  });
+
+  it.each(['older gap', 'older no-access'] as const)(
+    'keeps Case B authoritative when Case A returns an %s response', async (outcome) => {
+      let settleOlder!: (value: ProjectionResult<CaseHomeView>) => void;
+      const older = new Promise<ProjectionResult<CaseHomeView>>((resolve) => { settleOlder = resolve; });
+      const caseB: CaseHomeView = {
+        ...caseHomeProjection,
+        caseId: 'case-b',
+        caseDisplay: 'Case B',
+        continuityGaps: []
+      };
+      class CaseRace extends DemoVerticalSliceService {
+        override getCaseHome(caseId: string) {
+          return caseId === 'case-a'
+            ? older
+            : Promise.resolve({ result: 'SUCCESS' as const, data: caseB });
+        }
+      }
+      function Harness({ service }: Readonly<{ service: CaseRace }>) {
+        const navigate = useNavigate();
+        return <><button type="button" onClick={() => navigate('/winwin/cases/case-b')}>Open Case B</button><WinWinRoutes service={service} /></>;
+      }
+      const user = userEvent.setup();
+      render(<MemoryRouter initialEntries={['/winwin/cases/case-a']}><Harness service={new CaseRace()} /></MemoryRouter>);
+      await user.click(screen.getByRole('button', { name: 'Open Case B' }));
+      expect(await screen.findByRole('heading', { level: 1, name: 'Case B' })).toBeInTheDocument();
+      settleOlder(outcome === 'older gap'
+        ? { result: 'SUCCESS', data: { ...caseHomeProjection, caseId: 'case-a', caseDisplay: 'Case A' } }
+        : { result: 'NOT_FOUND_OR_NOT_VISIBLE' });
+      await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Case B' })).toBeInTheDocument());
+      expect(screen.queryByText('Case A')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '目前沒有人確定接手' })).not.toBeInTheDocument();
+      expect(screen.queryByText('目前無法使用此內容')).not.toBeInTheDocument();
+    }
+  );
+});
+
 describe('CP-F2 Timeline, Care Update detail, and Read Cursor', () => {
   it('renders semantic authorized chronology and read-only merged Care Update detail', async () => {
     renderWinWin(new DemoVerticalSliceService(), '/winwin/cases/demo-case-1/timeline');
