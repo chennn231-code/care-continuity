@@ -3,13 +3,20 @@ import { Link, Navigate } from 'react-router-dom';
 import { FormField } from '../components/FormField';
 import { ContinuityGapBanner } from '../components/ContinuityGapBanner';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
-import type { ActionDetailView, ActionMutationInput, CompleteActionInput, OperationKey, OperationOutcome } from '../contracts/frontendContract';
+import type { ActionDetailView, ActionMutationInput, CompleteActionInput, EligibleReassignmentCandidateView, OperationKey, OperationOutcome } from '../contracts/frontendContract';
+import type { ResponsibilityRecoveryService } from '../contracts/verticalSliceService';
 import { useWinWinApp } from '../state/WinWinAppProvider';
 
 type ActionOperation = 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION' | 'COMPLETE_ACTION';
 type DecisionState = 'idle' | 'submitting' | 'uncertain' | 'definitelyNotCommitted' | 'conflict' | 'committedPendingRefresh';
 type Intent = Readonly<{ family: ActionOperation; operationKey: OperationKey; input: ActionMutationInput | CompleteActionInput }>;
 type DecisionOwner = Intent | Readonly<{ acquiring: true; family: ActionOperation }>;
+type CandidateState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+
+function supportsRecovery(service: object): service is ResponsibilityRecoveryService {
+  return 'getEligibleReassignmentCandidates' in service
+    && typeof service.getEligibleReassignmentCandidates === 'function';
+}
 
 function isIntent(owner: DecisionOwner | undefined): owner is Intent {
   return Boolean(owner && 'operationKey' in owner);
@@ -25,6 +32,11 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   const [completionResult, setCompletionResult] = useState('');
   const [completionError, setCompletionError] = useState<string>();
   const [lookupBusy, setLookupBusy] = useState(false);
+  const [candidateState, setCandidateState] = useState<CandidateState>('idle');
+  const [candidates, setCandidates] = useState<readonly EligibleReassignmentCandidateView[]>([]);
+  const [selectedCandidateRef, setSelectedCandidateRef] = useState('');
+  const [confirmRecovery, setConfirmRecovery] = useState(false);
+  const [confirmedRecoveryIntent, setConfirmedRecoveryIntent] = useState(false);
   const lifecycle = useRef(0);
   const owner = useRef<DecisionOwner | undefined>(undefined);
   const lookupOwner = useRef(false);
@@ -32,6 +44,12 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   const declineCancelRef = useRef<HTMLButtonElement>(null);
   const declineConfirmRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
+  const recoveryInvokerRef = useRef<HTMLButtonElement>(null);
+  const recoveryHeadingRef = useRef<HTMLHeadingElement>(null);
+  const recoveryReviewRef = useRef<HTMLButtonElement>(null);
+  const recoveryCancelRef = useRef<HTMLButtonElement>(null);
+  const confirmationWasOpen = useRef(false);
+  const recoveryWasCancelled = useRef(false);
   const focusUpdatedStatus = useRef(false);
 
   useEffect(() => {
@@ -44,6 +62,8 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     setConfirmDecline(false);
     setCompletionResult('');
     setCompletionError(undefined);
+    setCandidateState('idle'); setCandidates([]); setSelectedCandidateRef('');
+    setConfirmRecovery(false); setConfirmedRecoveryIntent(false);
     setDetail(undefined);
     setScreenState('loading');
     if (sessionState.status !== 'signedIn') return () => { lifecycle.current++; };
@@ -72,6 +92,38 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
       statusRef.current?.focus();
     }
   }, [detail]);
+
+  useEffect(() => {
+    if (confirmRecovery) {
+      confirmationWasOpen.current = true;
+      recoveryCancelRef.current?.focus();
+    } else if (confirmationWasOpen.current) {
+      confirmationWasOpen.current = false;
+      recoveryReviewRef.current?.focus();
+    } else if (candidateState === 'ready') {
+      recoveryHeadingRef.current?.focus();
+    } else if (candidateState === 'idle' && recoveryWasCancelled.current) {
+      recoveryWasCancelled.current = false;
+      recoveryInvokerRef.current?.focus();
+    }
+  }, [confirmRecovery, candidateState]);
+
+  const openRecovery = async () => {
+    if (!detail?.continuityGap || !detail.allowedOperations.ACTION_REASSIGN || !supportsRecovery(service)) return;
+    const token = lifecycle.current;
+    const expectedVersion = detail.expectedVersion;
+    setCandidateState('loading'); setCandidates([]); setSelectedCandidateRef(''); setConfirmedRecoveryIntent(false);
+    try {
+      const result = await service.getEligibleReassignmentCandidates(detail.actionId);
+      if (token !== lifecycle.current || detail.expectedVersion !== expectedVersion) return;
+      if (result.result === 'SUCCESS') {
+        setCandidates(result.data); setCandidateState(result.data.length ? 'ready' : 'empty');
+      } else if (result.result === 'EMPTY') setCandidateState('empty');
+      else if (result.result === 'NOT_FOUND_OR_NOT_VISIBLE') {
+        setCandidates([]); setCandidateState('idle'); setDetail(undefined); setScreenState('unavailable'); invalidateProtectedContext();
+      } else setCandidateState('error');
+    } catch { if (token === lifecycle.current) setCandidateState('error'); }
+  };
 
   const owns = (token: number, intent: Intent) => {
     const currentOwner = owner.current;
@@ -222,6 +274,21 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     <nav className="winwin-breadcrumbs" aria-label="頁面路徑"><Link to={`/winwin/cases/${caseId}`}>個案首頁</Link><span aria-hidden="true">/</span><span>處理事項</span></nav>
     <header className="winwin-page-heading"><p className="winwin-eyebrow">處理事項</p><h1 id="action-detail-heading">{detail.title}</h1><p ref={statusRef} tabIndex={-1} role="status" aria-live="polite"><strong>{detail.stateDisplay}</strong></p></header>
     {detail.continuityGap && <ContinuityGapBanner gap={detail.continuityGap} caseId={caseId} headingId="action-gap-heading" />}
+    {detail.continuityGap && detail.allowedOperations.ACTION_REASSIGN && <section className="winwin-recovery" aria-labelledby="recovery-heading">
+      <h2 id="recovery-heading">重新安排接手者</h2>
+      <p>你可以選擇一位目前可被詢問的協作者；出現在名單中不代表對方已同意或一定能接手。</p>
+      {candidateState === 'idle' && <button ref={recoveryInvokerRef} className="winwin-primary-action" type="button" onClick={() => void openRecovery()}>重新安排接手者</button>}
+      {candidateState === 'loading' && <p role="status" aria-live="polite">正在載入可詢問的人…</p>}
+      {candidateState === 'empty' && <div role="status"><p>目前沒有可重新詢問的接手者。</p><p>這項照顧目前仍沒有人確定接手。</p></div>}
+      {candidateState === 'error' && <div role="alert"><p>目前無法載入可詢問的人，尚未進行任何安排。</p><button type="button" onClick={() => void openRecovery()}>重新載入名單</button></div>}
+      {candidateState === 'ready' && <div>
+        <h3 ref={recoveryHeadingRef} tabIndex={-1}>選擇要詢問的人</h3>
+        <fieldset className="winwin-candidate-list"><legend>請選擇一位協作者</legend>{candidates.map((candidate) => <label key={candidate.candidateRef} className="winwin-candidate-option"><input type="radio" name="reassignment-candidate" value={candidate.candidateRef} checked={selectedCandidateRef === candidate.candidateRef} onChange={() => { setSelectedCandidateRef(candidate.candidateRef); setConfirmedRecoveryIntent(false); }} /><span><strong>{candidate.displayName}</strong>{candidate.relationshipDisplay && <small>{candidate.relationshipDisplay}</small>}{candidate.serviceValidityDisplay && <small>{candidate.serviceValidityDisplay}</small>}{candidate.priorDeclineHint && <small>{candidate.priorDeclineHint}</small>}</span></label>)}</fieldset>
+        <div className="winwin-page-actions"><button ref={recoveryReviewRef} className="winwin-primary-action" type="button" disabled={!selectedCandidateRef} onClick={() => setConfirmRecovery(true)}>檢視並確認</button><button type="button" onClick={() => { recoveryWasCancelled.current = true; setCandidateState('idle'); setCandidates([]); setSelectedCandidateRef(''); }}>取消</button></div>
+      </div>}
+      {confirmedRecoveryIntent && <p role="status">已確認要詢問所選協作者；尚未送出安排。</p>}
+    </section>}
+    {confirmRecovery && (() => { const selected = candidates.find(({ candidateRef }) => candidateRef === selectedCandidateRef); return selected ? <section className="winwin-confirmation" role="dialog" aria-modal="true" aria-labelledby="recovery-confirm-title" aria-describedby="recovery-confirm-description" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setConfirmRecovery(false); } }}><h2 id="recovery-confirm-title">確認要詢問的人</h2><p id="recovery-confirm-description">你將請「{selected.displayName}」確認是否接手這項處理。這不代表對方已接手，也不代表目前已有確定接手者。</p><div className="winwin-page-actions"><button ref={recoveryCancelRef} type="button" onClick={() => setConfirmRecovery(false)}>返回選擇</button><button className="winwin-primary-action" type="button" onClick={() => { setConfirmRecovery(false); setConfirmedRecoveryIntent(true); }}>確認詢問意願</button></div></section> : null; })()}
     <section className="winwin-summary-card" aria-labelledby="holder-heading"><h2 id="holder-heading">目前負責人</h2><p>{detail.currentHolderDisplay ?? '目前沒有人確定接手'}</p></section>
     <section className="winwin-summary-card" aria-labelledby="context-heading"><h2 id="context-heading">事項內容</h2><p>{detail.reason}</p>{detail.dueDisplay && <p>預計時間：{detail.dueDisplay}</p>}<p>來源：{detail.sourceCareUpdate.summary}</p><p>指派者：{detail.assignedByDisplay}・<time dateTime={detail.serverAssignedAt}>{detail.serverAssignedAt}</time></p></section>
     {decisionState === 'uncertain' && <div className="winwin-mutation-notice" role="alert"><p>目前無法確認是否已成功更新{mutationLabel}。系統不會自動再次送出。</p><button type="button" disabled={lookupBusy} onClick={() => void lookup(false)}>{lookupBusy ? '正在查詢…' : '查詢更新狀態'}</button></div>}

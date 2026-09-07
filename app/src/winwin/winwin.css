@@ -160,6 +160,15 @@
 .winwin-confirmation h2 { margin-top: 0; }
 .winwin-responsibility-history { display: grid; gap: 1rem; padding-left: 1.4rem; }
 .winwin-responsibility-history time, .winwin-visually-readable { color: #606f75; font-size: 0.9rem; }
+.winwin-recovery { margin: 1rem 0; padding: 1.25rem; border: 1px solid #b9cccf; border-radius: 1rem; background: #f5faf9; }
+.winwin-recovery h2 { margin-top: 0; }
+.winwin-candidate-list { display: grid; gap: 0.65rem; margin: 1rem 0; padding: 0; border: 0; }
+.winwin-candidate-list legend { margin-bottom: 0.5rem; font-weight: 800; }
+.winwin-candidate-option { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.8rem; border: 1px solid #87969b; border-radius: 0.75rem; background: #fff; cursor: pointer; }
+.winwin-candidate-option:has(input:checked) { border-color: #405f6d; box-shadow: inset 0 0 0 1px #405f6d; }
+.winwin-candidate-option input { margin-top: 0.25rem; }
+.winwin-candidate-option span { display: grid; gap: 0.15rem; min-width: 0; overflow-wrap: anywhere; }
+.winwin-candidate-option small { color: #606f75; }
 .winwin-create-action, .winwin-action-result { margin-top: 1rem; padding: 1rem; border: 1px solid #b9cccf; border-radius: 0.8rem; background: #f5faf9; }
 .winwin-create-action form { display: grid; gap: 1rem; margin-top: 1rem; }
 .winwin-fixed-source { padding: 0.9rem; border-left: 0.3rem solid #547180; background: #e7eff1; }

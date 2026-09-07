@@ -43,6 +43,144 @@ function DomHarnessProof() {
   );
 }
 
+const recoveryActionPath = '/winwin/cases/demo-case-1/actions/demo-action-1';
+
+async function declinedRecoveryService(options: ConstructorParameters<typeof DemoVerticalSliceService>[0] = {}) {
+  const service = new DemoVerticalSliceService(options);
+  const result = await service.declineAction(
+    { actionId: 'demo-action-1', expectedVersion: '1' },
+    'rr-f2-declined-fixture'
+  );
+  if (result.result !== 'SUCCESS') throw new Error('Expected deterministic declined fixture');
+  return service;
+}
+
+describe('RR-F2 Action Detail candidate read and confirmation', () => {
+  it('loads safe candidates, requires one explicit selection, and confirms intent without mutation', async () => {
+    const service = await declinedRecoveryService();
+    const read = vi.spyOn(service, 'getEligibleReassignmentCandidates');
+    const mutate = vi.spyOn(service, 'reassignAction');
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    expect(read).toHaveBeenCalledWith('demo-action-1');
+    const chooser = await screen.findByRole('heading', { name: '選擇要詢問的人' });
+    expect(chooser).toHaveFocus();
+    const choices = screen.getAllByRole('radio');
+    expect(choices).toHaveLength(2);
+    expect(choices.every((choice) => !(choice as HTMLInputElement).checked)).toBe(true);
+    expect(screen.getByRole('button', { name: '檢視並確認' })).toBeDisabled();
+    expect(document.body).not.toHaveTextContent(/電話|email|Grant|推薦|最佳|可立即接手/);
+
+    await user.click(screen.getByRole('radio', { name: /陳小姐/ }));
+    expect(screen.getByRole('radio', { name: /陳小姐/ })).toBeChecked();
+    expect(screen.getByRole('radio', { name: /王先生/ })).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+    const dialog = screen.getByRole('dialog', { name: '確認要詢問的人' });
+    expect(dialog).toHaveTextContent('你將請「陳小姐」確認是否接手這項處理');
+    expect(dialog).toHaveTextContent('不代表對方已接手');
+    expect(screen.getByRole('button', { name: '返回選擇' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '確認詢問意願' }));
+    expect(await screen.findByText('已確認要詢問所選協作者；尚未送出安排。')).toHaveAttribute('role', 'status');
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('hides recovery when ACTION_REASSIGN is absent or the Action is not a gap', async () => {
+    const assigned = new DemoVerticalSliceService();
+    renderWinWin(assigned, recoveryActionPath);
+    expect(await screen.findByText('尚待接手')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新安排接手者' })).not.toBeInTheDocument();
+    cleanup();
+
+    const declined = await declinedRecoveryService();
+    class WithoutRecoveryAuthority extends DemoVerticalSliceService {
+      override async getActionDetail() {
+        const result = await declined.getActionDetail('demo-case-1', 'demo-action-1');
+        if (result.result !== 'SUCCESS') return result;
+        return { result: 'SUCCESS' as const, data: {
+          ...result.data,
+          allowedOperations: { ...result.data.allowedOperations, ACTION_REASSIGN: false }
+        } };
+      }
+    }
+    renderWinWin(new WithoutRecoveryAuthority(), recoveryActionPath);
+    expect(await screen.findByText('需要重新安排', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新安排接手者' })).not.toBeInTheDocument();
+  });
+
+  it('shows truthful empty and safe error states without selection controls', async () => {
+    const empty = await declinedRecoveryService({ reassignmentCandidatesResult: { result: 'EMPTY' } });
+    const user = userEvent.setup();
+    renderWinWin(empty, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    expect(await screen.findByText('目前沒有可重新詢問的接手者。')).toBeInTheDocument();
+    expect(screen.getByText('這項照顧目前仍沒有人確定接手。')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    cleanup();
+
+    const failed = await declinedRecoveryService({
+      reassignmentCandidatesResult: {
+        result: 'TEMPORARY_FAILURE',
+        error: { code: 'OFFLINE', message: 'protected infrastructure detail' }
+      }
+    });
+    renderWinWin(failed, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('尚未進行任何安排');
+    expect(screen.queryByText('protected infrastructure detail')).not.toBeInTheDocument();
+  });
+
+  it('cancels confirmation with Escape and returns focus without submitting', async () => {
+    const service = await declinedRecoveryService();
+    const mutate = vi.spyOn(service, 'reassignAction');
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    const review = screen.getByRole('button', { name: '檢視並確認' });
+    await user.click(review);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(review).toHaveFocus();
+    expect(mutate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '取消' }));
+    expect(screen.getByRole('button', { name: '重新安排接手者' })).toHaveFocus();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it('clears protected recovery state when a fresh projection is no longer a gap', async () => {
+    const declined = await declinedRecoveryService();
+    const user = userEvent.setup();
+    const view = renderWinWin(declined, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    expect(screen.getByRole('radio', { name: /陳小姐/ })).toBeChecked();
+
+    view.rerender(<MemoryRouter initialEntries={[recoveryActionPath]}><WinWinRoutes service={new DemoVerticalSliceService()} /></MemoryRouter>);
+    expect(await screen.findByText('尚待接手')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText('陳小姐')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新安排接手者' })).not.toBeInTheDocument();
+  });
+
+  it('removes candidate and confirmation state after protected access loss', async () => {
+    const declined = await declinedRecoveryService();
+    const user = userEvent.setup();
+    const view = renderWinWin(declined, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('陳小姐');
+
+    view.rerender(<MemoryRouter initialEntries={[recoveryActionPath]}><WinWinRoutes service={new DemoVerticalSliceService({ sessionResult: { result: 'NOT_FOUND_OR_NOT_VISIBLE' } })} /></MemoryRouter>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('目前無法使用此內容');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText('陳小姐')).not.toBeInTheDocument();
+  });
+});
+
 describe('CP-F0 DOM interaction foundation', () => {
   it('supports semantic queries, accessible names, focus, typing, interaction, and status assertions', async () => {
     const user = userEvent.setup();
