@@ -9,9 +9,11 @@ import type {
   CreateActionInput,
   CreateCareUpdateInput,
   EligibleAssigneeView,
+  EligibleReassignmentCandidateView,
   OperationKey,
   OperationStatusView,
   ProjectionResult,
+  ReassignActionInput,
   ReadCursorAdvanceView,
   ReadCursorBoundary,
   SessionView,
@@ -57,4 +59,14 @@ export interface VerticalSliceService {
     caseId: string,
     boundary: ReadCursorBoundary
   ): Promise<CommandResult<ReadCursorAdvanceView>>;
+}
+
+export interface ResponsibilityRecoveryService extends VerticalSliceService {
+  getEligibleReassignmentCandidates(
+    actionId: string
+  ): Promise<ProjectionResult<readonly EligibleReassignmentCandidateView[]>>;
+  reassignAction(
+    input: ReassignActionInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>>;
 }

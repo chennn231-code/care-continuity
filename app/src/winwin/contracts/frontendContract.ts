@@ -8,6 +8,7 @@ export type ReadCursorBoundary = string;
 export type AllowedOperation =
   | 'CREATE_CARE_UPDATE'
   | 'CREATE_ACTION'
+  | 'ACTION_REASSIGN'
   | 'ACCEPT_ACTION'
   | 'DECLINE_ACTION'
   | 'START_ACTION'
@@ -18,6 +19,7 @@ export type AllowedOperationSet = Readonly<Record<AllowedOperation, boolean>>;
 export const NO_ALLOWED_OPERATIONS: AllowedOperationSet = Object.freeze({
   CREATE_CARE_UPDATE: false,
   CREATE_ACTION: false,
+  ACTION_REASSIGN: false,
   ACCEPT_ACTION: false,
   DECLINE_ACTION: false,
   START_ACTION: false,
@@ -157,6 +159,14 @@ export type EligibleAssigneeView = Readonly<{
   serviceValidityDisplay?: string;
 }>;
 
+export type EligibleReassignmentCandidateView = Readonly<{
+  candidateRef: OpaqueId;
+  displayName: string;
+  relationshipDisplay?: string;
+  serviceValidityDisplay?: string;
+  priorDeclineHint?: string;
+}>;
+
 export type ActionLifecycleState = 'ASSIGNED' | 'ACCEPTED' | 'IN_PROGRESS' | 'COMPLETED';
 
 export type ResponsibilityHistoryEntryView = Readonly<{
@@ -230,6 +240,12 @@ export type CreateActionInput = Readonly<{
 
 export type ActionMutationInput = Readonly<{
   actionId: OpaqueId;
+  expectedVersion: string;
+}>;
+
+export type ReassignActionInput = Readonly<{
+  actionId: OpaqueId;
+  assigneeCandidateRef: OpaqueId;
   expectedVersion: string;
 }>;
 

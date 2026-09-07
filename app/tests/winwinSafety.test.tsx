@@ -16,6 +16,7 @@ import {
 const mutationFamilies: readonly MutationFamily[] = [
   'CREATE_CARE_UPDATE',
   'CREATE_ACTION',
+  'ACTION_REASSIGN',
   'ACCEPT_ACTION',
   'DECLINE_ACTION',
   'START_ACTION',

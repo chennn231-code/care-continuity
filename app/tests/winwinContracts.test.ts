@@ -5,15 +5,58 @@ import {
   DEMO_AUTHORITY_MARKER,
   NO_ALLOWED_OPERATIONS,
   type ActionDetailView,
+  type EligibleReassignmentCandidateView,
+  type ReassignActionInput,
   type ScreenState,
   type SessionView
 } from '../src/winwin/contracts/frontendContract';
-import type { VerticalSliceService } from '../src/winwin/contracts/verticalSliceService';
+import type {
+  ResponsibilityRecoveryService,
+  VerticalSliceService
+} from '../src/winwin/contracts/verticalSliceService';
 import { DemoVerticalSliceService } from '../src/winwin/adapters/demo/DemoVerticalSliceService';
 
 const winwinStyles = readFileSync(new URL('../src/winwin/winwin.css', import.meta.url), 'utf8');
 
 describe('WinWin frontend-safe contract', () => {
+  it('defines the canonical reassignment capability and defaults it closed', () => {
+    expect(NO_ALLOWED_OPERATIONS.ACTION_REASSIGN).toBe(false);
+    expect(NO_ALLOWED_OPERATIONS).not.toHaveProperty('REASSIGN_ACTION');
+  });
+
+  it('keeps reassignment candidate and input projections minimized', () => {
+    const candidate: EligibleReassignmentCandidateView = {
+      candidateRef: 'opaque-candidate',
+      displayName: '陳小姐',
+      relationshipDisplay: '照顧協作者'
+    };
+    const input: ReassignActionInput = {
+      actionId: 'opaque-action',
+      assigneeCandidateRef: candidate.candidateRef,
+      expectedVersion: 'opaque-version'
+    };
+
+    expect(Object.keys(candidate).sort()).toEqual([
+      'candidateRef',
+      'displayName',
+      'relationshipDisplay'
+    ]);
+    expect(candidate).not.toHaveProperty('identityId');
+    expect(candidate).not.toHaveProperty('membershipId');
+    expect(candidate).not.toHaveProperty('grants');
+    expect(candidate).not.toHaveProperty('contactDetails');
+    expect(candidate).not.toHaveProperty('healthData');
+    expect(candidate).not.toHaveProperty('availability');
+    expect(candidate).not.toHaveProperty('score');
+    expect(input).toEqual({
+      actionId: 'opaque-action',
+      assigneeCandidateRef: 'opaque-candidate',
+      expectedVersion: 'opaque-version'
+    });
+    expect(input).not.toHaveProperty('actorIdentity');
+    expect(input).not.toHaveProperty('operationKey');
+  });
+
   it('constructs representative minimized projections without authority records', () => {
     const action: ActionDetailView = {
       actionId: 'opaque-action',
@@ -71,6 +114,19 @@ describe('WinWin frontend-safe contract', () => {
 });
 
 describe('VerticalSliceService and deterministic demo boundary', () => {
+  it('defines a bounded responsibility-recovery service extension without demo behavior', () => {
+    type CandidateRead = ResponsibilityRecoveryService['getEligibleReassignmentCandidates'];
+    type Reassign = ResponsibilityRecoveryService['reassignAction'];
+    const methodNames: readonly (keyof ResponsibilityRecoveryService)[] = [
+      'getEligibleReassignmentCandidates',
+      'reassignAction'
+    ];
+
+    expect(methodNames).toEqual(['getEligibleReassignmentCandidates', 'reassignAction']);
+    expectTypeOnly<CandidateRead>();
+    expectTypeOnly<Reassign>();
+  });
+
   it('implements all fourteen frontend-safe logical seams', () => {
     const service: VerticalSliceService = new DemoVerticalSliceService();
     const methods: readonly (keyof VerticalSliceService)[] = [
@@ -141,6 +197,10 @@ describe('VerticalSliceService and deterministic demo boundary', () => {
     });
   });
 });
+
+function expectTypeOnly<T>(): void {
+  expect(true).toBe(true);
+}
 
 describe('new-tree import boundary', () => {
   const sourceModules = import.meta.glob('../src/winwin/**/*.{ts,tsx}', {
