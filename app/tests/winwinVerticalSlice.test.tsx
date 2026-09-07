@@ -19,24 +19,27 @@ import {
   type CreateActionInput,
   type CreateCareUpdateInput,
   type EligibleAssigneeView,
+  type EligibleReassignmentCandidateView,
   type OperationKey,
   type OperationStatusView,
   type ProjectionResult,
   type ReadCursorAdvanceView,
   type ReadCursorBoundary,
+  type ReassignActionInput,
   type SessionView,
   type TimelineEntryView,
   type TimelineView
 } from '../src/winwin/contracts/frontendContract';
 import type { VerticalSliceService } from '../src/winwin/contracts/verticalSliceService';
 
-type Actor = 'A' | 'B' | 'C';
+type Actor = 'A' | 'B' | 'C' | 'U';
 
 const CASE_ID = 'case-first-slice';
 const UPDATE_ID = 'update-first-slice';
 const VERSION_ID = 'version-first-slice';
 const ACTION_ID = 'action-first-slice';
 const B_CANDIDATE = 'candidate-b';
+const C_CANDIDATE = 'candidate-c';
 const ASSIGNED_AT = '2026-09-06T01:00:00.000Z';
 const ACCEPTED_AT = '2026-09-06T01:10:00.000Z';
 const STARTED_AT = '2026-09-06T01:20:00.000Z';
@@ -45,7 +48,8 @@ const COMPLETED_AT = '2026-09-06T01:30:00.000Z';
 const actorDisplay: Record<Actor, string> = {
   A: '林小姐',
   B: '王先生',
-  C: '未授權訪客'
+  C: '陳小姐',
+  U: '未授權訪客'
 };
 
 function operations(...enabled: AllowedOperation[]): AllowedOperationSet {
@@ -58,14 +62,17 @@ type Store = {
   activity: TimelineEntryView[];
   cursors: Partial<Record<Actor, string>>;
   operationResults: Map<OperationKey, CareUpdateDetailView | ActionDetailView>;
+  currentAssignee?: Actor;
 };
 
 function createStore(): Store {
   return { activity: [], cursors: {}, operationResults: new Map() };
 }
 
-function viewForActor(action: ActionDetailView, actor: Actor): ActionDetailView {
-  if (actor !== 'B') return { ...action, allowedOperations: NO_ALLOWED_OPERATIONS };
+function viewForActor(action: ActionDetailView, actor: Actor, currentAssignee?: Actor): ActionDetailView {
+  if (actor !== currentAssignee) {
+    return { ...action, allowedOperations: actor === 'A' && action.continuityGap ? operations('ACTION_REASSIGN') : NO_ALLOWED_OPERATIONS };
+  }
   const enabled = action.continuityGap
     ? NO_ALLOWED_OPERATIONS
     : action.lifecycleState === 'ASSIGNED'
@@ -85,7 +92,7 @@ class SliceTestService implements VerticalSliceService {
     private readonly revoked = false
   ) {}
 
-  protected visible() { return this.actor !== 'C' && !this.revoked; }
+  protected visible() { return this.actor !== 'U' && !this.revoked; }
 
   async resolveSession(): Promise<ProjectionResult<SessionView>> {
     return {
@@ -93,7 +100,7 @@ class SliceTestService implements VerticalSliceService {
       data: {
         disposition: 'SIGNED_IN',
         actorDisplay: actorDisplay[this.actor],
-        relationshipDisplay: this.actor === 'A' ? '家屬照顧者' : this.actor === 'B' ? '照顧協作者' : undefined,
+        relationshipDisplay: this.actor === 'A' ? '家屬照顧者' : this.actor === 'U' ? undefined : '照顧協作者',
         demoMarker: DEMO_AUTHORITY_MARKER
       }
     };
@@ -101,7 +108,7 @@ class SliceTestService implements VerticalSliceService {
 
   async getAuthorizedCases(): Promise<ProjectionResult<readonly AuthorizedCaseSummary[]>> {
     if (!this.visible()) return { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
-    const assignedActions = this.actor === 'B' && this.store.action ? [{
+    const assignedActions = this.actor === this.store.currentAssignee && this.store.action ? [{
       caseId: CASE_ID,
       actionId: ACTION_ID,
       caseDisplay: '陳女士的照顧個案',
@@ -214,6 +221,7 @@ class SliceTestService implements VerticalSliceService {
       allowedOperations: NO_ALLOWED_OPERATIONS
     };
     this.store.action = action;
+    this.store.currentAssignee = 'B';
     this.store.activity.push({
       activityId: 'activity-assigned', eventDisplay: '建立並指派了處理事項', actorDisplay: actorDisplay.A,
       relationshipDisplay: '家屬照顧者', serverRecordedAt: ASSIGNED_AT,
@@ -227,7 +235,39 @@ class SliceTestService implements VerticalSliceService {
     if (!this.visible() || caseId !== CASE_ID || actionId !== ACTION_ID || !this.store.action) {
       return { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
     }
-    return { result: 'SUCCESS', data: viewForActor(this.store.action, this.actor) };
+    return { result: 'SUCCESS', data: viewForActor(this.store.action, this.actor, this.store.currentAssignee) };
+  }
+
+  async getEligibleReassignmentCandidates(actionId: string): Promise<ProjectionResult<readonly EligibleReassignmentCandidateView[]>> {
+    if (!this.visible() || this.actor !== 'A' || actionId !== ACTION_ID || !this.store.action?.continuityGap) {
+      return { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+    }
+    return { result: 'SUCCESS', data: [{ candidateRef: C_CANDIDATE, displayName: actorDisplay.C, relationshipDisplay: '照顧協作者' }] };
+  }
+
+  async reassignAction(input: ReassignActionInput, key: OperationKey): Promise<CommandResult<ActionDetailView>> {
+    const current = this.store.action;
+    if (!this.visible() || this.actor !== 'A' || !current?.continuityGap || input.actionId !== ACTION_ID
+      || input.expectedVersion !== current.expectedVersion || input.assigneeCandidateRef !== C_CANDIDATE) return { result: 'FORBIDDEN' };
+    const assigned: ActionDetailView = {
+      ...current,
+      expectedVersion: String(Number(current.expectedVersion) + 1), lifecycleState: 'ASSIGNED',
+      stateDisplay: `等待 ${actorDisplay.C} 確認`, currentHolderDisplay: actorDisplay.C, continuityGap: undefined,
+      responsibilityHistory: [...current.responsibilityHistory, {
+        historyId: 'history-replacement-assigned', milestoneDisplay: '等待確認接手', personDisplay: actorDisplay.C,
+        serverRecordedAt: STARTED_AT, relevance: 'CURRENT'
+      }],
+      allowedOperations: NO_ALLOWED_OPERATIONS
+    };
+    this.store.action = assigned;
+    this.store.currentAssignee = 'C';
+    this.store.activity.push({
+      activityId: 'activity-reassignment-requested', eventDisplay: `已請 ${actorDisplay.C} 確認是否接手`,
+      actorDisplay: actorDisplay.A, relationshipDisplay: '家屬照顧者', serverRecordedAt: STARTED_AT,
+      target: { kind: 'ACTION', id: ACTION_ID }
+    });
+    this.store.operationResults.set(key, assigned);
+    return { result: 'SUCCESS', data: assigned };
   }
 
   async acceptAction(input: ActionMutationInput, key: OperationKey): Promise<CommandResult<ActionDetailView>> {
@@ -240,9 +280,10 @@ class SliceTestService implements VerticalSliceService {
   async declineAction(input: ActionMutationInput, key: OperationKey): Promise<CommandResult<ActionDetailView>> {
     if (!this.canAct(input, 'ASSIGNED')) return { result: 'FORBIDDEN' };
     const current = this.store.action!;
+    const decliningActor = this.actor;
     const declined: ActionDetailView = {
       ...current,
-      expectedVersion: '2',
+      expectedVersion: String(Number(current.expectedVersion) + 1),
       stateDisplay: '需要重新安排',
       currentHolderDisplay: undefined,
       continuityGap: {
@@ -250,15 +291,16 @@ class SliceTestService implements VerticalSliceService {
         careNeedDisplay: current.title,
         currentHolderDisplay: '目前沒有人確定接手',
         followUpDisplay: '需要重新安排',
-        priorCycleSummary: `${actorDisplay.B}目前無法接手`
+        priorCycleSummary: `${actorDisplay[decliningActor]}目前無法接手`
       },
       responsibilityHistory: [
         ...current.responsibilityHistory.map((entry) => ({ ...entry, relevance: 'HISTORICAL' as const })),
-        { historyId: 'history-declined', milestoneDisplay: '目前無法接手', personDisplay: actorDisplay.B, serverRecordedAt: ACCEPTED_AT, relevance: 'HISTORICAL' }
+        { historyId: `history-${decliningActor.toLowerCase()}-declined`, milestoneDisplay: '目前無法接手', personDisplay: actorDisplay[decliningActor], serverRecordedAt: ACCEPTED_AT, relevance: 'HISTORICAL' }
       ],
       allowedOperations: NO_ALLOWED_OPERATIONS
     };
     this.store.action = declined;
+    this.store.currentAssignee = undefined;
     this.recordLifecycle('目前無法接手處理事項', ACCEPTED_AT);
     this.store.operationResults.set(key, declined);
     return { result: 'SUCCESS', data: declined };
@@ -302,7 +344,7 @@ class SliceTestService implements VerticalSliceService {
   }
 
   private canAct(input: ActionMutationInput, state: ActionDetailView['lifecycleState']) {
-    return this.visible() && this.actor === 'B' && input.actionId === ACTION_ID
+    return this.visible() && this.actor === this.store.currentAssignee && input.actionId === ACTION_ID
       && this.store.action?.lifecycleState === state && input.expectedVersion === this.store.action.expectedVersion;
   }
 
@@ -319,11 +361,11 @@ class SliceTestService implements VerticalSliceService {
     const current = this.store.action!;
     const action: ActionDetailView = {
       ...current,
-      expectedVersion: next.expectedVersion,
+      expectedVersion: String(Number(current.expectedVersion) + 1),
       lifecycleState: next.lifecycleState,
       stateDisplay: next.stateDisplay,
       responsibilityHistory: [...current.responsibilityHistory, {
-        historyId: next.historyId, milestoneDisplay: next.milestoneDisplay, personDisplay: actorDisplay.B,
+        historyId: next.historyId, milestoneDisplay: next.milestoneDisplay, personDisplay: actorDisplay[this.actor],
         serverRecordedAt: next.serverRecordedAt, relevance: 'CURRENT'
       }],
       allowedOperations: NO_ALLOWED_OPERATIONS
@@ -338,7 +380,7 @@ class SliceTestService implements VerticalSliceService {
     this.store.activity.push({
       activityId: `activity-${this.store.activity.length + 1}`,
       eventDisplay,
-      actorDisplay: actorDisplay.B,
+      actorDisplay: actorDisplay[this.actor],
       relationshipDisplay: '照顧協作者',
       serverRecordedAt,
       target: { kind: 'ACTION', id: ACTION_ID }
@@ -370,6 +412,29 @@ async function createAssignedAction(user: ReturnType<typeof userEvent.setup>, st
   await user.click(screen.getByRole('button', { name: '建立並指派' }));
   expect(await screen.findByRole('heading', { name: '確認明早移位協助' })).toBeInTheDocument();
   expect(store.action?.currentHolderDisplay).toBe(actorDisplay.B);
+}
+
+async function declineAndReassignToC(
+  user: ReturnType<typeof userEvent.setup>,
+  store: Store,
+  view: ReturnType<typeof render>
+) {
+  view.rerender(app(new SliceTestService(store, 'B'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+  await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+  await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+  expect((await screen.findAllByText('需要重新安排')).length).toBeGreaterThan(0);
+  const priorHistory = structuredClone(store.action!.responsibilityHistory);
+
+  view.rerender(app(new SliceTestService(store, 'A'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+  await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+  await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+  await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+  await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
+  expect(await screen.findByText('等待 陳小姐 確認')).toBeInTheDocument();
+  expect(store.action?.continuityGap).toBeUndefined();
+  expect(store.currentAssignee).toBe('C');
+  expect(store.action?.responsibilityHistory.slice(0, priorHistory.length)).toEqual(priorHistory);
+  return priorHistory;
 }
 
 afterEach(cleanup);
@@ -437,13 +502,63 @@ describe('CP-F10-A full First Slice composition', () => {
     expect(screen.queryByRole('button', { name: /重新指派|選擇接手者|修復/ })).not.toBeInTheDocument();
   });
 
-  it('fails closed for unauthorized C after protected A/B state existed', async () => {
+  it('composes decline → reassignment → exact replacement Accept without creating another cycle', async () => {
+    const user = userEvent.setup();
+    const store = createStore();
+    const view = render(app(new SliceTestService(store, 'A'), '/winwin/cases'));
+    await createAssignedAction(user, store);
+    const priorHistory = await declineAndReassignToC(user, store, view);
+    const assignedCycleCount = store.action!.responsibilityHistory.filter((entry) => entry.milestoneDisplay === '等待確認接手').length;
+
+    for (const actor of ['A', 'B', 'U'] as const) {
+      view.rerender(app(new SliceTestService(store, actor), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+      if (actor === 'U') await screen.findByRole('heading', { name: '目前無法使用此內容' });
+      else await screen.findByRole('heading', { name: '確認明早移位協助' });
+      expect(screen.queryByRole('button', { name: /接受處理|目前無法接手/ })).not.toBeInTheDocument();
+    }
+
+    view.rerender(app(new SliceTestService(store, 'C'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+    expect(await screen.findByRole('button', { name: '接受處理' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '目前無法接手' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '接受處理' }));
+    expect((await screen.findAllByText('已確認接手')).length).toBeGreaterThanOrEqual(2);
+    expect(store.action?.lifecycleState).toBe('ACCEPTED');
+    expect(store.action?.continuityGap).toBeUndefined();
+    expect(store.action?.responsibilityHistory.slice(0, priorHistory.length)).toEqual(priorHistory);
+    expect(store.action?.responsibilityHistory.filter((entry) => entry.milestoneDisplay === '等待確認接手')).toHaveLength(assignedCycleCount);
+    expect(screen.queryByRole('button', { name: /接受處理|目前無法接手/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/照顧已完全恢復|所有照顧都有保障|照顧中斷風險已解除/)).not.toBeInTheDocument();
+  });
+
+  it('composes replacement Decline back to a preserved gap without automatic replacement', async () => {
+    const user = userEvent.setup();
+    const store = createStore();
+    const view = render(app(new SliceTestService(store, 'A'), '/winwin/cases'));
+    await createAssignedAction(user, store);
+    const priorHistory = await declineAndReassignToC(user, store, view);
+
+    view.rerender(app(new SliceTestService(store, 'C'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+    await user.click(await screen.findByRole('button', { name: '目前無法接手' }));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '確認目前無法接手' }));
+    expect((await screen.findAllByText('需要重新安排')).length).toBeGreaterThan(0);
+    expect(store.currentAssignee).toBeUndefined();
+    expect(store.action?.lifecycleState).toBe('ASSIGNED');
+    expect(store.action?.continuityGap?.priorCycleSummary).toBe('陳小姐目前無法接手');
+    expect(store.action?.responsibilityHistory.slice(0, priorHistory.length)).toEqual(priorHistory);
+    expect(store.action?.responsibilityHistory.at(-1)).toMatchObject({ personDisplay: '陳小姐', milestoneDisplay: '目前無法接手', relevance: 'HISTORICAL' });
+    expect(screen.queryByRole('button', { name: /接受處理|目前無法接手/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText(/通知|自動選擇|推薦接手者/)).not.toBeInTheDocument();
+  });
+
+  it('fails closed for unauthorized U after protected A/B state existed', async () => {
     const store = createStore();
     const user = userEvent.setup();
     const view = render(app(new SliceTestService(store, 'A'), '/winwin/cases'));
     await createAssignedAction(user, store);
 
-    view.rerender(app(new SliceTestService(store, 'C'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+    view.rerender(app(new SliceTestService(store, 'U'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
     const unavailable = await screen.findByRole('heading', { name: '目前無法使用此內容' });
     expect(unavailable).toHaveFocus();
     expect(screen.getByRole('link', { name: '返回我的個案' })).toHaveAttribute('href', '/winwin/cases');
@@ -475,7 +590,7 @@ describe('CP-F10-A full First Slice composition', () => {
     const view = render(app(new PendingActionService(store, 'A'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
     expect(await screen.findByRole('heading', { name: '處理事項' })).toBeInTheDocument();
 
-    view.rerender(app(new SliceTestService(store, 'C'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
+    view.rerender(app(new SliceTestService(store, 'U'), `/winwin/cases/${CASE_ID}/actions/${ACTION_ID}`));
     expect(await screen.findByRole('heading', { name: '目前無法使用此內容' })).toBeInTheDocument();
     await act(async () => { settleOld({ result: 'SUCCESS', data: store.action! }); });
     expect(screen.queryByText('OLD_CONTEXT_SECRET')).not.toBeInTheDocument();
