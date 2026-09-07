@@ -307,6 +307,24 @@ describe('VerticalSliceService and deterministic demo boundary', () => {
     });
     expect(thirdCycle.data.responsibilityHistory.filter(({ relevance }) => relevance === 'CURRENT'))
       .toHaveLength(1);
+    const thirdDecline = await service.declineAction({
+      actionId: 'demo-action-1',
+      expectedVersion: thirdCycle.data.expectedVersion
+    }, 'decline-cycle-three');
+    expect(thirdDecline.result).toBe('SUCCESS');
+    if (thirdDecline.result !== 'SUCCESS') throw new Error('Expected third decline');
+    expect(thirdDecline.data.continuityGap?.followUpDisplay).toBe('需要重新安排');
+    expect(thirdDecline.data.currentHolderDisplay).toBeUndefined();
+    expect(thirdDecline.data.responsibilityHistory.every(({ relevance }) => relevance === 'HISTORICAL')).toBe(true);
+    expect(new Set(thirdDecline.data.responsibilityHistory.map(({ historyId }) => historyId)).size)
+      .toBe(thirdDecline.data.responsibilityHistory.length);
+    expect(thirdDecline.data.responsibilityHistory.map(({ personDisplay }) => personDisplay))
+      .toEqual(['王先生', '王先生', '陳小姐', '陳小姐', '王先生', '王先生']);
+    const activity = await service.getTimeline('demo-case-1');
+    expect(activity.result).toBe('SUCCESS');
+    if (activity.result !== 'SUCCESS') throw new Error('Expected activity');
+    expect(activity.data.entries.filter(({ eventDisplay }) => eventDisplay.includes('確認是否接手'))).toHaveLength(2);
+    expect(activity.data.entries.filter(({ eventDisplay }) => eventDisplay === '目前無法接手處理事項')).toHaveLength(3);
   });
 
   it('enforces currentness, one effective cycle, candidate eligibility and idempotency', async () => {

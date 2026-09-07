@@ -139,6 +139,44 @@ describe('RR-F2 Action Detail candidate read and confirmation', () => {
     expect(screen.queryByText('protected infrastructure detail')).not.toBeInTheDocument();
   });
 
+  it('clears an obsolete nonempty selection when the authoritative candidate set becomes empty', async () => {
+    class ChangingCandidatesService extends DemoVerticalSliceService {
+      empty = false;
+      override getEligibleReassignmentCandidates(actionId: string) {
+        return this.empty ? Promise.resolve({ result: 'EMPTY' as const }) : super.getEligibleReassignmentCandidates(actionId);
+      }
+    }
+    const service = new ChangingCandidatesService();
+    const declined = await service.declineAction({ actionId: 'demo-action-1', expectedVersion: '1' }, 'changing-candidates');
+    if (declined.result !== 'SUCCESS') throw new Error('Expected declined fixture');
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    await user.click(screen.getByRole('button', { name: '取消' }));
+    service.empty = true;
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    expect((await screen.findByText('目前沒有可重新詢問的接手者。')).closest('[role="status"]')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText('陳小姐')).not.toBeInTheDocument();
+    expect(screen.queryByText(/長照|喘息|媒合|立即支援/)).not.toBeInTheDocument();
+  });
+
+  it('invalidates a stale candidate safely without substituting another candidate', async () => {
+    const service = await declinedRecoveryService();
+    const mutate = vi.spyOn(service, 'reassignAction').mockResolvedValue({ result: 'TARGET_INELIGIBLE' });
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+    await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
+    expect(await screen.findByRole('button', { name: '重新安排接手者' })).toBeInTheDocument();
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText('等待 陳小姐 確認')).not.toBeInTheDocument();
+  });
+
   it('cancels confirmation with Escape and returns focus without submitting', async () => {
     const service = await declinedRecoveryService();
     const mutate = vi.spyOn(service, 'reassignAction');
@@ -212,9 +250,27 @@ describe('RR-F2 Action Detail candidate read and confirmation', () => {
     await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
     expect(await screen.findByText(/目前無法確認是否已成功更新重新安排/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '查詢更新狀態' }));
+    await user.click(screen.getByRole('button', { name: '查詢更新狀態' }));
     expect(lookup).toHaveBeenCalledWith(issuedKey);
+    expect(lookup).toHaveBeenCalledTimes(2);
     expect(reassign).toHaveBeenCalledTimes(1);
     expect(service.reassignAction).not.toBe(originalReassign);
+  });
+
+  it('resolves DEFINITELY_NOT_COMMITTED without claiming assignment or issuing a blind retry', async () => {
+    const service = await declinedRecoveryService();
+    const reassign = vi.spyOn(service, 'reassignAction').mockResolvedValue({ result: 'TEMPORARY_FAILURE', outcomeUncertain: true });
+    vi.spyOn(service, 'lookupOperationStatus').mockImplementation(async (key) => ({ operationKey: key, outcome: 'DEFINITELY_NOT_COMMITTED' }));
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+    await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
+    await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+    expect(await screen.findByText(/重新安排尚未更新/)).toBeInTheDocument();
+    expect(screen.queryByText('等待 陳小姐 確認')).not.toBeInTheDocument();
+    expect(reassign).toHaveBeenCalledTimes(1);
   });
 
   it('resolves UNKNOWN lookup COMMITTED to authoritative pending state', async () => {
