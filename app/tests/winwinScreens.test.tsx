@@ -56,7 +56,7 @@ async function declinedRecoveryService(options: ConstructorParameters<typeof Dem
 }
 
 describe('RR-F2 Action Detail candidate read and confirmation', () => {
-  it('loads safe candidates, requires one explicit selection, and confirms intent without mutation', async () => {
+  it('loads safe candidates and submits one current, selected reassignment intent', async () => {
     const service = await declinedRecoveryService();
     const read = vi.spyOn(service, 'getEligibleReassignmentCandidates');
     const mutate = vi.spyOn(service, 'reassignAction');
@@ -81,9 +81,17 @@ describe('RR-F2 Action Detail candidate read and confirmation', () => {
     expect(dialog).toHaveTextContent('你將請「陳小姐」確認是否接手這項處理');
     expect(dialog).toHaveTextContent('不代表對方已接手');
     expect(screen.getByRole('button', { name: '返回選擇' })).toHaveFocus();
-    await user.click(screen.getByRole('button', { name: '確認詢問意願' }));
-    expect(await screen.findByText('已確認要詢問所選協作者；尚未送出安排。')).toHaveAttribute('role', 'status');
-    expect(mutate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
+    expect(await screen.findByText('等待 陳小姐 確認')).toBeInTheDocument();
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate.mock.calls[0][0]).toEqual({
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: '2'
+    });
+    expect(mutate.mock.calls[0][1]).toMatch(/^reassign-action:/);
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByText(/已有確定接手者|陳小姐已接手|照顧已恢復/)).not.toBeInTheDocument();
   });
 
   it('hides recovery when ACTION_REASSIGN is absent or the Action is not a gap', async () => {
@@ -178,6 +186,62 @@ describe('RR-F2 Action Detail candidate read and confirmation', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByText('陳小姐')).not.toBeInTheDocument();
+  });
+
+  it('keeps UNKNOWN unresolved, looks up with the same key, and never blindly resubmits', async () => {
+    const service = await declinedRecoveryService({
+      operationOutcomes: {
+        'ignored': { operationKey: 'ignored', outcome: 'UNKNOWN' }
+      }
+    });
+    let issuedKey = '';
+    const originalReassign = service.reassignAction.bind(service);
+    const reassign = vi.spyOn(service, 'reassignAction').mockImplementation(async (input, key) => {
+      issuedKey = key;
+      return { result: 'TEMPORARY_FAILURE', outcomeUncertain: true };
+    });
+    const lookup = vi.spyOn(service, 'lookupOperationStatus').mockImplementation(async (key) => ({
+      operationKey: key,
+      outcome: 'UNKNOWN'
+    }));
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+    await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
+    expect(await screen.findByText(/目前無法確認是否已成功更新重新安排/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查詢更新狀態' }));
+    expect(lookup).toHaveBeenCalledWith(issuedKey);
+    expect(reassign).toHaveBeenCalledTimes(1);
+    expect(service.reassignAction).not.toBe(originalReassign);
+  });
+
+  it('resolves UNKNOWN lookup COMMITTED to authoritative pending state', async () => {
+    const service = await declinedRecoveryService();
+    let committed: ActionDetailView | undefined;
+    let operationKey = '';
+    vi.spyOn(service, 'reassignAction').mockImplementation(async (input, key) => {
+      operationKey = key;
+      const result = await DemoVerticalSliceService.prototype.reassignAction.call(service, input, key);
+      if (result.result === 'SUCCESS') committed = result.data;
+      return { result: 'TEMPORARY_FAILURE', outcomeUncertain: true };
+    });
+    vi.spyOn(service, 'lookupOperationStatus').mockImplementation(async (key) => ({
+      operationKey: key,
+      outcome: 'COMMITTED',
+      authoritativeResult: committed
+    }));
+    const user = userEvent.setup();
+    renderWinWin(service, recoveryActionPath);
+    await user.click(await screen.findByRole('button', { name: '重新安排接手者' }));
+    await user.click(await screen.findByRole('radio', { name: /陳小姐/ }));
+    await user.click(screen.getByRole('button', { name: '檢視並確認' }));
+    await user.click(screen.getByRole('button', { name: '確認並送出詢問' }));
+    await user.click(await screen.findByRole('button', { name: '查詢更新狀態' }));
+    expect(operationKey).toMatch(/^reassign-action:/);
+    expect(await screen.findByText('等待 陳小姐 確認')).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 });
 

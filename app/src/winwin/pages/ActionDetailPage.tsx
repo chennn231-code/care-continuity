@@ -3,13 +3,13 @@ import { Link, Navigate } from 'react-router-dom';
 import { FormField } from '../components/FormField';
 import { ContinuityGapBanner } from '../components/ContinuityGapBanner';
 import { LoadingState, UnavailableState } from '../components/SafetyStates';
-import type { ActionDetailView, ActionMutationInput, CompleteActionInput, EligibleReassignmentCandidateView, OperationKey, OperationOutcome } from '../contracts/frontendContract';
+import type { ActionDetailView, ActionMutationInput, CompleteActionInput, EligibleReassignmentCandidateView, OperationKey, OperationOutcome, ReassignActionInput } from '../contracts/frontendContract';
 import type { ResponsibilityRecoveryService } from '../contracts/verticalSliceService';
 import { useWinWinApp } from '../state/WinWinAppProvider';
 
-type ActionOperation = 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION' | 'COMPLETE_ACTION';
+type ActionOperation = 'ACTION_REASSIGN' | 'ACCEPT_ACTION' | 'DECLINE_ACTION' | 'START_ACTION' | 'COMPLETE_ACTION';
 type DecisionState = 'idle' | 'submitting' | 'uncertain' | 'definitelyNotCommitted' | 'conflict' | 'committedPendingRefresh';
-type Intent = Readonly<{ family: ActionOperation; operationKey: OperationKey; input: ActionMutationInput | CompleteActionInput }>;
+type Intent = Readonly<{ family: ActionOperation; operationKey: OperationKey; input: ActionMutationInput | CompleteActionInput | ReassignActionInput }>;
 type DecisionOwner = Intent | Readonly<{ acquiring: true; family: ActionOperation }>;
 type CandidateState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
@@ -36,7 +36,6 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   const [candidates, setCandidates] = useState<readonly EligibleReassignmentCandidateView[]>([]);
   const [selectedCandidateRef, setSelectedCandidateRef] = useState('');
   const [confirmRecovery, setConfirmRecovery] = useState(false);
-  const [confirmedRecoveryIntent, setConfirmedRecoveryIntent] = useState(false);
   const lifecycle = useRef(0);
   const owner = useRef<DecisionOwner | undefined>(undefined);
   const lookupOwner = useRef(false);
@@ -63,7 +62,7 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     setCompletionResult('');
     setCompletionError(undefined);
     setCandidateState('idle'); setCandidates([]); setSelectedCandidateRef('');
-    setConfirmRecovery(false); setConfirmedRecoveryIntent(false);
+    setConfirmRecovery(false);
     setDetail(undefined);
     setScreenState('loading');
     if (sessionState.status !== 'signedIn') return () => { lifecycle.current++; };
@@ -112,7 +111,7 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     if (!detail?.continuityGap || !detail.allowedOperations.ACTION_REASSIGN || !supportsRecovery(service)) return;
     const token = lifecycle.current;
     const expectedVersion = detail.expectedVersion;
-    setCandidateState('loading'); setCandidates([]); setSelectedCandidateRef(''); setConfirmedRecoveryIntent(false);
+    setCandidateState('loading'); setCandidates([]); setSelectedCandidateRef('');
     try {
       const result = await service.getEligibleReassignmentCandidates(detail.actionId);
       if (token !== lifecycle.current || detail.expectedVersion !== expectedVersion) return;
@@ -123,6 +122,11 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
         setCandidates([]); setCandidateState('idle'); setDetail(undefined); setScreenState('unavailable'); invalidateProtectedContext();
       } else setCandidateState('error');
     } catch { if (token === lifecycle.current) setCandidateState('error'); }
+  };
+
+  const clearRecoveryDraft = () => {
+    setCandidateState('idle'); setCandidates([]); setSelectedCandidateRef('');
+    setConfirmRecovery(false);
   };
 
   const owns = (token: number, intent: Intent) => {
@@ -148,7 +152,9 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   const submit = async (intent: Intent) => {
     const token = lifecycle.current;
     try {
-      const result = intent.family === 'ACCEPT_ACTION'
+      const result = intent.family === 'ACTION_REASSIGN' && supportsRecovery(service)
+        ? await service.reassignAction(intent.input as ReassignActionInput, intent.operationKey)
+        : intent.family === 'ACCEPT_ACTION'
         ? await service.acceptAction(intent.input, intent.operationKey)
         : intent.family === 'DECLINE_ACTION'
           ? await service.declineAction(intent.input, intent.operationKey)
@@ -160,12 +166,12 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
         await synchronizeCommitted(token, intent);
       } else if (result.result === 'TEMPORARY_FAILURE') {
         setDecisionState(result.outcomeUncertain ? 'uncertain' : 'definitelyNotCommitted');
-      } else if (result.result === 'IDEMPOTENCY_CONFLICT') setDecisionState('conflict');
+      } else if (result.result === 'IDEMPOTENCY_CONFLICT') { setDecisionState('conflict'); clearRecoveryDraft(); }
       else if (result.result === 'NOT_FOUND_OR_NOT_VISIBLE') {
         setDetail(undefined); setScreenState('unavailable'); invalidateProtectedContext();
       } else {
         const current = await refresh(token, intent);
-        if (current && owns(token, intent)) { setDecisionState('idle'); owner.current = undefined; }
+        if (current && owns(token, intent)) { setDecisionState('idle'); owner.current = undefined; clearRecoveryDraft(); }
       }
     } catch {
       if (owns(token, intent)) setDecisionState('uncertain');
@@ -178,7 +184,7 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     focusUpdatedStatus.current = true;
     const authoritative = await refresh(token, intent);
     if (authoritative && owns(token, intent)) {
-      setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false); setCompletionResult(''); setCompletionError(undefined);
+      setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false); setCompletionResult(''); setCompletionError(undefined); clearRecoveryDraft();
     } else {
       focusUpdatedStatus.current = false;
     }
@@ -186,6 +192,7 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
 
   const begin = (family: ActionOperation, submittedResult?: string) => {
     if (!detail || owner.current) return;
+    if (family === 'ACTION_REASSIGN') return;
     const requiredState = family === 'START_ACTION' ? 'ACCEPTED' : family === 'COMPLETE_ACTION' ? 'IN_PROGRESS' : 'ASSIGNED';
     if (detail.lifecycleState !== requiredState || !detail.allowedOperations[family]) return;
     if (family === 'COMPLETE_ACTION' && (!submittedResult || submittedResult.length > 300)) {
@@ -213,6 +220,27 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
     }
   };
 
+  const beginReassignment = () => {
+    if (!detail?.continuityGap || !detail.allowedOperations.ACTION_REASSIGN
+      || !selectedCandidateRef || owner.current || !supportsRecovery(service)) return;
+    owner.current = { acquiring: true, family: 'ACTION_REASSIGN' };
+    try {
+      const intent: Intent = {
+        family: 'ACTION_REASSIGN',
+        operationKey: `reassign-action:${globalThis.crypto.randomUUID()}`,
+        input: {
+          actionId: detail.actionId,
+          assigneeCandidateRef: selectedCandidateRef,
+          expectedVersion: detail.expectedVersion
+        }
+      };
+      owner.current = intent;
+      setConfirmRecovery(false);
+      setDecisionState('submitting');
+      void submit(intent);
+    } catch { owner.current = undefined; }
+  };
+
   const lookup = async (retry: boolean) => {
     const intent = owner.current;
     if (!isIntent(intent) || lookupOwner.current) return;
@@ -229,10 +257,12 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
         if (current.result === 'NOT_FOUND_OR_NOT_VISIBLE') { setDetail(undefined); setScreenState('unavailable'); invalidateProtectedContext(); return; }
         if (current.result !== 'SUCCESS'
           || current.data.expectedVersion !== intent.input.expectedVersion
-          || current.data.lifecycleState !== (intent.family === 'START_ACTION' ? 'ACCEPTED' : intent.family === 'COMPLETE_ACTION' ? 'IN_PROGRESS' : 'ASSIGNED')
-          || !current.data.allowedOperations[intent.family]) {
+          || (intent.family === 'ACTION_REASSIGN'
+            ? !current.data.continuityGap || !current.data.allowedOperations.ACTION_REASSIGN
+            : current.data.lifecycleState !== (intent.family === 'START_ACTION' ? 'ACCEPTED' : intent.family === 'COMPLETE_ACTION' ? 'IN_PROGRESS' : 'ASSIGNED')
+              || !current.data.allowedOperations[intent.family])) {
           if (current.result === 'SUCCESS') setDetail(current.data);
-          setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false); return;
+          setDecisionState('idle'); owner.current = undefined; setConfirmDecline(false); clearRecoveryDraft(); return;
         }
         setDecisionState('submitting');
         await submit(intent);
@@ -267,8 +297,9 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
   const busy = decisionState === 'submitting' || lookupBusy;
   const isStartIntent = owner.current?.family === 'START_ACTION';
   const isCompleteIntent = owner.current?.family === 'COMPLETE_ACTION';
-  const mutationLabel = isCompleteIntent ? '完成處理狀態' : isStartIntent ? '開始處理狀態' : '接手狀態';
-  const committedLabel = isCompleteIntent ? '完成處理' : isStartIntent ? '開始處理' : '接手決定';
+  const isRecoveryIntent = owner.current?.family === 'ACTION_REASSIGN';
+  const mutationLabel = isRecoveryIntent ? '重新安排' : isCompleteIntent ? '完成處理狀態' : isStartIntent ? '開始處理狀態' : '接手狀態';
+  const committedLabel = isRecoveryIntent ? '重新安排' : isCompleteIntent ? '完成處理' : isStartIntent ? '開始處理' : '接手決定';
 
   return <article className="winwin-action-detail" aria-labelledby="action-detail-heading" aria-busy={busy}>
     <nav className="winwin-breadcrumbs" aria-label="頁面路徑"><Link to={`/winwin/cases/${caseId}`}>個案首頁</Link><span aria-hidden="true">/</span><span>處理事項</span></nav>
@@ -283,13 +314,13 @@ export function ActionDetailPage({ caseId, actionId }: Readonly<{ caseId: string
       {candidateState === 'error' && <div role="alert"><p>目前無法載入可詢問的人，尚未進行任何安排。</p><button type="button" onClick={() => void openRecovery()}>重新載入名單</button></div>}
       {candidateState === 'ready' && <div>
         <h3 ref={recoveryHeadingRef} tabIndex={-1}>選擇要詢問的人</h3>
-        <fieldset className="winwin-candidate-list"><legend>請選擇一位協作者</legend>{candidates.map((candidate) => <label key={candidate.candidateRef} className="winwin-candidate-option"><input type="radio" name="reassignment-candidate" value={candidate.candidateRef} checked={selectedCandidateRef === candidate.candidateRef} onChange={() => { setSelectedCandidateRef(candidate.candidateRef); setConfirmedRecoveryIntent(false); }} /><span><strong>{candidate.displayName}</strong>{candidate.relationshipDisplay && <small>{candidate.relationshipDisplay}</small>}{candidate.serviceValidityDisplay && <small>{candidate.serviceValidityDisplay}</small>}{candidate.priorDeclineHint && <small>{candidate.priorDeclineHint}</small>}</span></label>)}</fieldset>
-        <div className="winwin-page-actions"><button ref={recoveryReviewRef} className="winwin-primary-action" type="button" disabled={!selectedCandidateRef} onClick={() => setConfirmRecovery(true)}>檢視並確認</button><button type="button" onClick={() => { recoveryWasCancelled.current = true; setCandidateState('idle'); setCandidates([]); setSelectedCandidateRef(''); }}>取消</button></div>
+        <fieldset className="winwin-candidate-list"><legend>請選擇一位協作者</legend>{candidates.map((candidate) => <label key={candidate.candidateRef} className="winwin-candidate-option"><input type="radio" name="reassignment-candidate" value={candidate.candidateRef} checked={selectedCandidateRef === candidate.candidateRef} disabled={busy || decisionState !== 'idle'} onChange={() => setSelectedCandidateRef(candidate.candidateRef)} /><span><strong>{candidate.displayName}</strong>{candidate.relationshipDisplay && <small>{candidate.relationshipDisplay}</small>}{candidate.serviceValidityDisplay && <small>{candidate.serviceValidityDisplay}</small>}{candidate.priorDeclineHint && <small>{candidate.priorDeclineHint}</small>}</span></label>)}</fieldset>
+        <div className="winwin-page-actions"><button ref={recoveryReviewRef} className="winwin-primary-action" type="button" disabled={!selectedCandidateRef || busy || decisionState !== 'idle'} onClick={() => setConfirmRecovery(true)}>檢視並確認</button><button type="button" disabled={busy || decisionState !== 'idle'} onClick={() => { recoveryWasCancelled.current = true; setCandidateState('idle'); setCandidates([]); setSelectedCandidateRef(''); }}>取消</button></div>
       </div>}
-      {confirmedRecoveryIntent && <p role="status">已確認要詢問所選協作者；尚未送出安排。</p>}
     </section>}
-    {confirmRecovery && (() => { const selected = candidates.find(({ candidateRef }) => candidateRef === selectedCandidateRef); return selected ? <section className="winwin-confirmation" role="dialog" aria-modal="true" aria-labelledby="recovery-confirm-title" aria-describedby="recovery-confirm-description" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setConfirmRecovery(false); } }}><h2 id="recovery-confirm-title">確認要詢問的人</h2><p id="recovery-confirm-description">你將請「{selected.displayName}」確認是否接手這項處理。這不代表對方已接手，也不代表目前已有確定接手者。</p><div className="winwin-page-actions"><button ref={recoveryCancelRef} type="button" onClick={() => setConfirmRecovery(false)}>返回選擇</button><button className="winwin-primary-action" type="button" onClick={() => { setConfirmRecovery(false); setConfirmedRecoveryIntent(true); }}>確認詢問意願</button></div></section> : null; })()}
+    {confirmRecovery && (() => { const selected = candidates.find(({ candidateRef }) => candidateRef === selectedCandidateRef); return selected ? <section className="winwin-confirmation" role="dialog" aria-modal="true" aria-labelledby="recovery-confirm-title" aria-describedby="recovery-confirm-description" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setConfirmRecovery(false); } }}><h2 id="recovery-confirm-title">確認要詢問的人</h2><p id="recovery-confirm-description">你將請「{selected.displayName}」確認是否接手這項處理。這不代表對方已接手，也不代表目前已有確定接手者。</p><div className="winwin-page-actions"><button ref={recoveryCancelRef} type="button" disabled={busy} onClick={() => setConfirmRecovery(false)}>返回選擇</button><button className="winwin-primary-action" type="button" disabled={busy} onClick={beginReassignment}>{isRecoveryIntent && decisionState === 'submitting' ? '正在送出重新安排請求…' : '確認並送出詢問'}</button></div></section> : null; })()}
     <section className="winwin-summary-card" aria-labelledby="holder-heading"><h2 id="holder-heading">目前負責人</h2><p>{detail.currentHolderDisplay ?? '目前沒有人確定接手'}</p></section>
+    {decisionState === 'submitting' && isRecoveryIntent && <p className="winwin-mutation-notice" role="status">正在送出重新安排請求…</p>}
     <section className="winwin-summary-card" aria-labelledby="context-heading"><h2 id="context-heading">事項內容</h2><p>{detail.reason}</p>{detail.dueDisplay && <p>預計時間：{detail.dueDisplay}</p>}<p>來源：{detail.sourceCareUpdate.summary}</p><p>指派者：{detail.assignedByDisplay}・<time dateTime={detail.serverAssignedAt}>{detail.serverAssignedAt}</time></p></section>
     {decisionState === 'uncertain' && <div className="winwin-mutation-notice" role="alert"><p>目前無法確認是否已成功更新{mutationLabel}。系統不會自動再次送出。</p><button type="button" disabled={lookupBusy} onClick={() => void lookup(false)}>{lookupBusy ? '正在查詢…' : '查詢更新狀態'}</button></div>}
     {decisionState === 'definitelyNotCommitted' && <div className="winwin-mutation-notice" role="alert"><p>{mutationLabel}尚未更新。重新送出前會先確認目前負責狀態。</p><button type="button" disabled={lookupBusy} onClick={() => void lookup(true)}>{lookupBusy ? '正在確認…' : '確認目前狀態並重試'}</button></div>}
