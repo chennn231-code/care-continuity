@@ -12,16 +12,18 @@ import {
   type CreateActionInput,
   type CreateCareUpdateInput,
   type EligibleAssigneeView,
+  type EligibleReassignmentCandidateView,
   type OperationKey,
   type OperationStatusView,
   type ProjectionResult,
   type ReadCursorAdvanceView,
   type ReadCursorBoundary,
+  type ReassignActionInput,
   type ResponsibilityHistoryEntryView,
   type SessionView,
   type TimelineView
 } from '../../contracts/frontendContract';
-import type { VerticalSliceService } from '../../contracts/verticalSliceService';
+import type { ResponsibilityRecoveryService } from '../../contracts/verticalSliceService';
 
 export { DEMO_AUTHORITY_MARKER };
 
@@ -30,6 +32,7 @@ const CARE_UPDATE_ID = 'demo-care-update-1';
 const CARE_UPDATE_VERSION_ID = 'demo-care-update-version-1';
 const ACTION_ID = 'demo-action-1';
 const CANDIDATE_REF = 'demo-candidate-b';
+const REPLACEMENT_CANDIDATE_REF = 'demo-candidate-c';
 const SERVER_TIME = '2026-09-05T02:00:00.000Z';
 const TIMELINE_BOUNDARY = 'demo-boundary-2';
 
@@ -115,6 +118,18 @@ const eligibleAssignees: readonly EligibleAssigneeView[] = [{
   serviceValidityDisplay: '目前可指派'
 }];
 
+const eligibleReassignmentCandidates: readonly EligibleReassignmentCandidateView[] = [{
+  candidateRef: REPLACEMENT_CANDIDATE_REF,
+  displayName: '陳小姐',
+  relationshipDisplay: '照顧協作者',
+  serviceValidityDisplay: '目前可邀請確認'
+}, {
+  candidateRef: CANDIDATE_REF,
+  displayName: '王先生',
+  relationshipDisplay: '照顧協作者',
+  serviceValidityDisplay: '目前可邀請確認'
+}];
+
 const caseSummary: AuthorizedCaseSummary = {
   caseId: CASE_ID,
   caseDisplay: '陳女士的照顧個案',
@@ -174,9 +189,10 @@ export type DemoAdapterOptions = Readonly<{
   caseHomeResult?: ProjectionResult<CaseHomeView>;
   timelineResult?: ProjectionResult<TimelineView>;
   cursorResult?: CommandResult<ReadCursorAdvanceView>;
+  reassignmentCandidatesResult?: ProjectionResult<readonly EligibleReassignmentCandidateView[]>;
 }>;
 
-export class DemoVerticalSliceService implements VerticalSliceService {
+export class DemoVerticalSliceService implements ResponsibilityRecoveryService {
   readonly authorityMarker = DEMO_AUTHORITY_MARKER;
   private readonly operationOutcomes: Readonly<Record<string, OperationStatusView>>;
   private readonly sessionResult?: ProjectionResult<SessionView>;
@@ -184,6 +200,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private readonly caseHomeResult?: ProjectionResult<CaseHomeView>;
   private readonly timelineResult?: ProjectionResult<TimelineView>;
   private readonly cursorResult?: CommandResult<ReadCursorAdvanceView>;
+  private readonly reassignmentCandidatesResult?: ProjectionResult<readonly EligibleReassignmentCandidateView[]>;
   private createdCareUpdate?: CareUpdateDetailView;
   private readonly committedCareUpdates = new Map<OperationKey, CareUpdateDetailView>();
   private readonly careUpdateFingerprints = new Map<OperationKey, string>();
@@ -192,6 +209,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
   private readonly actionActivity: TimelineView['entries'][number][] = [];
   private readonly committedActions = new Map<OperationKey, ActionDetailView>();
   private readonly actionFingerprints = new Map<OperationKey, string>();
+  private responsibilityCycleSequence = 1;
 
   constructor(options: DemoAdapterOptions = {}) {
     this.operationOutcomes = options.operationOutcomes ?? {};
@@ -200,6 +218,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     this.caseHomeResult = options.caseHomeResult;
     this.timelineResult = options.timelineResult;
     this.cursorResult = options.cursorResult;
+    this.reassignmentCandidatesResult = options.reassignmentCandidatesResult;
   }
 
   async resolveSession(): Promise<ProjectionResult<SessionView>> {
@@ -357,6 +376,76 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       : { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
   }
 
+  async getEligibleReassignmentCandidates(
+    actionId: string
+  ): Promise<ProjectionResult<readonly EligibleReassignmentCandidateView[]>> {
+    if (actionId !== ACTION_ID) return { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+    if (!this.actionState.continuityGap || !this.actionState.allowedOperations.ACTION_REASSIGN) {
+      return { result: 'NOT_FOUND_OR_NOT_VISIBLE' };
+    }
+    return this.reassignmentCandidatesResult
+      ?? { result: 'SUCCESS', data: eligibleReassignmentCandidates };
+  }
+
+  async reassignAction(
+    input: ReassignActionInput,
+    operationKey: OperationKey
+  ): Promise<CommandResult<ActionDetailView>> {
+    const fingerprint = `ACTION_REASSIGN:${JSON.stringify(input)}`;
+    const prior = this.committedActions.get(operationKey);
+    if (prior) return this.actionFingerprints.get(operationKey) === fingerprint
+      ? { result: 'SUCCESS', data: prior }
+      : { result: 'IDEMPOTENCY_CONFLICT' };
+    if (input.actionId !== ACTION_ID
+      || input.expectedVersion !== this.actionState.expectedVersion
+      || !this.actionState.continuityGap
+      || !this.actionState.allowedOperations.ACTION_REASSIGN) return { result: 'STALE_VERSION' };
+
+    const configuredCandidates = this.reassignmentCandidatesResult;
+    if (configuredCandidates && configuredCandidates.result !== 'SUCCESS') {
+      return configuredCandidates.result === 'NOT_FOUND_OR_NOT_VISIBLE'
+        ? { result: 'NOT_FOUND_OR_NOT_VISIBLE' }
+        : { result: 'TARGET_INELIGIBLE' };
+    }
+    const candidates = configuredCandidates?.data ?? eligibleReassignmentCandidates;
+    const candidate = candidates.find(({ candidateRef }) => candidateRef === input.assigneeCandidateRef);
+    if (!candidate) return { result: 'TARGET_INELIGIBLE' };
+
+    const cycleNumber = this.responsibilityCycleSequence + 1;
+    const reassigned: ActionDetailView = {
+      ...this.actionState,
+      expectedVersion: String(Number(this.actionState.expectedVersion) + 1),
+      lifecycleState: 'ASSIGNED',
+      stateDisplay: `等待 ${candidate.displayName} 確認`,
+      currentHolderDisplay: candidate.displayName,
+      continuityGap: undefined,
+      responsibilityHistory: [...this.actionState.responsibilityHistory, {
+        historyId: `demo-cycle-${cycleNumber}-assigned`,
+        milestoneDisplay: '等待確認接手',
+        personDisplay: candidate.displayName,
+        serverRecordedAt: SERVER_TIME,
+        relevance: 'CURRENT'
+      }],
+      allowedOperations: operations(['ACCEPT_ACTION', 'DECLINE_ACTION'])
+    };
+    const outcome = this.commandOutcome(operationKey, reassigned);
+    if (outcome.result === 'SUCCESS') {
+      this.responsibilityCycleSequence = cycleNumber;
+      this.actionState = reassigned;
+      this.committedActions.set(operationKey, reassigned);
+      this.actionFingerprints.set(operationKey, fingerprint);
+      this.actionActivity.push({
+        activityId: `activity-action-reassigned-${cycleNumber}`,
+        eventDisplay: `已請 ${candidate.displayName} 確認是否接手`,
+        actorDisplay: '林小姐',
+        relationshipDisplay: '家屬照顧者',
+        serverRecordedAt: SERVER_TIME,
+        target: { kind: 'ACTION', id: ACTION_ID }
+      });
+    }
+    return outcome;
+  }
+
   async acceptAction(
     input: ActionMutationInput,
     operationKey: OperationKey
@@ -367,7 +456,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       responsibilityHistory: [...accepted.responsibilityHistory, {
         historyId: 'demo-history-accepted',
         milestoneDisplay: '已確認接手',
-        personDisplay: '王先生',
+        personDisplay: this.actionState.currentHolderDisplay,
         serverRecordedAt: SERVER_TIME,
         relevance: 'CURRENT'
       }]
@@ -378,13 +467,14 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     input: ActionMutationInput,
     operationKey: OperationKey
   ): Promise<CommandResult<ActionDetailView>> {
-    const endedHistory: ResponsibilityHistoryEntryView = {
-      ...assignedHistory,
-      relevance: 'HISTORICAL'
-    };
+    const declinedPerson = this.actionState.currentHolderDisplay;
+    const historical = this.actionState.responsibilityHistory.map((entry) => ({
+      ...entry,
+      relevance: 'HISTORICAL' as const
+    }));
     return this.decideAction('DECLINE_ACTION', input, operationKey, {
-      ...assignedAction,
-      expectedVersion: '2',
+      ...this.actionState,
+      expectedVersion: String(Number(this.actionState.expectedVersion) + 1),
       stateDisplay: '需要重新安排',
       currentHolderDisplay: undefined,
       continuityGap: {
@@ -392,19 +482,19 @@ export class DemoVerticalSliceService implements VerticalSliceService {
         careNeedDisplay: assignedAction.title,
         currentHolderDisplay: '目前沒有人確定接手',
         followUpDisplay: '需要重新安排',
-        priorCycleSummary: '王先生目前無法接手'
+        priorCycleSummary: `${declinedPerson ?? '受邀者'}目前無法接手`
       },
       responsibilityHistory: [
-        endedHistory,
+        ...historical,
         {
-          historyId: 'demo-history-declined',
+          historyId: `demo-cycle-${this.responsibilityCycleSequence}-declined`,
           milestoneDisplay: '目前無法接手',
-          personDisplay: '王先生',
+          personDisplay: declinedPerson,
           serverRecordedAt: SERVER_TIME,
           relevance: 'HISTORICAL'
         }
       ],
-      allowedOperations: NO_ALLOWED_OPERATIONS
+      allowedOperations: operations(['ACTION_REASSIGN'])
     });
   }
 
@@ -484,11 +574,12 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     enabled: readonly (keyof AllowedOperationSet)[]
   ): ActionDetailView {
     return {
-      ...assignedAction,
-      expectedVersion: lifecycleState === 'ACCEPTED' ? '2' : lifecycleState === 'IN_PROGRESS' ? '3' : '4',
+      ...this.actionState,
+      expectedVersion: String(Number(this.actionState.expectedVersion) + 1),
       lifecycleState,
       stateDisplay,
-      responsibilityHistory: assignedAction.responsibilityHistory.map((entry) => ({
+      continuityGap: undefined,
+      responsibilityHistory: this.actionState.responsibilityHistory.map((entry) => ({
         ...entry,
         relevance: lifecycleState === 'COMPLETED' ? 'HISTORICAL' : entry.relevance
       })),
@@ -536,6 +627,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
     action: ActionDetailView
   ) {
     const fixture = lifecycleActivityFixtures[family];
+    const actorDisplay = action.currentHolderDisplay ?? fixture.actorDisplay;
     const shared = {
       serverRecordedAt: fixture.happenedAt,
       target: { kind: 'ACTION' as const, id: action.actionId }
@@ -545,7 +637,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
         ...shared,
         activityId: `activity-${family.toLowerCase()}`,
         eventDisplay: fixture.eventDisplay,
-        actorDisplay: fixture.actorDisplay,
+        actorDisplay,
         relationshipDisplay: fixture.relationshipDisplay
       }, {
         ...shared,
@@ -558,7 +650,7 @@ export class DemoVerticalSliceService implements VerticalSliceService {
       ...shared,
       activityId: `activity-${family.toLowerCase()}`,
       eventDisplay: fixture.eventDisplay,
-      actorDisplay: fixture.actorDisplay,
+      actorDisplay,
       relationshipDisplay: fixture.relationshipDisplay
     });
   }

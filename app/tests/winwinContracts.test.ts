@@ -196,6 +196,198 @@ describe('VerticalSliceService and deterministic demo boundary', () => {
       result: 'NOT_FOUND_OR_NOT_VISIBLE'
     });
   });
+
+  it('creates a distinct pending cycle without changing prior declined history', async () => {
+    const service: ResponsibilityRecoveryService = new DemoVerticalSliceService();
+    const declined = await service.declineAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'decline-cycle-1'
+    );
+    expect(declined.result).toBe('SUCCESS');
+    if (declined.result !== 'SUCCESS') throw new Error('Expected initial decline');
+    const priorHistory = structuredClone(declined.data.responsibilityHistory);
+
+    const candidates = await service.getEligibleReassignmentCandidates('demo-action-1');
+    expect(candidates.result).toBe('SUCCESS');
+    if (candidates.result !== 'SUCCESS') throw new Error('Expected eligible candidates');
+    expect(candidates.data[0]).toEqual({
+      candidateRef: 'demo-candidate-c',
+      displayName: '陳小姐',
+      relationshipDisplay: '照顧協作者',
+      serviceValidityDisplay: '目前可邀請確認'
+    });
+    expect(candidates.data[0]).not.toHaveProperty('grants');
+    expect(candidates.data[0]).not.toHaveProperty('contactDetails');
+    expect(candidates.data[0]).not.toHaveProperty('healthData');
+    expect(candidates.data[0]).not.toHaveProperty('availability');
+    expect(candidates.data[0]).not.toHaveProperty('score');
+
+    const reassigned = await service.reassignAction({
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: declined.data.expectedVersion
+    }, 'reassign-cycle-2');
+    expect(reassigned.result).toBe('SUCCESS');
+    if (reassigned.result !== 'SUCCESS') throw new Error('Expected reassignment');
+    expect(reassigned.data.responsibilityHistory.slice(0, priorHistory.length)).toEqual(priorHistory);
+    expect(reassigned.data.responsibilityHistory.at(-1)).toMatchObject({
+      historyId: 'demo-cycle-2-assigned',
+      personDisplay: '陳小姐',
+      relevance: 'CURRENT'
+    });
+    expect(reassigned.data.stateDisplay).toBe('等待 陳小姐 確認');
+    expect(reassigned.data.stateDisplay).not.toContain('確定接手者');
+    expect(reassigned.data.lifecycleState).toBe('ASSIGNED');
+    expect(reassigned.data.continuityGap).toBeUndefined();
+  });
+
+  it('restores confirmed coverage only after replacement acceptance', async () => {
+    const service = new DemoVerticalSliceService();
+    const declined = await service.declineAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'decline-before-accept'
+    );
+    if (declined.result !== 'SUCCESS') throw new Error('Expected initial decline');
+    const reassigned = await service.reassignAction({
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: declined.data.expectedVersion
+    }, 'reassign-before-accept');
+    if (reassigned.result !== 'SUCCESS') throw new Error('Expected reassignment');
+    expect(reassigned.data.stateDisplay).toBe('等待 陳小姐 確認');
+
+    const accepted = await service.acceptAction({
+      actionId: 'demo-action-1',
+      expectedVersion: reassigned.data.expectedVersion
+    }, 'accept-cycle-2');
+    expect(accepted.result).toBe('SUCCESS');
+    if (accepted.result !== 'SUCCESS') throw new Error('Expected replacement acceptance');
+    expect(accepted.data.lifecycleState).toBe('ACCEPTED');
+    expect(accepted.data.stateDisplay).toBe('已確認接手');
+    expect(accepted.data.currentHolderDisplay).toBe('陳小姐');
+    expect(accepted.data.responsibilityHistory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ historyId: 'demo-cycle-1-declined', relevance: 'HISTORICAL' }),
+      expect.objectContaining({ historyId: 'demo-cycle-2-assigned', personDisplay: '陳小姐' }),
+      expect.objectContaining({ historyId: 'demo-history-accepted', personDisplay: '陳小姐' })
+    ]));
+  });
+
+  it('ends only the replacement cycle and permits a previous decliner through a third cycle', async () => {
+    const service = new DemoVerticalSliceService();
+    const firstDecline = await service.declineAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'decline-cycle-one'
+    );
+    if (firstDecline.result !== 'SUCCESS') throw new Error('Expected first decline');
+    const secondCycle = await service.reassignAction({
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: firstDecline.data.expectedVersion
+    }, 'assign-cycle-two');
+    if (secondCycle.result !== 'SUCCESS') throw new Error('Expected second cycle');
+    const secondDecline = await service.declineAction({
+      actionId: 'demo-action-1',
+      expectedVersion: secondCycle.data.expectedVersion
+    }, 'decline-cycle-two');
+    if (secondDecline.result !== 'SUCCESS') throw new Error('Expected second decline');
+    expect(secondDecline.data.continuityGap?.followUpDisplay).toBe('需要重新安排');
+    expect(secondDecline.data.currentHolderDisplay).toBeUndefined();
+    expect(secondDecline.data.allowedOperations.ACTION_REASSIGN).toBe(true);
+
+    const thirdCycle = await service.reassignAction({
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-b',
+      expectedVersion: secondDecline.data.expectedVersion
+    }, 'assign-cycle-three');
+    expect(thirdCycle.result).toBe('SUCCESS');
+    if (thirdCycle.result !== 'SUCCESS') throw new Error('Expected third cycle');
+    expect(thirdCycle.data.responsibilityHistory.at(-1)).toMatchObject({
+      historyId: 'demo-cycle-3-assigned',
+      personDisplay: '王先生'
+    });
+    expect(thirdCycle.data.responsibilityHistory.filter(({ relevance }) => relevance === 'CURRENT'))
+      .toHaveLength(1);
+  });
+
+  it('enforces currentness, one effective cycle, candidate eligibility and idempotency', async () => {
+    const service = new DemoVerticalSliceService();
+    const declined = await service.declineAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'decline-for-guards'
+    );
+    if (declined.result !== 'SUCCESS') throw new Error('Expected decline');
+    const input = {
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: declined.data.expectedVersion
+    } as const;
+    expect(await service.reassignAction({ ...input, assigneeCandidateRef: 'hidden-person' }, 'bad-target'))
+      .toEqual({ result: 'TARGET_INELIGIBLE' });
+
+    const first = await service.reassignAction(input, 'stable-reassign-key');
+    expect(first.result).toBe('SUCCESS');
+    expect(await service.reassignAction(input, 'stable-reassign-key')).toEqual(first);
+    expect(await service.reassignAction({ ...input, assigneeCandidateRef: 'demo-candidate-b' }, 'stable-reassign-key'))
+      .toEqual({ result: 'IDEMPOTENCY_CONFLICT' });
+    expect(await service.reassignAction(input, 'parallel-attempt')).toEqual({ result: 'STALE_VERSION' });
+    expect(await service.reassignAction({ ...input, expectedVersion: 'stale-version' }, 'stale-attempt'))
+      .toEqual({ result: 'STALE_VERSION' });
+    if (first.result !== 'SUCCESS') throw new Error('Expected reassignment');
+    expect(first.data.responsibilityHistory.filter(({ relevance }) => relevance === 'CURRENT'))
+      .toHaveLength(1);
+    const activity = await service.getTimeline('demo-case-1');
+    expect(activity.result).toBe('SUCCESS');
+    if (activity.result !== 'SUCCESS') throw new Error('Expected activity projection');
+    expect(activity.data.entries.filter(({ eventDisplay }) => (
+      eventDisplay === '已請 陳小姐 確認是否接手'
+    ))).toHaveLength(1);
+  });
+
+  it('keeps empty and unknown outcomes non-mutating and never auto-selects', async () => {
+    const emptyService = new DemoVerticalSliceService({
+      reassignmentCandidatesResult: { result: 'EMPTY' }
+    });
+    const emptyDecline = await emptyService.declineAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'decline-empty'
+    );
+    if (emptyDecline.result !== 'SUCCESS') throw new Error('Expected decline');
+    expect(await emptyService.getEligibleReassignmentCandidates('demo-action-1'))
+      .toEqual({ result: 'EMPTY' });
+    expect(await emptyService.reassignAction({
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: emptyDecline.data.expectedVersion
+    }, 'empty-reassign')).toEqual({ result: 'TARGET_INELIGIBLE' });
+    expect((await emptyService.getActionDetail('demo-case-1', 'demo-action-1')))
+      .toEqual({ result: 'SUCCESS', data: emptyDecline.data });
+
+    const unknownService = new DemoVerticalSliceService({
+      operationOutcomes: {
+        'unknown-reassign': { operationKey: 'unknown-reassign', outcome: 'UNKNOWN' }
+      }
+    });
+    const unknownDecline = await unknownService.declineAction(
+      { actionId: 'demo-action-1', expectedVersion: '1' },
+      'decline-unknown'
+    );
+    if (unknownDecline.result !== 'SUCCESS') throw new Error('Expected decline');
+    const unknownInput = {
+      actionId: 'demo-action-1',
+      assigneeCandidateRef: 'demo-candidate-c',
+      expectedVersion: unknownDecline.data.expectedVersion
+    };
+    expect(await unknownService.reassignAction(unknownInput, 'unknown-reassign')).toEqual({
+      result: 'TEMPORARY_FAILURE',
+      outcomeUncertain: true
+    });
+    expect(await unknownService.lookupOperationStatus('unknown-reassign')).toEqual({
+      operationKey: 'unknown-reassign',
+      outcome: 'UNKNOWN'
+    });
+    const stillGap = await unknownService.getActionDetail('demo-case-1', 'demo-action-1');
+    expect(stillGap.result === 'SUCCESS' && stillGap.data.continuityGap).toBeDefined();
+  });
 });
 
 function expectTypeOnly<T>(): void {
