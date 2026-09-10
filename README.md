@@ -4,11 +4,28 @@
 
 WinWin 以長者／個案為中心，連結家屬與專業照護團隊，在受控權限下支援照顧更新、交接與行動協作，並保留作者、時間與責任狀態，降低跨人員、跨班次與跨服務的資訊斷裂。
 
-目前主要展示入口為 `/v2/prototype`；啟動本機前端後，開啟根路徑 `/` 也會導向此入口。
+目前 First Vertical Slice 展示入口為 `/winwin`；啟動本機前端後，一般根路徑 `/` 會導向 `/winwin`，Auth callback 仍由 `/auth/confirm` 處理。`/v2/prototype` 保留為舊 Prototype 參考入口，不是目前 root entry。
 
 本 Repository 另行保存「備份心」舊專題／歷史原型及其研究與 regression assets。備份心不是 WinWin 的舊名稱或產品定義來源，也不界定 WinWin 現行產品邊界；其 Coverage、Scenario、Backup 與 Offline Handoff 僅按歷史脈絡保留，相關舊版 routes 不是目前 WinWin 主流程。
 
-## Current truth snapshot（2026-08-29）
+## Current truth snapshot（2026-09-10）
+
+- Current branch：`codex/product-mvp-ux-spec`；documentation sync 起始 HEAD：`18d4442286ece8fcaed8d96e212936afdf59edaa`。
+- First Vertical Slice：**CLOSED** at `252ef53298039f39d7c9e33ac4c9f458a9bd2a81`，僅代表 fictional-data frontend demonstration 的 bounded integration／authorization／route-entry 與 regression evidence，不代表 overall MVP 或 Production 完成。
+- Responsibility Recovery：RR-F0–RR-F6 **CLOSED** at `18d4442286ece8fcaed8d96e212936afdf59edaa`；此能力線停止擴張。
+- Current product direction：**Care Coverage / Care Gap Identification**，依 Care Activity → responsibility arrangement → exact actor confirmation → derived coverage → concrete gap 的順序研究；Backup Care 與 24h／72h／7d interruption simulation 尚未開始。
+- Care Coverage Product Decisions：`PENDING BLOCKING VALIDATION — NOT FROZEN`；不是 implementation authorization。
+- Instrument pilots：PILOT-01（V3）=`P01-C`；V4 bounded revision complete；PILOT-02（V4）=`P02-A`；instrument-pilot phase 已停止，不需要 Pilot-03／V5。
+- Formal Validation Plan：prepared；minimum `6 Group A + 2 Group B`，preferred `7 + 3`；B-04 professional review mandatory。
+- FV-0：**DOCUMENTATION / READINESS CLOSEOUT ELIGIBLE**；兩位 potential Group B candidates 的 access route 已識別，但 eligibility／voluntary consent 尚未執行。
+- Formal evidence：Group A completed = `0`；Group B completed = `0`；pilot evidence 不納入 formal denominators。
+- Formal validation：FV-1／FV-2 **NOT AUTHORIZED**；不得聯絡／招募或施測。
+- Formal sessions 採 participant code、書面／文字紀錄、不錄音錄影；去識別化資料存於學生控制的非公開儲存位置／USB，不提交 public GitHub。
+- Foundation／runtime authority 未因本次文件同步改變：Environment Start、Supabase、SQL／migration、Docker、backend runtime 與 deployment 均 **NOT AUTHORIZED**。
+
+目前合法的下一 milestone 是：取得獨立的 formal human-validation execution authorization，之後才可進入 FV-1／FV-2；不是 Care Coverage implementation。
+
+## Historical truth snapshot（2026-08-29）
 
 - Current branch：`codex/foundation-spike-design-correction`。
 - Snapshot baseline：`8c361eb8786b1ce78d31d398b7b38e848f939404`；working tree 在 Batch 0 開始時為 clean。
@@ -234,6 +251,16 @@ care-continuity/
 
 ### 產品治理與研究
 
+- [Current WinWin Project Status](docs/project-status/WINWIN_CURRENT_STATUS.md)
+- [Care Coverage Product Decisions](docs/winwin/WINWIN_CARE_COVERAGE_PRODUCT_DECISIONS_V1.md)
+- [Care Coverage MVP Implementation Readiness](docs/winwin/WINWIN_CARE_COVERAGE_MVP_IMPLEMENTATION_READINESS_V1.md)
+- [Care Coverage Blocking Validation Protocol](docs/winwin/WINWIN_CARE_COVERAGE_BLOCKING_VALIDATION_PROTOCOL_V1.md)
+- [Care Coverage Validation Record Template](docs/winwin/WINWIN_CARE_COVERAGE_BLOCKING_VALIDATION_RECORD_TEMPLATE_V1.md)
+- [Care Coverage Validation Materials](docs/winwin/WINWIN_CARE_COVERAGE_VALIDATION_MATERIALS_V1.md)
+- [Care Coverage Moderator Script](docs/winwin/WINWIN_CARE_COVERAGE_MODERATOR_SCRIPT_V1.md)
+- [Care Coverage Pilot Checklist](docs/winwin/WINWIN_CARE_COVERAGE_PILOT_CHECKLIST_V1.md)
+- [Care Coverage Formal Validation Plan](docs/winwin/WINWIN_CARE_COVERAGE_FORMAL_VALIDATION_PLAN_V1.md)
+- [Care Coverage FV-0 Execution Readiness](docs/winwin/WINWIN_CARE_COVERAGE_FV0_EXECUTION_READINESS_V1.md)
 - [v2 Product Governance & Permission Matrix](docs/requirements/V2_PRODUCT_GOVERNANCE_PERMISSION_MATRIX_DRAFT.md)
 - [v2 Competitor Evidence Review](docs/research/existing-solutions/v2-competitor-evidence-review-2026-08-24.md)
 

@@ -1,5 +1,70 @@
 # WinWin Current Project Status
 
+## Current truth reconciliation overlay — 2026-09-10
+
+This is the current project-status authority for branch `codex/product-mvp-ux-spec` at documentation-sync starting HEAD `18d4442286ece8fcaed8d96e212936afdf59edaa`. Older overlays and snapshots below remain chronological evidence and are not rewritten as if their checks were rerun.
+
+| Area | Current status | Bounded meaning |
+|---|---|---|
+| First Vertical Slice | **CLOSED** | Closure commit `252ef53298039f39d7c9e33ac4c9f458a9bd2a81`; fictional-data frontend demonstration only |
+| Responsibility Recovery | **RR-F0–RR-F6 CLOSED** | Final accepted HEAD `18d4442286ece8fcaed8d96e212936afdf59edaa`; capability line stops here |
+| Active product direction | **Care Coverage / Care Gap Identification** | Research and blocking validation before any Product Freeze or implementation |
+| Care Coverage Product Decisions | **PENDING BLOCKING VALIDATION — NOT FROZEN** | Four-state derived model remains a candidate, not implementation authority |
+| Instrument pilots | **STOP** | PILOT-01 V3=`P01-C`; V4 revision complete; PILOT-02 V4=`P02-A`; no Pilot-03/V5 needed |
+| Formal Validation Plan | **PREPARED** | Minimum 6 Group A + 2 Group B; preferred 7 + 3; Group C supplementary only |
+| Formal material | **LOCKED BY REFERENCE** | `CC-VAL-FORMAL-V1`, content-identical to V4: SC-V2/DP-V2/CN-V4/CAT-V3 |
+| FV-0 | **DOCUMENTATION / READINESS CLOSEOUT ELIGIBLE** | Internal package ready; separate execution authorization still absent |
+| Group B access | **ROUTE IDENTIFIED** | Two non-identifying potential candidates; neither enrolled, consented, nor completed |
+| Formal execution | **NOT AUTHORIZED** | Group A completed=0; Group B completed=0; FV-1/FV-2 not started |
+| Foundation/runtime | **NOT AUTHORIZED** | No Environment Start, Supabase, SQL/migration, Docker, backend runtime, or deployment |
+
+### Closed frontend slices and maximum claims
+
+The First Vertical Slice may be described only as a fictional-data frontend demonstration with bounded integration, responsibility, authorization, fail-closed session handling, root-entry, manual-frontend, and automated-regression evidence. It is not the overall MVP, Production Auth/backend, real multi-user synchronization, Backup Care, an interruption simulator, or a clinically validated product.
+
+Responsibility Recovery may be described only as a fictional-data frontend minimum slice that identifies an unfilled responsibility after decline; lets an authorized person ask one eligible replacement candidate; preserves a new immutable cycle; requires the candidate’s own Accept/Decline response; distinguishes pending assignment from confirmed responsibility; returns truthfully to an unresolved gap after decline; and preserves bounded history, privacy, authorization, stale-state, idempotency, and uncertainty semantics. Do not extend it into timeouts, escalation, ranking, notifications, manager override, or generic task management.
+
+### Care Coverage current direction
+
+The product bridge is:
+
+`Care Activity → responsibility arrangement → exact actor confirmation → derived coverage → concrete Care Gap → existing Responsibility Recovery only when prerequisites exist → truthful unresolved stop`
+
+Backup Care, formal/informal backup pathways, and 24h/72h/7d interruption scenarios come later and are not implemented or validated.
+
+Current derived-state candidates are `NOT_ASSESSED`, `PENDING_CONFIRMATION`, `CONFIRMED_COVERAGE`, and `NO_CONFIRMED_COVERAGE`. Missing information never directly derives a Care Gap, and coverage is not user-selectable. Current research uses Morning/Midday/Afternoon/Evening/Night, optional exact time, and DAILY/SELECTED_DAYS/WEEKLY/ONE_TIME/AS_NEEDED; it is not a calendar engine.
+
+Responsibility acceptance means ensuring the bounded activity is appropriately arranged and handled. The person may assist personally or arrange a suitable person; acceptance is not proof of care delivery, mandatory personal performance, or permanent responsibility.
+
+Product-decision category seeds include 飲食、用藥相關協助、如廁、洗澡／清潔、移位／行動、外出／交通、就醫相關安排、夜間照顧、陪同／看顧、其他. The current V4 research material separates several of those axes into primary activity types and optional contexts. `生活安排` remains exploratory/M1 and is not a validated fixed category. Neither structure is a clinical taxonomy.
+
+### Instrument-pilot evidence
+
+- **PILOT-01, 2026-09-09:** real human, facilitator’s mother, no recording, V3, batch/relay deviation, voluntarily stopped early. It exposed an M2 B-03 personal-performance misunderstanding and NOT_ASSESSED urgency confusion; B-04 was incomplete. Outcome `P01-C`.
+- **V4 correction:** `CC-VAL-PILOT-V4` with SC-V2, DP-V2, CN-V4, CAT-V3; sequential administration, clearer responsibility text, response-fidelity and timing controls, and stepwise five-activity scaffolding.
+- **PILOT-02, 2026-09-10:** different voluntary adult, sequential written near-verbatim notes, no detailed WinWin/PILOT-01 exposure. Start/block times missing; end 20:44:36 CST. Four states, timing/recurrence/AS_NEEDED/cross-midnight, and responsibility meaning were understood; 16/16 B-04 cards completed and core `7/7` was prototype-aligned descriptive pilot evidence only. Outcome `P02-A`; evidence review `R2` with M1 watch items for `生活安排` and 晚上/夜間.
+
+Pilot evidence is instrument-design evidence only. It is not pooled into formal Group A/B denominators and establishes no clinical, population, statistical, taxonomy, or product-effectiveness validation.
+
+### Formal validation and FV-0
+
+The Formal Validation Plan requires minimum 6 completed ordinary/family-care Group A participants and 2 genuinely relevant LTC-practitioner Group B reviewers; preferred 7+3. Any approximately 80% threshold is a student-project descriptive criterion; for six usable Group A participants, `5/6 = 83.3%`. Critical misunderstandings override numerical pass. B-04 cannot close without at least two eligible professional reviews.
+
+FV-0 documentation/readiness is closeout-eligible. Based on the student’s teacher confirmation, no additional school/course procedure was identified as required; this is not IRB approval, exemption, or ethics-committee approval. Formal sessions are planned with written/text notes, participant codes, and no audio/video. De-identified records may be retained in student-controlled non-public storage/USB for the project, defense/presentation, related competitions, and later same-project analysis; research responses are not committed to public GitHub. No fixed school-mandated retention duration was identified.
+
+A realistic route exists to two potential Group B candidates: a day-care leadership practitioner with direct LTC/service experience and an LTC-related teacher with actual LTC work/service experience. No names or identifiable workplace details belong in this Repository. Candidate identification is not eligibility, consent, enrollment, a completed session, or professional validation.
+
+Formal evidence remains:
+
+- Group A completed: **0**
+- Group B completed: **0**
+- Professional reviews completed: **0**
+- FV-1/FV-2: **NOT AUTHORIZED**
+
+### Next legitimate milestone
+
+The next milestone is a **separate formal human-validation execution authorization**, followed only then by FV-1 ordinary-user sessions and FV-2 professional review. It is not Care Coverage implementation, Product Decision Freeze, Backup Care, runtime, or deployment.
+
 ## Current truth reconciliation overlay — 2026-08-29
 
 This overlay is the current interpretation at branch `codex/foundation-spike-design-correction`, starting baseline `8c361eb8786b1ce78d31d398b7b38e848f939404`. The 2026-08-25 snapshot below remains historical evidence and is not rewritten as if it were rerun.
